@@ -41,11 +41,10 @@ async function extractMetadata(text: string): Promise<Record<string, unknown>> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "local-model",
-      response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: `Extract metadata from the user's captured thought. Return JSON with:
+          content: `Extract metadata from the user's captured thought. Return ONLY valid JSON with no markdown formatting or other text. The JSON must have exactly these keys:
 - "people": array of people mentioned (empty if none)
 - "action_items": array of implied to-dos (empty if none)
 - "dates_mentioned": array of dates YYYY-MM-DD (empty if none)
