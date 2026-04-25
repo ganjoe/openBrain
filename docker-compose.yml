@@ -1,0 +1,146 @@
+# Open Brain - Local Self-Hosted Stack
+# All services run locally, no external API dependencies.
+#
+# Services:
+#   db        - PostgreSQL 17 + pgvector (vector database)
+#   postgrest - REST API layer (Supabase-compatible)
+#   studio    - Supabase Studio Web UI
+#   ollama    - Embedding model (CPU-only, no GPU)
+#   gateway   - Nginx proxy to handle /rest/v1 paths
+#   mcp-server - MCP endpoint for AI clients
+
+services:
+  # --- PostgreSQL with pgvector ---
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: openbrain-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - openbrain_pgdata:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- PostgREST: REST API for the database ---
+  postgrest:
+    image: postgrest/postgrest
+    container_name: openbrain-postgrest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_EXTRA_SEARCH_PATH: public,extensions
+    ports:
+      - "3001:3000"
+
+  # --- Supabase Studio Web UI ---
+  studio:
+    image: supabase/studio:latest
+    container_name: openbrain-studio
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DEFAULT_ORGANIZATION_NAME: "Open Brain Local"
+      DEFAULT_PROJECT_NAME: "open-brain"
+      SUPABASE_URL: http://postgrest:3000
+      SUPABASE_PUBLIC_URL: http://localhost:3001
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      NEXT_PUBLIC_ENABLE_LOGS: "true"
+      NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
+    ports:
+      - "3000:3000"
+
+  # --- pg-meta for Studio ---
+  meta:
+    image: supabase/postgres-meta:v0.96.4
+    container_name: openbrain-meta
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: ${POSTGRES_DB}
+      PG_META_DB_USER: ${POSTGRES_USER}
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+  # --- Ollama: Local embedding model (CPU-only) ---
+  # No --gpus flag = CPU-only, won't interfere with LM Studio GPU usage
+  ollama:
+    image: ollama/ollama
+    container_name: openbrain-ollama
+    restart: unless-stopped
+    volumes:
+      - openbrain_ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 10s
+
+  # --- Gateway: Nginx proxy for /rest/v1 paths ---
+  gateway:
+    image: nginx:alpine
+    container_name: openbrain-gateway
+    restart: unless-stopped
+    volumes:
+      - ./docker/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - postgrest
+    ports:
+      - "8001:80"
+
+  # --- MCP Server: AI client endpoint ---
+  mcp-server:
+    build:
+      context: ./docker/mcp-server
+      dockerfile: Dockerfile
+    container_name: openbrain-mcp
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    environment:
+      SUPABASE_URL: http://gateway:80
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_EMBED_MODEL: qwen3-embedding:8b
+      LM_STUDIO_URL: http://host.docker.internal:1234
+      PORT: "8787"
+    ports:
+      - "8787:8787"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  openbrain_pgdata:
+  openbrain_ollama:
