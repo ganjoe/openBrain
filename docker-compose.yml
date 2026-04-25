@@ -108,16 +108,41 @@ services:
     container_name: openbrain-gateway
     restart: unless-stopped
     volumes:
-      - ./docker/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./core/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - postgrest
     ports:
       - "8001:80"
 
+  # --- Matrix Server (Conduit) ---
+  conduit:
+    image: matrixconduit/matrix-conduit:latest
+    container_name: openbrain-conduit
+    restart: unless-stopped
+    environment:
+      CONDUIT_CONFIG: "/etc/conduit.toml"
+    volumes:
+      - openbrain_matrix:/var/lib/matrix-conduit/
+      - ./core/matrix/conduit.toml:/etc/conduit.toml:ro
+    ports:
+      - "6167:6167"
+
+  # --- Matrix Web Frontend (Element) ---
+  element-web:
+    image: vectorim/element-web:latest
+    container_name: openbrain-element
+    restart: unless-stopped
+    volumes:
+      - ./core/matrix/element-config.json:/app/config.json:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - conduit
+
   # --- MCP Server: AI client endpoint ---
   mcp-server:
     build:
-      context: ./docker/mcp-server
+      context: ./agent-ea/mcp-server
       dockerfile: Dockerfile
     container_name: openbrain-mcp
     restart: unless-stopped
@@ -134,13 +159,34 @@ services:
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
       OLLAMA_URL: http://ollama:11434
       OLLAMA_EMBED_MODEL: qwen3-embedding:8b
-      LM_STUDIO_URL: http://host.docker.internal:1234
+      LM_STUDIO_URL: http://host.docker.internal:1234/v1
       PORT: "8787"
     ports:
       - "8787:8787"
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # --- EA Matrix Bot: The Bridge ---
+  agent-ea-bot:
+    build:
+      context: ./agent-ea/bot
+      dockerfile: Dockerfile
+    container_name: openbrain-ea-bot
+    restart: unless-stopped
+    depends_on:
+      - conduit
+      - mcp-server
+    environment:
+      MATRIX_HOMESERVER_URL: http://conduit:6167
+      MATRIX_USER: ${MATRIX_EA_USER}
+      MATRIX_PASSWORD: ${MATRIX_EA_PASSWORD}
+      MCP_SERVER_URL: http://mcp-server:8787
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      LM_STUDIO_URL: http://host.docker.internal:1234/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   openbrain_pgdata:
   openbrain_ollama:
+  openbrain_matrix:

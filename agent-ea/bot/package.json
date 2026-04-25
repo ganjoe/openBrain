@@ -1,0 +1,17 @@
+{
+  "name": "openbrain-ea-bot",
+  "version": "1.0.0",
+  "description": "Executive Assistant Matrix Bot for Open Brain",
+  "main": "index.ts",
+  "scripts": {
+    "start": "ts-node index.ts"
+  },
+  "dependencies": {
+    "matrix-bot-sdk": "^0.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.0"
+  }
+}
