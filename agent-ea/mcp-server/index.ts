@@ -83,13 +83,13 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-// Tool 1: Semantic Search
+// Tool 1: Hybrid Search (semantic + keyword combined)
 server.registerTool(
   "search_thoughts",
   {
     title: "Search Thoughts",
     description:
-      "Search captured thoughts by meaning. Use this when the user asks about a topic, person, or idea they've previously captured.",
+      "Search captured thoughts using hybrid search (semantic vector + keyword matching). Combines both approaches for best recall — semantic similarity finds conceptually related thoughts, while keyword matching catches exact names and terms. Use this as the default search tool.",
     inputSchema: {
       query: z.string().describe("What to search for"),
       limit: z.number().optional().default(10),
@@ -99,8 +99,9 @@ server.registerTool(
   async ({ query, limit, threshold }) => {
     try {
       const qEmb = await getEmbedding(query);
-      const { data, error } = await supabase.rpc("match_thoughts", {
+      const { data, error } = await supabase.rpc("hybrid_search_thoughts", {
         query_embedding: qEmb,
+        query_text: query,
         match_threshold: threshold,
         match_count: limit,
         filter: {},
@@ -124,14 +125,17 @@ server.registerTool(
           t: {
             content: string;
             metadata: Record<string, unknown>;
-            similarity: number;
+            similarity: number | null;
             created_at: string;
           },
           i: number
         ) => {
           const m = t.metadata || {};
+          const matchLabel = t.similarity !== null && t.similarity !== undefined
+            ? `${(t.similarity * 100).toFixed(1)}% semantic match`
+            : "keyword match";
           const parts = [
-            `--- Result ${i + 1} (${(t.similarity * 100).toFixed(1)}% match) ---`,
+            `--- Result ${i + 1} (${matchLabel}) ---`,
             `Captured: ${new Date(t.created_at).toLocaleDateString()}`,
             `Type: ${m.type || "unknown"}`,
           ];

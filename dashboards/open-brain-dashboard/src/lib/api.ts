@@ -135,7 +135,7 @@ export async function getThoughts(params: {
 	person?: string | null;
 	search?: string;
 }): Promise<Thought[]> {
-	// If searching, use search_thoughts, otherwise use list_thoughts
+	// If searching, use hybrid search (semantic + keyword), otherwise use list_thoughts
 	if (params.search) {
 		const result = await callMcpTool('search_thoughts', {
 			query: params.search,

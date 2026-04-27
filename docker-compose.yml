@@ -159,7 +159,7 @@ services:
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
       OLLAMA_URL: http://ollama:11434
       OLLAMA_EMBED_MODEL: qwen3-embedding:8b
-      LM_STUDIO_URL: http://host.docker.internal:1234/v1
+      LM_STUDIO_URL: http://host.docker.internal:1234
       PORT: "8787"
     ports:
       - "8787:8787"
@@ -182,7 +182,7 @@ services:
       MATRIX_PASSWORD: ${MATRIX_EA_PASSWORD}
       MCP_SERVER_URL: http://mcp-server:8787
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
-      LM_STUDIO_URL: http://host.docker.internal:1234/v1
+      LM_STUDIO_URL: http://host.docker.internal:1234
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

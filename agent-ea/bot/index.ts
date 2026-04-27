@@ -6,7 +6,7 @@ const MATRIX_USER = process.env.MATRIX_USER || "ea";
 const MATRIX_PASSWORD = process.env.MATRIX_PASSWORD || "freeadamnemesisx1";
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL || "http://localhost:8787";
 const MCP_ACCESS_KEY = process.env.MCP_ACCESS_KEY || "";
-const LM_STUDIO_URL = process.env.LM_STUDIO_URL || "http://localhost:1234/v1";
+const LM_STUDIO_URL = process.env.LM_STUDIO_URL || "http://localhost:1234";
 
 // 2. Setup Matrix Storage
 const storage = new SimpleFsStorageProvider("bot-storage.json");
@@ -230,7 +230,7 @@ async function callLMStudio(messages: any[], tools: any[]) {
     };
     if (tools.length > 0) payload.tools = tools;
 
-    const res = await fetch(`${LM_STUDIO_URL}/chat/completions`, {
+    const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)

@@ -127,6 +127,67 @@ BEGIN
 END;
 $$;
 
+-- 6c. Hybrid search function (combines semantic + keyword with deduplication)
+CREATE OR REPLACE FUNCTION hybrid_search_thoughts(
+  query_embedding vector(4096),
+  query_text text,
+  match_threshold float DEFAULT 0.5,
+  match_count int DEFAULT 20,
+  filter jsonb DEFAULT '{}'::jsonb
+)
+RETURNS TABLE (
+  id uuid,
+  content text,
+  metadata jsonb,
+  similarity float,
+  created_at timestamptz
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_semantic_ids uuid[];
+  v_keyword_ids uuid[];
+  v_semantic_count int;
+BEGIN
+  -- Step 1: Collect semantic match IDs (up to match_count)
+  SELECT array_agg(t.id ORDER BY t.embedding <=> query_embedding)
+  INTO v_semantic_ids
+  FROM thoughts t
+  WHERE 1 - (t.embedding <=> query_embedding) > match_threshold
+    AND (filter = '{}'::jsonb OR t.metadata @> filter);
+
+  v_semantic_count := COALESCE(array_length(v_semantic_ids, 1), 0);
+
+  -- Step 2: Find keyword matches NOT already in semantic results (fill up to match_count)
+  IF v_semantic_count < match_count THEN
+    SELECT array_agg(t.id ORDER BY t.created_at DESC)
+    INTO v_keyword_ids
+    FROM thoughts t
+    WHERE (t.content ILIKE '%' || query_text || '%'
+         OR t.metadata::text ILIKE '%' || query_text || '%')
+      AND (v_semantic_ids IS NULL OR t.id != ALL(v_semantic_ids))
+      AND (filter = '{}'::jsonb OR t.metadata @> filter)
+    LIMIT match_count - v_semantic_count;
+  END IF;
+
+  -- Step 3: Return semantic results first, then keyword fill-ups
+  RETURN QUERY
+  SELECT t.id, t.content, t.metadata,
+    1 - (t.embedding <=> query_embedding)::float AS similarity,
+    t.created_at
+  FROM thoughts t
+  WHERE v_semantic_ids IS NOT NULL AND t.id = ANY(v_semantic_ids)
+  ORDER BY t.embedding <=> query_embedding;
+
+  RETURN QUERY
+  SELECT t.id, t.content, t.metadata,
+    NULL::float AS similarity,
+    t.created_at
+  FROM thoughts t
+  WHERE v_keyword_ids IS NOT NULL AND t.id = ANY(v_keyword_ids);
+END;
+$$;
+
 
 -- 7. Upsert function with content fingerprint deduplication
 CREATE OR REPLACE FUNCTION upsert_thought(p_content TEXT, p_payload JSONB DEFAULT '{}')
@@ -167,4 +228,5 @@ GRANT ALL ON TABLE public.thoughts TO postgres;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.thoughts TO anon;
 GRANT EXECUTE ON FUNCTION match_thoughts TO anon;
 GRANT EXECUTE ON FUNCTION search_thoughts_keyword TO anon;
+GRANT EXECUTE ON FUNCTION hybrid_search_thoughts TO anon;
 GRANT EXECUTE ON FUNCTION upsert_thought TO anon;
