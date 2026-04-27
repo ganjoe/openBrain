@@ -50,7 +50,14 @@ async function extractMetadata(text: string): Promise<Record<string, unknown>> {
 - "dates_mentioned": array of dates YYYY-MM-DD (empty if none)
 - "topics": array of 1-3 short topic tags (always at least one)
 - "type": one of "observation", "task", "idea", "reference", "person_note"
-Only extract what's explicitly there.`,
+
+CRITICAL RULES FOR "type" CLASSIFICATION:
+STRICTLY classify as "task" if ANY of the following apply:
+1. The semantics imply a future, incomplete action, obligation, or necessity (e.g., "muss zum Zahnarzt", "muss Müll rausbringen").
+2. It states that someone else has to do something that needs tracking (e.g., "Wolfgang muss mir eine Email schicken").
+3. It contains explicit keywords like "task", "aufgabe", or "todo" (e.g., "task: urlaubsplanung").
+
+If none of the above apply, use the most appropriate type. Only extract what's explicitly there.`,
         },
         { role: "user", content: text },
       ],
@@ -155,6 +162,82 @@ server.registerTool(
     }
   }
 );
+
+// Tool 1b: Keyword Search
+server.registerTool(
+  "search_thoughts_keyword",
+  {
+    title: "Search Thoughts (Keyword / Exact Match)",
+    description:
+      "Search captured thoughts using exact keyword matching (full-text search). MUST USE this tool instead of semantic search when: 1) Looking for specific proper names or IDs (e.g., 'Fulya', ticker symbols). 2) The user encloses their search query in double quotes (\" \"), single quotes (' '), or brackets (( )). 3) The user uses a wildcard (e.g., AAP*). 4) The user's semantics strongly imply finding an exact string or ticker. NOTE: If the user provides wildcard characters like *, translate them to PostgreSQL ILIKE wildcards (%) for the query parameter.",
+    inputSchema: {
+      query: z.string().describe("The exact keyword or pattern to search for (use % as wildcard)"),
+      limit: z.number().optional().default(10),
+    },
+  },
+  async ({ query, limit }) => {
+    try {
+      const { data, error } = await supabase.rpc("search_thoughts_keyword", {
+        query_text: query,
+        match_count: limit,
+      });
+
+      if (error) {
+        return {
+          content: [{ type: "text" as const, text: `Search error: ${error.message}` }],
+          isError: true,
+        };
+      }
+
+      if (!data || data.length === 0) {
+        return {
+          content: [{ type: "text" as const, text: `No thoughts found containing "${query}".` }],
+        };
+      }
+
+      const results = data.map(
+        (
+          t: {
+            content: string;
+            metadata: Record<string, unknown>;
+            created_at: string;
+          },
+          i: number
+        ) => {
+          const m = t.metadata || {};
+          const parts = [
+            `--- Result ${i + 1} ---`,
+            `Captured: ${new Date(t.created_at).toLocaleDateString()}`,
+            `Type: ${m.type || "unknown"}`,
+          ];
+          if (Array.isArray(m.topics) && m.topics.length)
+            parts.push(`Topics: ${(m.topics as string[]).join(", ")}`);
+          if (Array.isArray(m.people) && m.people.length)
+            parts.push(`People: ${(m.people as string[]).join(", ")}`);
+          if (Array.isArray(m.action_items) && m.action_items.length)
+            parts.push(`Actions: ${(m.action_items as string[]).join("; ")}`);
+          parts.push(`\n${t.content}`);
+          return parts.join("\n");
+        }
+      );
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Found ${data.length} thought(s) containing keyword:\n\n${results.join("\n\n")}`,
+          },
+        ],
+      };
+    } catch (err: unknown) {
+      return {
+        content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
 
 // Tool 2: List Recent
 server.registerTool(

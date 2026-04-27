@@ -99,6 +99,35 @@ BEGIN
 END;
 $$;
 
+-- 6b. Keyword search function
+CREATE OR REPLACE FUNCTION search_thoughts_keyword(
+  query_text text,
+  match_count int DEFAULT 10
+)
+RETURNS TABLE (
+  id uuid,
+  content text,
+  metadata jsonb,
+  created_at timestamptz
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    t.id,
+    t.content,
+    t.metadata,
+    t.created_at
+  FROM thoughts t
+  WHERE t.content ILIKE '%' || query_text || '%'
+     OR t.metadata::text ILIKE '%' || query_text || '%'
+  ORDER BY t.created_at DESC
+  LIMIT match_count;
+END;
+$$;
+
+
 -- 7. Upsert function with content fingerprint deduplication
 CREATE OR REPLACE FUNCTION upsert_thought(p_content TEXT, p_payload JSONB DEFAULT '{}')
 RETURNS JSONB AS $$
@@ -137,4 +166,5 @@ CREATE POLICY "Service role full access"
 GRANT ALL ON TABLE public.thoughts TO postgres;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.thoughts TO anon;
 GRANT EXECUTE ON FUNCTION match_thoughts TO anon;
+GRANT EXECUTE ON FUNCTION search_thoughts_keyword TO anon;
 GRANT EXECUTE ON FUNCTION upsert_thought TO anon;
