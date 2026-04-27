@@ -61,7 +61,7 @@ services:
       DEFAULT_ORGANIZATION_NAME: "Open Brain Local"
       DEFAULT_PROJECT_NAME: "open-brain"
       SUPABASE_URL: http://postgrest:3000
-      SUPABASE_PUBLIC_URL: http://localhost:3001
+      SUPABASE_PUBLIC_URL: http://${SERVER_IP}:8001
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
       NEXT_PUBLIC_ENABLE_LOGS: "true"

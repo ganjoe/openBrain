@@ -1,7 +1,7 @@
 {
     "default_server_config": {
         "m.homeserver": {
-            "base_url": "http://localhost:6167",
+            "base_url": "http://10.20.0.23:6167",
             "server_name": "openbrain.local"
         }
     },

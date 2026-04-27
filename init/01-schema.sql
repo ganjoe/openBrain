@@ -17,6 +17,15 @@ BEGIN
     CREATE ROLE authenticator NOLOGIN;
     GRANT anon TO authenticator;
   END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+    CREATE ROLE supabase_admin WITH LOGIN SUPERUSER PASSWORD '1e13dc85555d32f7b507090393ccd36e';
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+    CREATE ROLE supabase_auth_admin WITH LOGIN SUPERUSER PASSWORD '1e13dc85555d32f7b507090393ccd36e';
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'supabase_storage_admin') THEN
+    CREATE ROLE supabase_storage_admin WITH LOGIN SUPERUSER PASSWORD '1e13dc85555d32f7b507090393ccd36e';
+  END IF;
 END $$;
 
 GRANT USAGE ON SCHEMA public TO anon;
