@@ -36,29 +36,24 @@ async function getEmbedding(text: string): Promise<number[]> {
 
 // --- Metadata extraction via LM Studio (local, GPU) ---
 async function extractMetadata(text: string): Promise<Record<string, unknown>> {
+  let systemPrompt = "Extract metadata from the user's captured thought. Return ONLY valid JSON with no markdown formatting or other text. The JSON must have exactly these keys: 'type', 'topics', 'action_items', 'people', 'dates_mentioned'.";
+  try {
+    systemPrompt = Deno.readTextFileSync("/app/metadata-prompt.txt");
+  } catch (e) {
+    try {
+      systemPrompt = Deno.readTextFileSync("metadata-prompt.txt");
+    } catch(e2) {
+      console.warn("⚠️ metadata-prompt.txt not found. Using generic fallback.");
+    }
+  }
+
   const r = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "local-model",
       messages: [
-        {
-          role: "system",
-          content: `Extract metadata from the user's captured thought. Return ONLY valid JSON with no markdown formatting or other text. The JSON must have exactly these keys:
-- "people": array of people mentioned (empty if none)
-- "action_items": array of implied to-dos (empty if none)
-- "dates_mentioned": array of dates YYYY-MM-DD (empty if none)
-- "topics": array of 1-3 short topic tags (always at least one)
-- "type": one of "observation", "task", "idea", "reference", "person_note"
-
-CRITICAL RULES FOR "type" CLASSIFICATION:
-STRICTLY classify as "task" if ANY of the following apply:
-1. The semantics imply a future, incomplete action, obligation, or necessity (e.g., "muss zum Zahnarzt", "muss Müll rausbringen").
-2. It states that someone else has to do something that needs tracking (e.g., "Wolfgang muss mir eine Email schicken").
-3. It contains explicit keywords like "task", "aufgabe", or "todo" (e.g., "task: urlaubsplanung").
-
-If none of the above apply, use the most appropriate type. Only extract what's explicitly there.`,
-        },
+        { role: "system", content: systemPrompt },
         { role: "user", content: text },
       ],
     }),
@@ -137,14 +132,15 @@ server.registerTool(
           const parts = [
             `--- Result ${i + 1} (${matchLabel}) ---`,
             `Captured: ${new Date(t.created_at).toLocaleDateString()}`,
-            `Type: ${m.type || "unknown"}`,
           ];
-          if (Array.isArray(m.topics) && m.topics.length)
-            parts.push(`Topics: ${(m.topics as string[]).join(", ")}`);
-          if (Array.isArray(m.people) && m.people.length)
-            parts.push(`People: ${(m.people as string[]).join(", ")}`);
-          if (Array.isArray(m.action_items) && m.action_items.length)
-            parts.push(`Actions: ${(m.action_items as string[]).join("; ")}`);
+          for (const [key, val] of Object.entries(m)) {
+            if (key === "source") continue;
+            if (Array.isArray(val) && val.length > 0) {
+              parts.push(`${key}: ${val.join(", ")}`);
+            } else if (typeof val === "string" || typeof val === "number") {
+              parts.push(`${key}: ${val}`);
+            }
+          }
           parts.push(`\n${t.content}`);
           return parts.join("\n");
         }
@@ -212,14 +208,15 @@ server.registerTool(
           const parts = [
             `--- Result ${i + 1} ---`,
             `Captured: ${new Date(t.created_at).toLocaleDateString()}`,
-            `Type: ${m.type || "unknown"}`,
           ];
-          if (Array.isArray(m.topics) && m.topics.length)
-            parts.push(`Topics: ${(m.topics as string[]).join(", ")}`);
-          if (Array.isArray(m.people) && m.people.length)
-            parts.push(`People: ${(m.people as string[]).join(", ")}`);
-          if (Array.isArray(m.action_items) && m.action_items.length)
-            parts.push(`Actions: ${(m.action_items as string[]).join("; ")}`);
+          for (const [key, val] of Object.entries(m)) {
+            if (key === "source") continue;
+            if (Array.isArray(val) && val.length > 0) {
+              parts.push(`${key}: ${val.join(", ")}`);
+            } else if (typeof val === "string" || typeof val === "number") {
+              parts.push(`${key}: ${val}`);
+            }
+          }
           parts.push(`\n${t.content}`);
           return parts.join("\n");
         }
@@ -294,8 +291,14 @@ server.registerTool(
           i: number
         ) => {
           const m = t.metadata || {};
-          const tags = Array.isArray(m.topics) ? (m.topics as string[]).join(", ") : "";
-          return `${i + 1}. [${new Date(t.created_at).toLocaleDateString()}] (${m.type || "??"}${tags ? " - " + tags : ""})\n   ${t.content}`;
+          const extras = [];
+          for (const [k, v] of Object.entries(m)) {
+            if (k === "source" || k === "type") continue;
+            if (Array.isArray(v) && v.length > 0) extras.push(`${k}: ${v.join(",")}`);
+            else if (typeof v === "string" || typeof v === "number") extras.push(`${k}: ${v}`);
+          }
+          const extraStr = extras.length > 0 ? " - " + extras.join(" | ") : "";
+          return `${i + 1}. [${new Date(t.created_at).toLocaleDateString()}] (${m.type || "??"}${extraStr})\n   ${t.content}`;
         }
       );
 
@@ -432,12 +435,15 @@ server.registerTool(
 
       const meta = metadata as Record<string, unknown>;
       let confirmation = `Captured as ${meta.type || "thought"}`;
-      if (Array.isArray(meta.topics) && meta.topics.length)
-        confirmation += ` — ${(meta.topics as string[]).join(", ")}`;
-      if (Array.isArray(meta.people) && meta.people.length)
-        confirmation += ` | People: ${(meta.people as string[]).join(", ")}`;
-      if (Array.isArray(meta.action_items) && meta.action_items.length)
-        confirmation += ` | Actions: ${(meta.action_items as string[]).join("; ")}`;
+      const extras = [];
+      for (const [k, v] of Object.entries(meta)) {
+        if (k === "source" || k === "type") continue;
+        if (Array.isArray(v) && v.length > 0) extras.push(`${k}: ${v.join(", ")}`);
+        else if (typeof v === "string" || typeof v === "number") extras.push(`${k}: ${v}`);
+      }
+      if (extras.length > 0) {
+        confirmation += ` | ${extras.join(" | ")}`;
+      }
 
       return {
         content: [{ type: "text" as const, text: confirmation }],

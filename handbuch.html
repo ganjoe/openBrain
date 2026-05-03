@@ -196,8 +196,50 @@ flowchart TD
 <UL>
 <LI><B>content (TEXT):</B> Der Originaltext deines Gedankens.
 <LI><B>embedding (VECTOR(4096)):</B> Die mathematische Repraesentation.
-<LI><B>metadata (JSONB):</B> Ein extrem flexibles Feld. Hier speichert die KI automatisch erkannte Informationen wie Tags, beteiligte Personen oder Fristen.
+<LI><B>metadata (JSONB):</B> Ein extrem flexibles Feld. Hier speichert die KI automatisch erkannte Informationen wie Tags, Typ (z.B. Task, Observation), beteiligte Personen oder Fristen.
 <LI><B>content_fingerprint (TEXT):</B> Ein SHA256-Hash zur Deduplizierung.</UL>
+
+<H4>Beispiel eines Datenbank-Eintrags</H4>
+<P>Hier siehst du, wie ein realer Gedanke (unser kürzlicher Architektur-Fortschritt) in der Datenbank gespeichert wird:</P>
+<table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%;">
+  <thead>
+    <tr style="background-color: #f2f2f2;">
+      <th>ID</th>
+      <th>Content</th>
+      <th>Metadata (JSONB)</th>
+      <th>Embedding (Auszug)</th>
+      <th>Created At</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>a1b2c3d4...</td>
+      <td>Vision Multi-Agenten-Hülle: Es wurde etabliert, dass es keine separaten EA- oder Broker-Bot-Images gibt...</td>
+      <td><pre style="margin: 0;">{
+  "type": "observation",
+  "topics": ["Multi-Agenten-Hülle", "Bot-Architektur", "Docker"],
+  "people": [],
+  "action_items": [],
+  "dates_mentioned": [],
+  "source": "mcp"
+}</pre></td>
+      <td>[0.012, -0.453, 0.891, ...]</td>
+      <td>2026-05-03 09:34:42</td>
+    </tr>
+  </tbody>
+</table>
+
+<H4>Die Zwei-Prompt Strategie: Wer steuert was?</H4>
+<P>Ein oft verwirrendes Konzept ist die Frage: <I>Welcher Prompt bestimmt eigentlich, wie und wann Daten gespeichert werden?</I> Das System trennt diese Zuständigkeiten strikt in zwei völlig unabhängige Text-Dateien:</P>
+<UL>
+<LI><B>1. Das "Wann" und "Was" (Der Agenten-Prompt):</B> Der System-Prompt des Bots (die Datei <CODE>prompt.txt</CODE> im Agenten-Ordner) entscheidet, <B>ob</B> überhaupt ein Eintrag gemacht wird. Wenn der Agent aufgrund seiner Regeln beschliesst, dass eine Information dauerhaft wichtig ist, ruft er das Werkzeug <CODE>capture_thought</CODE> auf und uebergibt den reinen Text.</LI>
+<LI><B>2. Das "Wie" (Der Metadaten-Prompt):</B> Sobald das Werkzeug <CODE>capture_thought</CODE> aufgerufen wird, uebernimmt der dedizierte MCP-Server des Agenten. Dieser Server liest seine eigene <CODE>metadata-prompt.txt</CODE>. Diese Datei weist das lokale LLM (via LM Studio) zwingend an, den Text zu analysieren und ein reines JSON-Objekt zu erzeugen. <B>Nur diese zweite Datei bestimmt, welche Metadaten-Felder (wie "type", "topics", "action_items") generiert und final in die Datenbank geschrieben werden.</B></LI>
+</UL>
+
+<H4>Das Fork-Paradigma: Ein MCP-Server pro Bot</H4>
+<P>Open Brain verfolgt bei der Agenten-Erstellung ein konsequentes <B>Template- und Fork-Paradigma</B>. Ein vollständiger Agent besteht nicht nur aus einem Chat-Bot, sondern <B>immer auch aus seinem eigenen Tool-Server (MCP)</B>. Der Basis-Ordner (<CODE>agent-ea</CODE>) dient dabei als ultimative Blaupause.</P>
+<P>Wenn du einen neuen Agenten (z.B. einen Broker-Bot) erschaffen willst, erstellst du nicht einfach nur einen neuen Bot-Container in der <CODE>docker-compose.yml</CODE>, sondern du <B>kopierst den kompletten Ordner</B> (inklusive MCP-Server-Code). Das bringt einen gigantischen Architektur-Vorteil: Jeder Agent ist zu 100% autark.</P>
+<P>Da jeder Bot seinen eigenen MCP-Server besitzt, besitzt er auch eine eigene <CODE>metadata-prompt.txt</CODE>. Da die Datenbank für die Metadaten das schemalose <CODE>JSONB</CODE>-Format nutzt, sind der Fantasie keine Grenzen gesetzt! Der EA-Bot nutzt Basis-Felder wie <CODE>people</CODE> und <CODE>action_items</CODE>. Ein Social-Media-Bot kann in seiner <CODE>metadata-prompt.txt</CODE> definieren, dass <CODE>people</CODE> Influencer sind. Noch mächtiger: Ein Koch-Bot kann in seinem Prompt völlig neue Felder wie <CODE>zutaten</CODE> oder <CODE>ablaufdatum</CODE> erfinden. Er muss danach lediglich die Anzeige-Logik in seiner eigenen <CODE>mcp-server/index.ts</CODE> leicht anpassen, damit diese neuen Felder bei einer Suche (z.B. im Tool <CODE>search_thoughts</CODE>) auch an das LLM zurückgegeben werden. Jeder Agent etabliert so seine völlig eigene Struktur und Weltansicht, ohne den Kern-Code oder andere Agenten jemals zu tangieren!</P>
 
 <H3>2.3 Tabelle 'chat_messages': Das Interaktions-Backup</H3>
 <P>Eine oft uebersehene, aber kritische Komponente ist die Tabelle <CODE>chat_messages</CODE>. Sie dient als permanentes Backup aller Chat-Interaktionen zwischen dir und den Agenten.</P>
