@@ -13,8 +13,8 @@
 </TABLE>
 <HR>
 
-<H2>Vorwort zur Enzyklopaedischen Edition</H2>
-<P>Dieses Dokument ist die definitive, erschoepfende Dokumentation des Open Brain Projekts. Es richtet sich an Administratoren, Entwickler und technisch interessierte Nutzer, die jedes Detail der lokalen KI-Infrastruktur verstehen wollen. Auf den folgenden Seiten (in digitaler Form) wird jeder Aspekt des Systems seziert - von der Bit-Ebene der Datenbank bis hin zur semantischen Logik der Agenten-Bots.</P>
+<H2>Vorwort zur Enzyklop&auml;dischen Edition</H2>
+<P>Dieses Dokument ist die definitive, ersch&ouml;pfende Dokumentation des Open Brain Projekts. Es richtet sich an System-Architekten, Entwickler und Administratoren, die jeden Aspekt der lokalen KI-Infrastruktur auf technischer Ebene verstehen m&uuml;ssen. Von der Bit-Ebene der Vektor-Datenbank bis hin zur semantischen Logik des Deno-MCP-Servers: Hier wird das System ohne metaphorische Umschweife seziert.</P>
 
 <HR>
 <H2>Inhaltsverzeichnis</H2>
@@ -37,28 +37,28 @@
 
 <A NAME="architektur"></A>
 <H2>1. System-Architektur: Das lokale Nervensystem</H2>
-<P>Die Architektur von Open Brain ist nach dem Prinzip der "Separation of Concerns" (Trennung der Zustaendigkeiten) entworfen. Anstatt einer monolithischen Anwendung, die alle Aufgaben uebernimmt, besteht das System aus einer Vielzahl von kooperierenden Microservices. Dies ist notwendig, um die extrem unterschiedlichen Anforderungen an die Hardware (CPU-Last fuer Embeddings, GPU-Last fuer LLMs, I/O-Last fuer die Datenbank) optimal zu bedienen.</P>
+<P>Die Architektur von Open Brain ist kompromisslos nach dem Prinzip der <B>Separation of Concerns</B> (Trennung der Zust&auml;ndigkeiten) entworfen. Anstatt einer monolithischen Anwendung besteht das System aus dedizierten Microservices. Dies ist eine technische Notwendigkeit, um die asymmetrischen Hardware-Anforderungen (CPU-Last f&uuml;r Embeddings, GPU-Last f&uuml;r LLM-Inferenz, I/O-Last f&uuml;r die Datenbank) isoliert skalieren zu k&ouml;nnen.</P>
 
 <H3>1.1 Die Layer-Struktur</H3>
-<P>Man kann das System in vier horizontale Schichten unterteilen:</P>
+<P>Das System operiert in vier streng getrennten horizontalen Schichten:</P>
 <UL>
-<LI><B>Persistence Layer (Datenhaltung):</B> Hier liegt das Wissen. Die Datenbank ist passiv und wartet auf Befehle. Sie weiss nichts von KI, sie speichert nur Zahlen und Texte effizient.
-<LI><B>Abstraction Layer (Schnittstellen):</B> PostgREST und das Nginx-Gateway sorgen dafuer, dass die Datenbank wie ein moderner Web-Dienst aussieht. Dies erlaubt es, Standard-Tools zu nutzen.
-<LI><B>Inference Layer (Intelligenz):</B> Ollama und LM Studio sind die "Motoren". Sie verwandeln Rohdaten in Informationen. Sie haben keinen eigenen Speicher, sondern arbeiten zustandslos.
-<LI><B>Application Layer (Interaktion):</B> Der MCP-Server und der Matrix-Bot sind die Dirigenten. Sie wissen, wann welches Tool gerufen werden muss, um eine Nutzeranfrage zu beantworten.</UL>
+<LI><B>Persistence Layer (Datenhaltung):</B> Hier liegt das persistente Wissen. Die PostgreSQL-Datenbank ist passiv, zustandslos hinsichtlich der KI-Logik und speichert ausschlie&szlig;lich Vektoren und JSONB-Strukturen hochgradig optimiert.
+<LI><B>Abstraction Layer (Schnittstellen):</B> PostgREST und das Nginx-Gateway abstrahieren die Datenbank zu einer RESTful-API. Dies entkoppelt die Datenbank-Clients von SQL-Spezifika.
+<LI><B>Inference Layer (Intelligenz):</B> Ollama (Embeddings) und LM Studio (LLM) fungieren als zustandslose Inference-Engines. Sie erhalten Prompts, berechnen Tensoren und liefern Resultate, ohne jeglichen State zu halten.
+<LI><B>Application Layer (Interaktion & Agentik):</B> Der MCP-Server und die Agenten-Bots implementieren die Gesch&auml;ftslogik. Sie orchestrieren den ReAct-Loop (Reasoning and Acting) und entscheiden, welche Tools in welcher Reihenfolge ausgef&uuml;hrt werden.</UL>
 
-<H3>1.2 Das Docker-Netzwerk und Container-Beziehungen</H3>
-<P>Innerhalb von Docker sind alle Container in einem gemeinsamen, isolierten virtuellen Netzwerk namens <CODE>openbrain_default</CODE> verbunden. Dieses Netzwerk ermoeglicht es den Diensten, ueber ihre Container-Namen (z.B. <CODE>http://db:5432</CODE> oder <CODE>http://postgrest:3000</CODE>) miteinander zu kommunizieren, ohne dass externe IP-Adressen bekannt sein muessen. Nach aussen hin sind die Container jedoch durch Docker abgeschirmt und nur ueber explizit freigegebene ("gemappte") Ports erreichbar. Ein direkter Zugriff von deinem Windows-Rechner auf die Datenbank ist beispielsweise nur ueber den gemappten Port 5433 moeglich, was eine zusaetzliche Sicherheitsschicht darstellt.</P>
+<H3>1.2 Das Docker-Netzwerk und Container-Topologie</H3>
+<P>Auf Netzwerkebene existieren alle Container in einem isolierten virtuellen Docker-Bridge-Netzwerk namens <CODE>openbrain_default</CODE>. Die interne Namensaufl&ouml;sung erfolgt &uuml;ber den Docker-DNS (z.B. <CODE>http://db:5432</CODE>). Nach au&szlig;en ist das Netzwerk strikt isoliert. Jeglicher externe Traffic (z.B. vom Host-Browser zum Supabase Studio) muss explizit &uuml;ber Port-Mappings geschleust werden, was eine erste "Zero-Trust"-Barriere etabliert.</P>
 
-<P>Die Beziehungen und Abhaengigkeiten der Container sind detailliert wie folgt strukturiert:</P>
+<P>Die Container-Abh&auml;ngigkeiten sind wie folgt definiert:</P>
 <UL>
-<LI><B>Die Daten-Basis:</B> Der Container <CODE>openbrain-db</CODE> (PostgreSQL) bildet das Fundament. Er ist von aussen nicht direkt ansprechbar, sondern wird intern von <CODE>postgrest</CODE>, <CODE>meta</CODE> und indirekt vom MCP-Server genutzt.</LI>
-<LI><B>API & Orchestrierung:</B> Das <CODE>gateway</CODE> (Nginx) nimmt Anfragen von aussen (oder vom Studio/MCP) entgegen und leitet diese an <CODE>postgrest</CODE> weiter. <CODE>postgrest</CODE> uebersetzt REST-Anfragen in SQL-Befehle fuer die Datenbank.</LI>
-<LI><B>KI & Agenten:</B> Der <CODE>mcp-server</CODE> agiert als zentraler KI-Tool-Hub. Er kommuniziert mit <CODE>ollama</CODE> zur Erstellung von Embeddings, greift via <CODE>gateway</CODE> auf die Datenbank zu und leitet Inference-Anfragen an das lokale <B>LM Studio</B> auf dem Host-Rechner weiter (ueber <CODE>host.docker.internal:1234</CODE>). Der <CODE>agent-ea-bot</CODE> ist das ausführende Organ des Assistenten, der ueber <CODE>conduit</CODE> mit dem Nutzer in Matrix chattet und bei Bedarf Werkzeuge des <CODE>mcp-server</CODE>s aufruft.</LI>
-<LI><B>Frontends:</B> <CODE>element-web</CODE> und <CODE>studio</CODE> dienen als Benutzeroberflaechen, die sich jeweils mit <CODE>conduit</CODE> bzw. <CODE>gateway</CODE>/<CODE>meta</CODE> verbinden, um dem Nutzer grafischen Zugriff auf Chat und Daten zu gewaehren.</LI>
+<LI><B>Die Daten-Basis:</B> <CODE>openbrain-db</CODE> (PostgreSQL 17). Ausschie&szlig;lich intern f&uuml;r <CODE>postgrest</CODE> und <CODE>meta</CODE> erreichbar.
+<LI><B>API & Orchestrierung:</B> <CODE>gateway</CODE> (Nginx) fungiert als zentraler Reverse-Proxy. Er transformiert <CODE>/rest/v1/</CODE> Anfragen via URL-Rewriting zu sauberen <CODE>postgrest</CODE> Calls und managt CORS-Header zentral.
+<LI><B>KI & Agenten:</B> Der <CODE>mcp-server</CODE> operiert als zentraler Tool-Hub. Er ruft <CODE>ollama</CODE> per REST API f&uuml;r Embeddings auf und tunnelt LLM-Inferenz-Requests &uuml;ber <CODE>host.docker.internal:1234</CODE> an das Host-System. Der <CODE>agent-ea-bot</CODE> f&uuml;hrt den ReAct-Loop aus, greift via Matrix API auf <CODE>conduit</CODE> zu und feuert Tool-Calls gegen den MCP-Server.
+<LI><B>Frontends:</B> <CODE>element-web</CODE> und <CODE>studio</CODE> dienen als statische Web-UIs, die Client-seitig direkt mit den jeweiligen Backend-APIs (<CODE>conduit</CODE> bzw. <CODE>gateway</CODE>) kommunizieren.</LI>
 </UL>
 
-<P>Das folgende Diagramm visualisiert den detaillierten Informationsfluss und die Netzwerktopologie:</P>
+<P>Das folgende Architektur-Diagramm visualisiert die detaillierte Netzwerktopologie und den Datenfluss:</P>
 
 <div class="mermaid">
 graph TD
@@ -121,7 +121,7 @@ graph TD
 </script>
 
 <H3>1.3 Multi-Agenten Docker-Netzwerk (UML Komponenten-Diagramm)</H3>
-<P>Wenn das System, wie in Abschnitt 13 beschrieben, zu einem Multi-Agenten-System ausgebaut wird, zeigt dieses Architektur-Diagramm exakt, wie die einzelnen Docker-Container miteinander verbunden sind. Zur besseren Uebersicht sind die <B>geteilten Kern-Dienste (blau)</B>, die fuer das gesamte System exakt einmal laufen, optisch getrennt von einer <B>generischen Agenten-Instanz (orange)</B> und ihrer jeweiligen spezifischen <B>MCP-Erweiterung (gruen, gestrichelt)</B>. Das Diagramm stellt beispielhaft dar, wie ein beliebiger Agent (<CODE>openbrain-xy-bot</CODE>) in das Netzwerk integriert wird. Er nutzt zwingend das zentrale Basis-Gedaechtnis (<CODE>openbrain-mcp</CODE>) und bei Bedarf seine eigene Werkzeug-Erweiterung (<CODE>openbrain-xy-mcp</CODE>).</P>
+<P>Die Multi-Agenten-Skalierung (Details in Abschnitt 13) erzwingt eine saubere Trennung. Das untenstehende Diagramm differenziert zwischen den <B>Shared Core-Services (blau)</B>, die als unteilbares Fundament laufen, und einer <B>ge-forkten Agenten-Instanz (orange)</B> mit ihrem dedizierten <B>MCP-Server (gr&uuml;n, gestrichelt)</B>. Dieses Design-Pattern garantiert 100% Autarkie: Jeder Agent l&auml;uft in seiner eigenen Laufzeitumgebung, nutzt seine eigenen Tool-Konfigurationen und gef&auml;hrdet bei Abst&uuml;rzen niemals den Core-Loop anderer Agenten.</P>
 
 <div class="mermaid">
 flowchart TD
@@ -186,187 +186,154 @@ flowchart TD
 
 <A NAME="db"></A>
 <H2>2. Die Daten-Schicht: PostgreSQL, pgvector & Chat-Backup</H2>
-<P>Das Herzstueck von Open Brain ist eine PostgreSQL 17 Datenbank. Wir nutzen die aktuellste Version, um von den neuesten Performance-Optimierungen bei der JSONB-Verarbeitung und dem Abfrage-Planner zu profitieren.</P>
+<P>Das Herzst&uuml;ck von Open Brain ist eine PostgreSQL 17 Datenbank. Wir nutzen exzessiv die JSONB-Typisierung in Kombination mit dem <CODE>pgvector</CODE> Plugin, um strukturierte Agenten-Metadaten nahtlos mit hochdimensionalen semantischen Vektoren zu fusionieren.</P>
 
-<H3>2.1 Die Vektor-Revolution: pgvector</H3>
-<P>Normalerweise speichert eine Datenbank Text als "String". Ein Computer kann aber nicht wissen, dass "Hund" und "Welpe" semantisch verwandt sind. Hier kommt <B>pgvector</B> ins Spiel. Jeder Gedanke wird in einen 4096-dimensionalen Vektor (eine Liste von 4096 Zahlen) umgewandelt. Dieser Vektor repraesentiert den "Ort" des Gedankens im Bedeutungsraum. Die Datenbank berechnet bei einer Suche den Abstand (Cosine Distance) zwischen dem Suchvektor und allen gespeicherten Vektoren. Je kleiner der Abstand, desto aehnlicher die Bedeutung.</P>
+<H3>2.1 Vektor-Semantik: pgvector</H3>
+<P>Traditionelle RDBMS scheitern an semantischer &Auml;hnlichkeitssuche. Durch <B>pgvector</B> wird jeder Gedanke zwingend durch ein Embedding-Modell (Ollama) in einen <CODE>VECTOR(4096)</CODE> transformiert. Bei Query-Zeit berechnet die Datenbank die Cosine Distance (<CODE><=></CODE> Operator) zwischen dem Such-Vektor und dem indizierten Vektorraum der Tabelle. Dies erm&ouml;glicht blitzschnelle nearest-neighbor Suchen direkt auf SQL-Ebene.</P>
 
-<H3>2.2 Tabelle 'thoughts': Das semantische Gedächtnis</H3>
-<P>Die zentrale Tabelle <CODE>thoughts</CODE> ist hochgradig optimiert:</P>
+<H3>2.2 Tabelle 'thoughts' und der JSONB-Deep-Dive</H3>
+<P>Die Tabelle <CODE>thoughts</CODE> ist das persistente Gedaechtnis. Ihr Schema ist bewusst asymmetrisch designt:</P>
 <UL>
-<LI><B>content (TEXT):</B> Der Originaltext deines Gedankens.
-<LI><B>embedding (VECTOR(4096)):</B> Die mathematische Repraesentation.
-<LI><B>metadata (JSONB):</B> Ein extrem flexibles Feld. Hier speichert die KI automatisch erkannte Informationen wie Tags, Typ (z.B. Task, Observation), beteiligte Personen oder Fristen.
-<LI><B>content_fingerprint (TEXT):</B> Ein SHA256-Hash zur Deduplizierung.</UL>
-
-<H4>Beispiel eines Datenbank-Eintrags</H4>
-<P>Hier siehst du, wie ein realer Gedanke (unser kürzlicher Architektur-Fortschritt) in der Datenbank gespeichert wird:</P>
-<table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%;">
-  <thead>
-    <tr style="background-color: #f2f2f2;">
-      <th>ID</th>
-      <th>Content</th>
-      <th>Metadata (JSONB)</th>
-      <th>Embedding (Auszug)</th>
-      <th>Created At</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>a1b2c3d4...</td>
-      <td>Vision Multi-Agenten-Hülle: Es wurde etabliert, dass es keine separaten EA- oder Broker-Bot-Images gibt...</td>
-      <td><pre style="margin: 0;">{
-  "type": "observation",
-  "topics": ["Multi-Agenten-Hülle", "Bot-Architektur", "Docker"],
-  "people": [],
-  "action_items": [],
-  "dates_mentioned": [],
-  "source": "mcp"
-}</pre></td>
-      <td>[0.012, -0.453, 0.891, ...]</td>
-      <td>2026-05-03 09:34:42</td>
-    </tr>
-  </tbody>
-</table>
-
-<H4>Die Zwei-Prompt Strategie: Wer steuert was?</H4>
-<P>Ein oft verwirrendes Konzept ist die Frage: <I>Welcher Prompt bestimmt eigentlich, wie und wann Daten gespeichert werden?</I> Das System trennt diese Zuständigkeiten strikt in zwei völlig unabhängige Text-Dateien:</P>
-<UL>
-<LI><B>1. Das "Wann" und "Was" (Der Agenten-Prompt):</B> Der System-Prompt des Bots (die Datei <CODE>prompt.txt</CODE> im Agenten-Ordner) entscheidet, <B>ob</B> überhaupt ein Eintrag gemacht wird. Wenn der Agent aufgrund seiner Regeln beschliesst, dass eine Information dauerhaft wichtig ist, ruft er das Werkzeug <CODE>capture_thought</CODE> auf und uebergibt den reinen Text.</LI>
-<LI><B>2. Das "Wie" (Der Metadaten-Prompt):</B> Sobald das Werkzeug <CODE>capture_thought</CODE> aufgerufen wird, uebernimmt der dedizierte MCP-Server des Agenten. Dieser Server liest seine eigene <CODE>metadata-prompt.txt</CODE>. Diese Datei weist das lokale LLM (via LM Studio) zwingend an, den Text zu analysieren und ein reines JSON-Objekt zu erzeugen. <B>Nur diese zweite Datei bestimmt, welche Metadaten-Felder (wie "type", "topics", "action_items") generiert und final in die Datenbank geschrieben werden.</B></LI>
+<LI><B>content (TEXT):</B> Das unstrukturierte Rohmaterial (z.B. ein Meeting-Protokoll).</LI>
+<LI><B>embedding (VECTOR(4096)):</B> Die numerische Repr&auml;sentation f&uuml;r RAG-Pipelines.</LI>
+<LI><B>metadata (JSONB):</B> Der Game-Changer der Architektur. Die Schemalosigkeit von JSONB in PostgreSQL 17 erlaubt unendlich granulare Metadaten-Strukturen pro Agent.</LI>
+<LI><B>content_fingerprint (TEXT):</B> Ein SHA256-Hash des Inhalts zur kryptografischen Deduplizierung.</LI>
 </UL>
 
-<H4>Das Fork-Paradigma: Ein MCP-Server pro Bot</H4>
-<P>Open Brain verfolgt bei der Agenten-Erstellung ein konsequentes <B>Template- und Fork-Paradigma</B>. Ein vollständiger Agent besteht nicht nur aus einem Chat-Bot, sondern <B>immer auch aus seinem eigenen Tool-Server (MCP)</B>. Der Basis-Ordner (<CODE>agent-ea</CODE>) dient dabei als ultimative Blaupause.</P>
-<P>Wenn du einen neuen Agenten (z.B. einen Broker-Bot) erschaffen willst, erstellst du nicht einfach nur einen neuen Bot-Container in der <CODE>docker-compose.yml</CODE>, sondern du <B>kopierst den kompletten Ordner</B> (inklusive MCP-Server-Code). Das bringt einen gigantischen Architektur-Vorteil: Jeder Agent ist zu 100% autark.</P>
-<P>Da jeder Bot seinen eigenen MCP-Server besitzt, besitzt er auch eine eigene <CODE>metadata-prompt.txt</CODE>. Da die Datenbank für die Metadaten das schemalose <CODE>JSONB</CODE>-Format nutzt, sind der Fantasie keine Grenzen gesetzt! Der EA-Bot nutzt Basis-Felder wie <CODE>people</CODE> und <CODE>action_items</CODE>. Ein Social-Media-Bot kann in seiner <CODE>metadata-prompt.txt</CODE> definieren, dass <CODE>people</CODE> Influencer sind. Noch mächtiger: Ein Koch-Bot kann in seinem Prompt völlig neue Felder wie <CODE>zutaten</CODE> oder <CODE>ablaufdatum</CODE> erfinden. Er muss danach lediglich die Anzeige-Logik in seiner eigenen <CODE>mcp-server/index.ts</CODE> leicht anpassen, damit diese neuen Felder bei einer Suche (z.B. im Tool <CODE>search_thoughts</CODE>) auch an das LLM zurückgegeben werden. Jeder Agent etabliert so seine völlig eigene Struktur und Weltansicht, ohne den Kern-Code oder andere Agenten jemals zu tangieren!</P>
+<H4>Deep-Dive: Dynamische JSONB-Iterierung (Code-Free Configuration)</H4>
+<P>Das Architekturziel von Open Brain ist es, dass sich Agenten ausschlie&szlig;lich durch ihre Text-Konfiguration (Prompts) unterscheiden d&uuml;rfen. Um dies zu gew&auml;hrleisten, ist die Code-Basis des MCP-Servers 100% dynamisch aufgebaut. Wenn ein Agent-Tool (z.B. <CODE>search_thoughts</CODE>) Resultate aus der Datenbank liest, iteriert es programmatisch &uuml;ber <B>alle</B> Keys im JSONB-Objekt, ohne dass bestimmte Felder wie <CODE>people</CODE> hartkodiert w&auml;ren:</P>
+
+<PRE><CODE class="language-typescript">
+for (const [key, val] of Object.entries(m)) {
+  if (key === "source" || key === "type") continue; // Interne Felder
+  if (Array.isArray(val) && val.length > 0) {
+    parts.push(`${key}: ${val.join(", ")}`);
+  } else if (typeof val === "string" || typeof val === "number") {
+    parts.push(`${key}: ${val}`);
+  }
+}
+</CODE></PRE>
+
+<P><B>Die Konsequenz f&uuml;r Entwickler:</B> Da die Datenbank JSONB nicht limitiert und der Code dynamisch iteriert, hast du bei der Agenten-Erstellung v&ouml;llige Freiheit. Ein Koch-Bot kann in seinem Metadaten-Prompt anweisen, v&ouml;llig neue Arrays wie <CODE>"zutaten": ["Mehl", "Zucker"]</CODE> zu extrahieren. Diese werden sauber als JSONB gespeichert und bei einer sp&auml;teren LLM-Suche automatisch formatiert an den Bot zur&uuml;ckgeliefert. Keine einzige Zeile TypeScript-Code muss daf&uuml;r ver&auml;ndert werden.</P>
 
 <H3>2.3 Tabelle 'chat_messages': Das Interaktions-Backup</H3>
-<P>Eine oft uebersehene, aber kritische Komponente ist die Tabelle <CODE>chat_messages</CODE>. Sie dient als permanentes Backup aller Chat-Interaktionen zwischen dir und den Agenten.</P>
+<P>Eine oft &uuml;bersehene, aber architektonisch kritische Komponente ist die Tabelle <CODE>chat_messages</CODE>. Sie fungiert als permanentes Backup aller Chat-Interaktionen zwischen Nutzer und Agenten.</P>
 <UL>
-<LI><B>room_id (TEXT):</B> Die ID des Matrix-Raums. Ermoeglicht die Trennung von Gespraechen.
-<LI><B>sender (TEXT):</B> Wer hat die Nachricht geschickt? (Nutzer oder Bot).
-<LI><B>role (TEXT):</B> Die Rolle fuer das LLM (user/assistant).
-<LI><B>content (TEXT):</B> Der eigentliche Nachrichtentext.
-<LI><B>created_at (TIMESTAMPTZ):</B> Zeitstempel der Nachricht.</UL>
-<P>Dieses "Chat-Logging" ist essentiell fuer die <B>Historien-Persistenz</B>. Wenn ein Bot neu gestartet wird, laedt er die letzten Nachrichten aus dieser Tabelle, um den Kontext des Gespraechs wiederherzustellen. Gleichzeitig hast du so eine unveränderliche Historie aller Anweisungen und Antworten.</P>
+<LI><B>room_id (TEXT):</B> Die ID des Matrix-Raums. Erm&ouml;glicht die kryptografische Trennung von Gespr&auml;chen.</LI>
+<LI><B>sender (TEXT):</B> Identifikator des Absenders (Nutzer oder Bot).</LI>
+<LI><B>role (TEXT):</B> Die Rolle f&uuml;r das LLM (user/assistant).</LI>
+<LI><B>content (TEXT):</B> Der eigentliche Payload der Nachricht.</LI>
+<LI><B>created_at (TIMESTAMPTZ):</B> Monoton steigender Zeitstempel der Nachricht.</LI></UL>
+<P>Dieses Chat-Logging ist der Schl&uuml;ssel zur <B>Historien-Persistenz</B>. Ein Bot ist by-design zustandslos. Startet er neu, rehydriert er seinen State durch Laden der letzten 10 Nachrichten aus dieser Tabelle. Gleichzeitig existiert eine unver&auml;nderliche Historie (Audit-Log) aller Aktionen.</P>
 
 <A NAME="postgrest"></A>
 <H2>3. Die API-Schicht: PostgREST & Automatisierung</H2>
-<P>PostgREST ist ein Wunderwerk der Effizienz. Es laeuft als eigenstaendiger Dienst und liest die Struktur deiner Datenbank aus. Fuer jede Tabelle und jede Funktion in der Datenbank erstellt es automatisch einen REST-Endpunkt.</P>
+<P>Anstatt Backend-Code in Node.js zu schreiben, um SQL in JSON zu konvertieren, nutzen wir PostgREST. Dieser bin&auml;re Haskell-Service l&auml;uft neben der Datenbank, analysiert das Schema zur Laufzeit und stellt on-the-fly REST-Endpunkte f&uuml;r alle Tabellen und RPCs bereit. Maximale Performance, null Boilerplate.</P>
 
 <H3>3.1 Die Rolle des Authenticator</H3>
-<P>PostgREST nutzt ein ausgekluegeltes Rollen-System. Wenn eine Anfrage reinkommt, wechselt PostgREST die Identitaet in der Datenbank (SET ROLE). Es gibt drei Haupt-Rollen:</P>
+<P>PostgREST basiert auf nativem PostgreSQL Row-Level-Security (RLS). Bei eingehenden HTTP-Requests wird ein <CODE>SET ROLE</CODE> in der Datenbank ausgef&uuml;hrt:</P>
 <OL>
-<LI><B>anon:</B> Darf nur sehen, was oeffentlich ist (oder gar nichts, ge nach Konfiguration).
-<LI><B>authenticator:</B> Die Rolle, mit der PostgREST sich verbindet. Sie hat keine eigenen Datenrechte, darf aber zu anderen Rollen wechseln.
-<LI><B>service_role:</B> Die Admin-Rolle. Sie darf alles lesen und schreiben. Der MCP-Server nutzt diese Rolle, um Gedanken zu speichern.</OL>
+<LI><B>anon:</B> Der Default-State. Zugriff nur auf &ouml;ffentlich definierte Views.</LI>
+<LI><B>authenticator:</B> Der Verbindungs-User f&uuml;r PostgREST selbst (hat keine Datenzugriffe).</LI>
+<LI><B>service_role:</B> Die Administrative Bypass-Rolle. Der MCP-Server autorisiert sich &uuml;ber diese Rolle, um den RLS-Schutz f&uuml;r Schreiboperationen zu umgehen.</LI></OL>
 
 <H3>3.2 JWT-Sicherheit</H3>
-<P>Sicherheit wird ueber JSON Web Tokens (JWT) realisiert. Jede Anfrage an die API muss ein Token enthalten, das mit dem <CODE>JWT_SECRET</CODE> signiert wurde. In diesem Token steht die Rolle (z.B. "service_role"). So weiss die Datenbank bei jeder einzelnen Anfrage ganz genau, wer da gerade anklopft und was er darf.</P>
+<P>Sicherheit ist kryptografisch durch JSON Web Tokens (JWT) gesichert. Jeder HTTP-Request des MCP-Servers injiziert einen Bearer-Token, der via <CODE>HMAC-SHA256</CODE> mit dem <CODE>JWT_SECRET</CODE> signiert ist. Die Datenbank validiert die Signatur und setzt die User-Role entsprechend. Es gibt keine Schwachstellen durch unsichere API-Keys.</P>
 
 <A NAME="studio"></A>
 <H2>4. Die Administrations-Schicht: Supabase Studio & Meta</H2>
-<P>Auch wenn wir die Cloud nicht nutzen, wollen wir den Komfort moderner Cloud-Tools. Das Supabase Studio ist das grafische Frontend fuer deine Datenbank.</P>
+<P>Trotz der 100% lokalen Ausf&uuml;hrung orchestrieren wir die Datenbank &uuml;ber das grafische Supabase Studio. Es liefert Cloud-Level UX f&uuml;r ein Air-Gapped System.</P>
 
 <H3>4.1 Das Dashboard</H3>
-<P>Ueber Port 3000 kannst du dein Gehirn "oeffnen". Du siehst die Tabellen wie in einer Excel-Liste. Du kannst Daten manuell korrigieren, falls die KI beim Extrahieren von Metadaten einmal einen Fehler gemacht hat. Das Studio ist besonders wertvoll, um die SQL-Logs einzusehen und zu verstehen, welche Suchanfragen gerade gestellt wurden.</P>
+<P>&Uuml;ber Port 3000 wird das Next.js Frontend ausgeliefert. Hier l&auml;sst sich der JSONB-State manuell debuggen, SQL-Logs analysieren und Query-Performance profilieren.</P>
 
 <H3>4.2 Der meta-Service</H3>
-<P>Der Container <CODE>openbrain-meta</CODE> ist ein Hilfskonstrukt. Das Studio (geschrieben in Next.js) kann nicht direkt "SQL sprechen", um Metadaten abzufragen. Meta stellt eine API bereit, ueber die das Studio erfahren kann: "Welche Tabellen gibt es?", "Welche Spalten hat die Tabelle 'thoughts'?". Es ist sozusagen der Bibliothekar fuer das Studio.</P>
+<P>Der Container <CODE>openbrain-meta</CODE> ist eine Abstraktionsschicht. Das TypeScript-Frontend (Studio) kann nicht nativ das Postgres <CODE>information_schema</CODE> abfragen. Meta exponiert dieses Schema als API, fungiert also als Introspektions-Bibliothekar f&uuml;r die Web-UI.</P>
 
 <A NAME="ollama"></A>
 <H2>5. Die Embedding-Schicht: Ollama & Vektorisierung</H2>
-<P>Embeddings sind das "Geheimrezept" der KI-Suche. Ohne sie waere das System nur eine einfache Stichwortsuche.</P>
+<P>W&auml;hrend klassische SQL-Suchen (<CODE>ILIKE</CODE>) bei semantischen Verkn&uuml;pfungen versagen, l&ouml;st Ollama das NLP-Problem (Natural Language Processing) durch lokale Tensor-Berechnungen in Echtzeit.</P>
 
-<H3>5.1 Warum Ollama?</H3>
-<P>Ollama hat sich als Standard fuer lokale Inferenz etabliert. Es ist extrem einfach zu bedienen und sehr ressourcensparend. In Open Brain nutzen wir es ausschliesslich fuer Embeddings. Wir verwenden das Modell <B>Qwen3-Embedding-8B</B> (oder vergleichbare), das speziell darauf trainiert wurde, deutsche und englische Texte in einen hochpraezisen Vektorraum abzubilden.</P>
+<H3>5.1 Warum Ollama f&uuml;r Embeddings?</H3>
+<P>Ollama kapselt llama.cpp. Wir nutzen es isoliert f&uuml;r Embedding-Modelle (z.B. <B>Qwen3-Embedding-8B</B>). Dieses Modell transformiert deutsch- und englischsprachige Text-Chunks extrem ressourceneffizient in dichte Vektor-R&auml;ume, w&auml;hrend die GPU-Cores f&uuml;r die schwere LLM-Inferenz (via LM Studio) freigehalten werden.</P>
 
 <H3>5.2 Der Prozess der Vektorisierung</H3>
-<P>Wenn du einen Text an Ollama sendest, wird dieser in "Tokens" zerlegt. Diese Tokens wandern durch das neuronale Netzwerk. Das Ergebnis am Ende ist nicht ein Text, sondern ein Punkt in einem 4096-dimensionalen Raum. Dieser Punkt ist die "DNA" deines Gedankens. Ollama laeuft auf der CPU, da die Berechnung eines Vektors (im Gegensatz zur Generierung von Antwort-Texten) relativ schnell geht und so die wertvollen GPU-Ressourcen fuer die Interaktion mit dir frei bleiben.</P>
+<P>Der MCP-Server piped den Text via REST an Ollama. Ollama tokenisiert den String, f&uuml;hrt einen Forward-Pass durch das neuronale Netz aus und liefert ein 4096-dimensionales Float-Array zur&uuml;ck. Dieser Vektor ist die mathematische Signatur der Bedeutung. Ollama h&auml;lt dabei keinen State und speichert keine Nutzerdaten.</P>
 
 <A NAME="gateway"></A>
 <H2>6. Die Proxy-Schicht: Nginx - Der Dirigent des Netzwerkverkehrs</H2>
-<P>Der Nginx-Container ist das Herzstueck der Netzwerk-Infrastruktur. Er fungiert als <B>Reverse Proxy</B>. Doch was bedeutet das konkret und warum ist es fuer Open Brain unverzichtbar?</P>
+<P>Der Nginx-Container l&auml;uft als asynchroner Event-Driven Reverse Proxy. Er ist der un&uuml;berwindbare Checkpoint zwischen den Microservices und der Au&szlig;enwelt.</P>
 
-<H3>6.1 Was ist ein Reverse Proxy?</H3>
-<P>Stell dir einen normalen "Proxy" vor: Er maskiert den Nutzer (Client) gegenueber dem Internet. Ein <B>Reverse Proxy</B> hingegen maskiert die Server (Dienste) gegenueber dem Nutzer. Wenn du auf Port 8001 zugreifst, sprichst du nicht direkt mit der Datenbank oder der API, sondern mit Nginx. Nginx nimmt deine Anfrage entgegen, prueft sie und entscheidet, an welchen internen Container er sie weiterreicht.</P>
+<H3>6.1 Die Notwendigkeit des Reverse Proxys</H3>
+<P>Anstatt interne Ports (<CODE>3001</CODE>, <CODE>8080</CODE>, <CODE>5432</CODE>) wild im Docker-Netz zu belassen, b&uuml;ndelt Nginx alles auf Port 8001. Dies reduziert die Attack-Surface signifikant und erm&ouml;glicht zentrales Logging von HTTP-Anfragen.</P>
 
-<H3>6.2 Die vier Hauptaufgaben von Nginx in Open Brain</H3>
-<OL>
-<LI><B>Zentraler Einstiegspunkt (Unified Interface):</B> Anstatt 10 verschiedene Ports fuer 10 verschiedene Dienste zu oeffnen, bündelt Nginx alles. Dies reduziert die Angriffsflaeche und macht die Konfiguration fuer den Nutzer einfacher.
-<LI><B>Pfad-Harmonisierung & Simulation:</B> Das ist die wichtigste technische Aufgabe. Moderne KI-Bibliotheken (SDKs) sind oft auf Cloud-Dienste wie Supabase programmiert. Diese erwarten eine URL wie <CODE>/rest/v1/</CODE>. Unser interner Dienst (PostgREST) erwartet aber keine solche Praefixe. Nginx agiert hier als "Uebersetzer": Er nimmt Anfragen auf <CODE>/rest/v1/</CODE> an, entfernt diesen Teil und reicht die "gesaeuberte" Anfrage an PostgREST weiter. Ohne Nginx muessten wir den Code aller Agenten und Tools massiv anpassen.
-<LI><B>CORS-Management (Cross-Origin Resource Sharing):</B> Web-Browser haben strenge Sicherheitsregeln. Eine Webseite auf Port 3000 (unser Studio) darf normalerweise nicht einfach Daten von Port 3001 (PostgREST) laden. Nginx fuegt der Antwort spezielle "Erlaubnis-Header" hinzu, die dem Browser sagen: "Das ist sicher, du darfst diese Daten anzeigen".
-<LI><B>Sicherheit und Maskierung:</B> Nginx versteckt die Details der internen Dienste. Ein Angreifer sieht nur "Nginx", weiss aber nicht, welche Version von PostgREST oder welche Datenbank-Konfiguration dahinter steckt. Zudem koennen wir hier spaeter SSL-Verschluesselung (HTTPS) zentral nachruesten, ohne jeden einzelnen Dienst anfassen zu muessen.</OL>
+<H3>6.2 Pfad-Harmonisierung (Supabase Emulation)</H3>
+<P>Das ist der entscheidende Trick der Architektur: Supabase-SDKs (die wir im MCP nutzen) erwarten hartkodierte Cloud-Endpunkte wie <CODE>/rest/v1/</CODE>. Nginx emuliert diese Cloud-Infrastruktur lokal durch Regex-Rewriting. Ein Request an <CODE>/rest/v1/thoughts</CODE> wird von Nginx modifiziert und transparent an <CODE>postgrest:3000/thoughts</CODE> delegiert. Dadurch m&uuml;ssen wir die npm-Packages nicht forken oder umschreiben.</P>
 
-<H3>6.3 Die Konfigurations-Logik</H3>
-<P>Die Konfiguration in der <CODE>nginx.conf</CODE> ist so programmiert, dass sie intelligent auf Pfade reagiert:</P>
-<UL>
-<LI>Anfragen an <CODE>/rest/v1/*</CODE> gehen an <B>postgrest:3000</B>
-<LI>Anfragen an <CODE>/auth/v1/*</CODE> wuerden an einen Identitaets-Server gehen (fuer zukuenftige Erweiterungen).
-<LI>Alle anderen Anfragen koennen auf eine statische Hilfe-Seite oder ein Dashboard umgeleitet werden.</UL>
+<H3>6.3 CORS-Management</H3>
+<P>Nginx injiziert zentral die <CODE>Access-Control-Allow-Origin</CODE> Header f&uuml;r Preflight-Requests (OPTIONS). Dies erlaubt es Web-Clients (Studio), Cross-Origin Anfragen an PostgREST zu stellen, ohne dass die Backend-Dienste CORS implementieren m&uuml;ssen.</P>
 
 <A NAME="matrix"></A>
 <H2>7. Die Chat-Infrastruktur: Matrix Conduit & Element</H2>
-<P>Ein Gehirn ohne Schnittstelle zum Menschen ist nutzlos. Wir haben uns fuer Matrix entschieden, da es das einzige Protokoll ist, das vollstaendige lokale Kontrolle bei gleichzeitigem Komfort bietet.</P>
+<P>Matrix liefert ein dezentrales, event-basiertes Protokoll f&uuml;r die Mensch-Maschine Kommunikation. Wir forcieren "No Federation", wodurch das Protokoll vollst&auml;ndig air-gapped betrieben wird.</P>
 
-<H3>7.1 Conduit: Matrix in Lichtgeschwindigkeit</H3>
-<P>Waehrend der Standard-Matrix-Server (Synapse) sehr schwerfaellig ist, ist <B>Conduit</B> in Rust geschrieben. Er verbraucht kaum RAM und nutzt eine einfache SQLite-Datenbank fuer die Chat-Historie. Wir haben Conduit so konfiguriert, dass er keine Verbindung zum oeffentlichen Matrix-Netzwerk aufnimmt (No Federation). Deine Daten bleiben physikalisch auf deiner Festplatte.</P>
+<H3>7.1 Conduit: Matrix in Rust</H3>
+<P>Der klassische Synapse-Server (Python) ist zu ressourcenintensiv. Wir deployen <B>Conduit</B>, eine hochperformante Rust-Implementierung. Es betreibt den gesamten Matrix-Homeserver in einem Bruchteil des Speichers und sichert Events atomar in einer SQLite-Datenbank.</P>
 
-<H3>7.2 Element: Das Fenster zum Gehirn</H3>
-<P>Element ist die App, die du nutzt. Ob auf dem iPhone, Android oder im Browser. Da Matrix ein offener Standard ist, koenntest du auch jeden anderen Matrix-Client nutzen. Element bietet jedoch die beste Unterstuetzung fuer moderne Features wie Widgets oder interaktive Bots.</P>
+<H3>7.2 Element: Der GUI Client</H3>
+<P>Element dient als Frontend-React-App. Da Matrix ein Standard-API-Protokoll definiert, agiert Element als blo&szlig;es View-Layer. Es authentifiziert sich bei Conduit und synchronisiert Chat-R&auml;ume via HTTP-Long-Polling oder WebSockets.</P>
 
 <A NAME="mcp"></A>
 <H2>8. Der Tool-Server: Deep Dive in die Deno MCP Implementierung</H2>
-<P>Der MCP-Server ist das technologische Bindeglied. Wir nutzen hierfuer <B>Deno</B> anstelle von Node.js. Warum?</P>
+<P>Der MCP-Server ist das technologische Bindeglied zwischen Bot und Datenbank. Er exponiert LLM-lesbare Werkzeuge und orchestriert die Vektorisierung. Wir nutzen hierf&uuml;r <B>Deno</B> anstelle von Node.js.</P>
 
-<H3>8.1 Warum Deno?</H3>
+<H3>8.1 Das Fork-Paradigma: Ein MCP-Server pro Bot</H3>
+<P>Open Brain verfolgt bei der Agenten-Erstellung ein konsequentes <B>Template- und Fork-Paradigma</B>. Ein vollst&auml;ndiger Agent besteht nicht nur aus einem Matrix-Bot, sondern <B>immer auch aus seinem eigenen Tool-Server (MCP)</B>.</P>
+<P>Da jeder Bot seinen eigenen MCP-Server besitzt, l&auml;dt dieser auch eine eigene <CODE>metadata-prompt.txt</CODE>. Dies eliminiert System-weites Schema-Lock-in: Jeder Agent etabliert durch seinen gekoppelten MCP-Server seine v&ouml;llig eigene JSONB-Struktur in der Datenbank, ohne Kern-Komponenten oder andere Agenten jemals zu tangieren.</P>
+
+<H3>8.2 Deep Dive: Die exakte Mechanik von 'capture_thought'</H3>
+<P>Um die Komplexit&auml;t hinter einem simplen "Notier dir das" zu entmystifizieren, hier die exakte Code-Mechanik, wenn das <CODE>capture_thought</CODE> Tool aufgerufen wird:</P>
+<OL>
+<LI><B>Payload-Validierung:</B> Zod validiert den eingehenden JSON-Payload (<CODE>{ content: string }</CODE>) streng.
+<LI><B>Prompt-Injektion:</B> Der Code f&uuml;hrt <CODE>Deno.readTextFileSync</CODE> auf der <CODE>metadata-prompt.txt</CODE> aus. Er h&auml;ngt den rohen User-Content an diesen Prompt an.
+<LI><B>Strukturierte Inferenz:</B> Ein HTTP POST Request geht an <CODE>LM_STUDIO_URL/v1/chat/completions</CODE>. Das LLM wird (meist im JSON-Modus) gezwungen, ausschlie&szlig;lich ein JSON-Objekt zur&uuml;ckzugeben, das dem <CODE>metadata-prompt</CODE> entspricht.
+<LI><B>Tensor-Berechnung:</B> Parallel oder sequenziell geht ein Request an Ollama (<CODE>/api/embeddings</CODE>) um den 4096-Float Vektor zu generieren.
+<LI><B>PostgreSQL UPSERT:</B> Ein finaler Request geht an das PostgREST Gateway (<CODE>/rest/v1/rpc/upsert_thought</CODE>), der den Text, das generierte JSON-Objekt und das Float-Array transaktionssicher in die DB schreibt.</OL>
+
+<H3>8.3 Warum Deno?</H3>
 <UL>
-<LI><B>Security First:</B> Deno laeuft standardmaessig in einer Sandbox. Zugriff auf das Netzwerk oder Umgebungsvariablen muss explizit erlaubt werden (<CODE>--allow-net</CODE>, <CODE>--allow-env</CODE>).
-<LI><B>Native TypeScript Support:</B> Deno versteht TypeScript direkt. Es gibt keinen komplexen Build-Prozess mit Babel oder Webpack. Der Code, den du siehst, ist der Code, der laeuft.
-<LI><B>Kein node_modules Wahnsinn:</B> Deno laedt Abhaengigkeiten direkt ueber URLs oder ein zentrales Import-Mapping (<CODE>deno.json</CODE>). Das macht den Container extrem schlank und reproduzierbar.</UL>
-
-<H3>8.2 Das Herzstueck: Hono & Streamable HTTP</H3>
-<P>Der Server basiert auf dem <B>Hono</B> Web-Framework. Eine Besonderheit ist die Nutzung von <B>Server-Sent Events (SSE)</B> via <CODE>@hono/mcp</CODE>. Waehrend klassische MCP-Server oft ueber <I>stdio</I> (Standard-Input/Output) kommunizieren, erlaubt uns SSE:</P>
-<UL>
-<LI><B>Multi-Client Support:</B> Mehrere Programme (VS Code, der Matrix-Bot, Web-Apps) koennen gleichzeitig mit dem einen MCP-Server sprechen.
-<LI><B>Netzwerk-Faehigkeit:</B> Der Server muss nicht auf dem gleichen Rechner wie der Client laufen. Er ist ein echter HTTP-Dienst.</UL>
-
-<H3>8.3 Tool-Definition mit Zod</H3>
-<P>Jedes Werkzeug (wie <CODE>search_thoughts</CODE>) ist strikt typisiert. Wir nutzen <B>Zod</B>, um die Eingaben zu validieren. Wenn eine KI versucht, ein Tool mit falschen Parametern aufzurufen, wird dies bereits auf Protokoll-Ebene abgefangen, bevor es die Datenbank erreicht. Dies verhindert Abstuerze und Fehlinterpretationen.</P>
+<LI><B>Security First:</B> Deno l&auml;uft standardm&auml;&szlig;ig in einer Sandbox. Netzwerkzugriffe erfordern explizit <CODE>--allow-net</CODE>.
+<LI><B>Native TypeScript:</B> Kein Webpack, kein Babel. Zero-Config TypeScript-Ausf&uuml;hrung.
+<LI><B>Streamable HTTP (SSE):</B> Der Server nutzt <CODE>@hono/mcp</CODE> f&uuml;r Server-Sent Events. Dies erm&ouml;glicht Multi-Client-Support &uuml;ber Netzwerkgrenzen hinweg, im Gegensatz zur klassischen stdio-Kommunikation lokaler Skripte.</UL>
 
 <A NAME="bot"></A>
 <H2>9. Der Executive Assistant: Bot-Logik, Historie & Agentik</H2>
-<P>Der <B>agent-ea-bot</B> ist der Bewohner deines virtuellen Büros. Er ist ein agentisches System.</P>
+<P>Der <CODE>agent-ea-bot</CODE> ist das ausf&uuml;hrende Frontend der Intelligenz. Er parst Matrix-Events und steuert den ReAct-Loop.</P>
 
-<H3>9.1 Der Loop (Thought -> Action -> Observation)</H3>
-<P>Wenn du dem Bot schreibst, passiert kein einfacher "Text-In, Text-Out" Prozess. Der Bot nutzt einen Loop:</P>
-<OL>
-<LI><B>Thought:</B> Der Bot ueberlegt: "Was will der Nutzer? Er fragt nach Wolfgang. Ich sollte in den Gedanken suchen."
-<LI><B>Action:</B> Er ruft das MCP-Tool <CODE>search_thoughts</CODE> auf.
-<LI><B>Observation:</B> Er erhaelt die Ergebnisse der Suche.
-<LI><B>Response:</B> Er formuliert eine Antwort basierend auf den gefundenen Fakten.</OL>
+<H3>9.1 Die Zwei-Prompt Strategie</H3>
+<P>Ein oft missverstandenes Konzept: <I>Welcher Prompt steuert eigentlich was?</I></P>
+<UL>
+<LI><B>1. Der Agenten-Prompt (Das "Wann"):</B> Die <CODE>prompt.txt</CODE> im Bot-Container definiert die Pers&ouml;nlichkeit und den Trigger. Sie entscheidet, <B>ob</B> das Werkzeug <CODE>capture_thought</CODE> &uuml;berhaupt gerufen wird.
+<LI><B>2. Der Metadaten-Prompt (Das "Wie"):</B> Wie im MCP-Kapitel erkl&auml;rt, greift erst nach dem Tool-Aufruf die <CODE>metadata-prompt.txt</CODE> des MCP-Servers, um den Text strukturiert in JSONB zu formen.</UL>
 
-<H3>9.2 Historien-Management</H3>
-<P>Damit der Bot nicht bei jeder Nachricht "vergiss", was ihr gerade besprochen habt, laedt er bei jeder Anfrage die letzten 10 Nachrichten aus der Tabelle <CODE>chat_messages</CODE> der PostgreSQL-Datenbank. Dies gibt dem LLM in LM Studio einen Kontext und erlaubt echtes, zusammenhaengendes Chatten.</P>
+<H3>9.2 Der ReAct-Loop & Historien-Management</H3>
+<P>Der Bot antwortet nicht auf direktem Weg. Er operiert in einem strengen autonomen Zyklus: <B>Thought</B> (Welches Tool brauche ich?) &rarr; <B>Action</B> (Tool-Call via HTTP) &rarr; <B>Observation</B> (Auswertung des JSON-Responses). Zur Wahrung des Kontext-Fensters l&auml;dt der Bot vor jedem Loop die letzten 10 Matrix-Nachrichten aus der <CODE>chat_messages</CODE> Tabelle. Dies ist effektiv RAG (Retrieval-Augmented Generation) f&uuml;r den Chat-State.</P>
 
 <A NAME="fluss"></A>
 <H2>10. Detaillierte Szenarien des Informationsflusses</H2>
 
 <H3>10.1 Textuelles Beispiel: Eine Ausgabe speichern</H3>
-<P>Um die Komplexitaet zu verstehen, verfolgen wir eine Anfrage: <I>"Notier dir: Ich habe heute 50 Euro fuer Benzin ausgegeben."</I></P>
+<P>Ein Trace f&uuml;r die Anfrage: <I>"Notier dir: Ich habe 50 Euro f&uuml;r Benzin ausgegeben."</I></P>
 <OL>
-<LI><B>Matrix:</B> Die Nachricht landet bei Conduit.
-<LI><B>EA-Bot:</B> Erhaelt die Nachricht, erkennt die Absicht zu speichern.
-<LI><B>MCP-Server:</B> Nimmt den Auftrag an.
-<LI><B>LM Studio:</B> Erhaelt den Prompt: "Extrahiere Metadaten". Antwortet: <CODE>{type: "observation", topic: ["Finanzen", "Auto"], amount: 50}</CODE>.
-<LI><B>Ollama:</B> Berechnet den Vektor fuer "Ich habe heute 50 Euro fuer Benzin ausgegeben".
-<LI><B>PostgREST:</B> Sendet ein POST-Request mit Text, Vektor und JSON-Metadaten.
-<LI><B>PostgreSQL:</B> Speichert den Datensatz in <CODE>thoughts</CODE> UND speichert die Chat-Nachricht in <CODE>chat_messages</CODE>.
-<LI><B>EA-Bot:</B> Schreibt dir: "Alles klar, ich habe die Ausgabe unter Finanzen/Auto gespeichert."</OL>
+<LI><B>Matrix:</B> Event landet via HTTP bei Conduit.
+<LI><B>Bot:</B> LLM erkennt Intent. Trigger: Rufe <CODE>capture_thought</CODE> auf.
+<LI><B>MCP-Server:</B> Nimmt Text, ruft LM Studio mit <CODE>metadata-prompt</CODE> auf &rarr; JSON <CODE>{type: "observation", amount: 50}</CODE> wird generiert.
+<LI><B>Ollama:</B> Berechnet Embedding-Vektor.
+<LI><B>PostgreSQL:</B> Speichert <CODE>thoughts</CODE> Datensatz und Matrix-Event synchron.
+<LI><B>Bot:</B> Erh&auml;lt Success-Code vom MCP und generiert Abschluss-Antwort f&uuml;r den Nutzer.</OL>
 
 <H3>10.2 Sequenzdiagramm: Einen Gedanken erfassen</H3>
-<P>Hier ist der genaue technische Ablauf visualisiert, wenn der Admin den Bot anweist: <I>"merk dir diesen gedanken: mcp ist toll"</I>. Der Prozess zeigt alle Schritte vom Chat-Eingang bis zum endgueltigen Eintrag in der Datenbank.</P>
+<P>Das folgende Sequenzdiagramm visualisiert den exakten technischen Ablauf, wenn der Nutzer den Befehl <I>"merk dir diesen gedanken: mcp ist toll"</I> erteilt. Es belegt die asynchrone Trennung zwischen Bot-Intent und MCP-Anreicherung.</P>
 
 <div class="mermaid">
 sequenceDiagram
@@ -392,21 +359,21 @@ sequenceDiagram
     
     rect rgb(255, 240, 245)
         note right of MCP: 2. Datenanreicherung (MCP Server)
-        MCP->>LMStudio: Prompt: Extrahiere Metadaten aus Text
+        MCP->>LMStudio: Prompt (metadata-prompt.txt): Extrahiere JSON
         LMStudio-->>MCP: JSON type: observation, topics: mcp, tech
         
         MCP->>Ollama: POST /api/embeddings (Text)
-        Ollama-->>MCP: Generierter 4096-dimensionaler Vektor
+        Ollama-->>MCP: Generiertes Float-Array (4096-dim)
     end
 
     rect rgb(240, 255, 240)
-        note right of MCP: 3. Speicherung
-        MCP->>Gateway: POST /rest/v1/thoughts (Text, Metadaten, Vektor)
-        Gateway->>DB: INSERT INTO thoughts
+        note right of MCP: 3. DB-Transaktion
+        MCP->>Gateway: POST /rest/v1/rpc/upsert_thought
+        Gateway->>DB: Ausf&uuml;hrung UPSERT RPC
         DB-->>Gateway: 201 Created
-        Gateway-->>MCP: Erfolg (Eintrag erstellt)
+        Gateway-->>MCP: Erfolg
         
-        Bot->>Gateway: POST /rest/v1/chat_messages (Chat-Log)
+        Bot->>Gateway: POST /rest/v1/chat_messages
         Gateway->>DB: INSERT INTO chat_messages
         DB-->>Bot: Erfolg
     end
@@ -414,84 +381,83 @@ sequenceDiagram
     MCP-->>Bot: Tool Result: Gedanke erfolgreich gespeichert
     
     Bot->>Matrix: Antwort: Ist notiert!
-    Matrix->>Admin: Anzeige der Bestaetigung im Client
+    Matrix->>Admin: Anzeige der Best&auml;tigung im Client
 </div>
 
 <A NAME="sicherheit"></A>
 <H2>11. Tiefgreifendes Sicherheits- und Rollenkonzept</H2>
-<P>Sicherheit ist bei einem digitalen Gehirn keine Option, sondern Fundament. Wir nutzen das "Principle of Least Privilege".</P>
+<P>Sicherheit ist bei einem digitalen RAG-System Fundament, kein Add-on. Wir applizieren strikt das Principle of Least Privilege.</P>
 <H3>11.1 Netzwerk-Isolation</H3>
-<P>Die Datenbank-Files liegen in einem Docker-Volume (<CODE>openbrain_pgdata</CODE>). Selbst wenn jemand physischen Zugriff auf deinen Rechner hat, kann er die Files nicht einfach mit einem Texteditor oeffnen, da sie im internen Format von Postgres vorliegen.</P>
+<P>Die PostgreSQL-Daten liegen raw im Docker-Volume (<CODE>openbrain_pgdata</CODE>). Ein Host-Angreifer ohne DB-Credentials kann diese Files nicht ohne Weiteres parsen. Zugriff erfolgt exklusiv &uuml;ber das Nginx-Gateway.</P>
 <H3>11.2 Row Level Security (RLS)</H3>
-<P>In der SQL-Datei <CODE>01-schema.sql</CODE> aktivieren wir RLS. Das bedeutet: Selbst wenn jemand dein JWT-Token fuer die <CODE>anon</CODE>-Rolle stiehlt, kann er keine Daten loeschen, da die <CODE>anon</CODE>-Rolle per Datenbank-Policy nur Leserechte auf bestimmte Funktionen hat. Schreibzugriffe sind strikt der <CODE>service_role</CODE> vorbehalten, deren Key niemals an den Browser oder externe Clients (ausser deinem vertrauenswuerdigen MCP-Server) uebermittelt wird.</P>
+<P>Das <CODE>01-schema.sql</CODE> forciert RLS. Eine Kompromittierung des <CODE>anon</CODE>-Tokens erlaubt keine Destruktion, da RLS den Schreibzugriff verweigert. Writes sind exklusiv der <CODE>service_role</CODE> vorbehalten, deren Secret aus dem <CODE>.env</CODE> isoliert im MCP-Container verbleibt und nie an den Web-Client (Studio) leakt.</P>
 
 <A NAME="wartung"></A>
 <H2>12. Wartung: Backup & Wiederherstellung</H2>
-<P>Ein Gehirn ist nur so gut wie sein Backup. Hier ist die empfohlene Strategie:</P>
-<H3>12.1 Datenbank-Dumps</H3>
-<P>Die gesamte Datenbank (Gedanken + Chat-Backup) kann mit einem Befehl gesichert werden:</P>
+<P>Ein verlustfreies Backup muss sowohl die Vektor-Daten als auch die JSONB-Metadaten konsistent einfrieren.</P>
+<H3>12.1 Logische Datenbank-Dumps</H3>
+<P>Ein atomarer Dump der gesamten Instanz erfolgt per <CODE>pg_dumpall</CODE>:</P>
 <PRE>
 docker exec openbrain-db pg_dumpall -c -U postgres > backup_datum.sql
 </PRE>
-<P>Diese SQL-Datei enthaelt ALLES: Tabellen-Strukturen, Vektoren, Metadaten und die komplette Chat-Historie. Sie sollte regelmaessig auf einem externen Medium gesichert werden.</P>
+<P>Dieses Binary generiert rohe SQL-Inserts, die Vektoren, JSONB und Chat-Logs vollst&auml;ndig serialisieren.</P>
 
-<H3>12.2 Wiederherstellung</H3>
-<P>Im Falle eines Hardware-Defekts kann das Gehirn auf einem neuen System einfach durch Import der SQL-Datei wiederbelebt werden:</P>
+<H3>12.2 Disaster Recovery</H3>
+<P>Im Falle eines Hardware-Ausfalls wird das SQL-File per Pipe in einen frischen PostgreSQL-Container eingespielt, was das System bit-identisch rehydriert:</P>
 <PRE>
 cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 </PRE>
 
 <A NAME="deployment"></A>
 <H2>13. Deployment & Setup: Vom GitHub Repo zum laufenden System</H2>
-<P>Dieses Kapitel beschreibt, wie du das gesamte Open Brain Projekt aus dem Quellcode hochfaehrst und es fuer deine Zwecke (z.B. Multi-Agenten-Betrieb) anpasst.</P>
+<P>Dieses Kapitel ist der Step-by-Step Leitfaden, um das gesamte Projekt aus dem Quellcode hochzufahren und die Multi-Agenten-Architektur physisch zu deployen.</P>
 
 <H3>13.1 Voraussetzungen</H3>
 <UL>
-<LI>Ein Host-System (Linux, macOS, oder Windows mit WSL2)</LI>
-<LI><B>Docker</B> und <B>Docker Compose</B> installiert</LI>
-<LI><B>LM Studio</B> lokal installiert und laufend (auf Port 1234, Local Inference Server aktiviert)</LI>
+<LI>Ein Host-System (Linux, macOS, oder Windows mit WSL2).</LI>
+<LI><B>Docker</B> und <B>Docker Compose</B> installiert.</LI>
+<LI><B>LM Studio</B> lokal installiert und laufend (Inference Server auf Port 1234 aktiv).</LI>
 </UL>
 
 <H3>13.2 Initiales Setup (Das Fundament)</H3>
-<P>Der Start des Kern-Systems ist auf maximale Einfachheit ausgelegt:</P>
+<P>Der Bootstrap-Prozess ist maximal automatisiert:</P>
 <OL>
-<LI><B>Repository klonen:</B> Lade dir den Code herunter (<CODE>git clone https://github.com/NateBJones/open-brain.git</CODE>).</LI>
-<LI><B>Umgebungsvariablen setzen:</B> Kopiere die Datei <CODE>.env.example</CODE> zu <CODE>.env</CODE> und fuelle die Passwoerter und Keys aus. Die Schluessel (z.B. <CODE>JWT_SECRET</CODE>, <CODE>SERVICE_ROLE_KEY</CODE>) muessen kryptografisch sicher sein.</LI>
-<LI><B>System starten:</B> Fuehre im Hauptverzeichnis den Befehl <CODE>docker compose up -d --build</CODE> aus. Docker laedt alle noetigen Images herunter, baut die lokalen Container (MCP, Bot) und startet das Netzwerk.</LI>
-<LI><B>Datenbank-Initialisierung:</B> Beim allerersten Start fuehrt PostgreSQL automatisch die SQL-Skripte im Ordner <CODE>./init</CODE> aus. Hierbei wird das Schema erstellt, <CODE>pgvector</CODE> aktiviert und das RLS-Sicherheitskonzept angewendet.</LI>
-<LI><B>Matrix-Setup:</B> Oeffne Element Web (Port 8080), registriere den Admin-Nutzer auf dem lokalen Conduit-Server und erstelle den Chat-Raum fuer den Bot.</LI>
+<LI><B>Repository klonen:</B> Lade den Code via <CODE>git clone</CODE> herunter.</LI>
+<LI><B>Umgebungsvariablen:</B> Kopiere <CODE>.env.example</CODE> zu <CODE>.env</CODE>. Ersetze die Platzhalter f&uuml;r <CODE>JWT_SECRET</CODE> und <CODE>SERVICE_ROLE_KEY</CODE> durch kryptografisch sichere Strings.</LI>
+<LI><B>System starten:</B> F&uuml;hre <CODE>docker compose up -d --build</CODE> aus. Docker zieht die Basis-Images, baut die TypeScript/Rust-Container und spannt das <CODE>openbrain_default</CODE> Netzwerk auf.</LI>
+<LI><B>Datenbank-Initialisierung:</B> Der PostgreSQL-Container f&uuml;hrt beim initialen Start automatisch die Scripte im <CODE>./init</CODE> Ordner aus. Dies konfiguriert das Schema, die <CODE>pgvector</CODE> Extension und die RLS-Policies.</LI>
+<LI><B>Matrix-Setup:</B> Rufe Element Web (<CODE>http://localhost:8080</CODE>) auf, registriere deinen Admin-User auf dem lokalen Conduit-Homeserver und lade den Bot in einen neuen Raum ein.</LI>
 </OL>
 
-<H3>13.3 Einen neuen Agenten hinzufuegen (Multi-Agenten Architektur)</H3>
-<P>Das Hinzufuegen eines weiteren Agenten (z.B. eines Trading-Brokers oder eines Social-Media-Analysten) erfordert eine strikte Trennung von Logik, Tools und Daten. Gehe nach diesem exakten Ablaufplan vor:</P>
+<H3>13.3 Neuen Agenten deployen (Das Fork-Paradigma)</H3>
+<P>Die Instanziierung eines neuen Agenten (z.B. "Trading-Broker") erfordert exakt diesen pragmatischen Workflow:</P>
 <OL>
-<LI><B>Neuen Matrix-Account anlegen:</B> Registriere einen neuen Nutzer (z.B. <CODE>@broker:localhost</CODE>) in Conduit. Dieser Account ist das exklusive Gesicht des neuen Agenten im Chat.</LI>
-<LI><B>Einen winzigen MCP-Server bauen:</B> Ein "winziger MCP-Server" ist ein eigenstaendiger, sehr ressourcensparender Docker-Container, der ausschliesslich die API-Anbindung fuer genau eine externe Datenquelle (z.B. die IB-Broker API) kapselt. Er laeuft z.B. als Node.js oder Deno Prozess, bietet einen HTTP SSE-Endpunkt (Server-Sent Events) an und registriert spezifische Tools (wie <CODE>place_order</CODE>). Dieser Server weiss absolut nichts von Chat-Logik oder der Datenbank. Er ist ein reines, netzwerk-isoliertes Werkzeug, das seine Funktionen im internen Docker-Netzwerk (z.B. ueber <CODE>http://mcp-broker:8788</CODE>) bereitstellt.</LI>
-<LI><B>Prompt-Konfiguration als Volume mounten:</B> Die Persoenlichkeit und das Regelwerk des Agenten (System Prompt) muessen zwingend als externe Textdatei (z.B. <CODE>./agent-broker/prompt.txt</CODE>) als Volume in den Bot-Container gemountet werden. Vermeide es, Prompts als Umgebungsvariablen hart zu codieren! Durch den Datei-Mount kannst du den Prompt waehrend der Testphase und Optimierung jederzeit auf deinem Host-System in VS Code anpassen. Die Aenderungen sind beim naechsten Aufruf sofort fuer den Bot-Container verfuegbar, ohne dass du ihn neu starten oder bauen musst.</LI>
-<LI><B>Bot-Container in Docker Compose definieren:</B> Dupliziere den Block <CODE>agent-ea-bot</CODE> in deiner <CODE>docker-compose.yml</CODE> und benenne ihn in <CODE>agent-broker-bot</CODE> um. Passe die Zugangsdaten fuer Matrix an. Gib diesem Bot Zugriff auf mehrere Werkzeuge, indem du ihm die URLs zum zentralen <CODE>mcp-server</CODE> (fuer das Open Brain Gedaechtnis) UND zu deinem neuen <CODE>mcp-broker</CODE> Server uebergibst.</LI>
-<LI><B>Datenbank-Schema strikt trennen:</B> Erweitere die Datenbank fachlich sauber ueber das Supabase Studio. Anstatt alle neuen Daten in die bestehenden Standard-Tabellen zu quetschen, erstellst du ein neues, dediziertes PostgreSQL-Schema (z.B. <CODE>CREATE SCHEMA broker;</CODE>) und legst dort deine fachspezifischen Tabellen (z.B. <CODE>trades</CODE>) ab. PostgREST publiziert dieses neue Schema sofort als separate REST-API. So garantierst du, dass der neue Agent seine Daten sauber ablegt und das Kern-Gedaechtnis des Basis-Systems nicht korrumpiert.</LI>
-<LI><B>Agenten starten:</B> Fuehre <CODE>docker compose up -d</CODE> aus. Der neue Agent meldet sich im Matrix-Netzwerk an, laedt seine Tools aus den verbundenen MCP-Servern und ist sofort einsatzbereit.</LI>
+<LI><B>Neuen Matrix-Account anlegen:</B> Registriere z.B. <CODE>@broker:localhost</CODE> in Conduit. Dies ist die Identit&auml;t des neuen Bots.</LI>
+<LI><B>Den MCP-Server forken:</B> Kopiere den Ordner <CODE>agent-ea/mcp-server</CODE> zu <CODE>agent-broker/mcp-server</CODE>. F&uuml;ge dort deine dedizierte API-Logik f&uuml;r Drittsysteme (z.B. IB-Broker API) als neue Hono-Endpunkte hinzu. Dieser Server l&auml;uft netzwerkisoliert und enth&auml;lt keinerlei Chat-Logik.</LI>
+<LI><B>Prompt-Konfiguration als Volume mounten (KRITISCH):</B> Prompts geh&ouml;ren niemals hart in den Code oder als Environment Variables in die <CODE>docker-compose.yml</CODE>! Erstelle <CODE>prompt.txt</CODE> und <CODE>metadata-prompt.txt</CODE> und mounte sie via Docker Volumes als read-only (<CODE>:ro</CODE>) in die Bot- und MCP-Container. Das erm&ouml;glicht dir, die Prompts jederzeit on-the-fly im Host-Editor anzupassen, ohne Container neu bauen zu m&uuml;ssen.</LI>
+<LI><B>Container deklarieren:</B> Dupliziere in der <CODE>docker-compose.yml</CODE> die Bot- und MCP-Bl&ouml;cke. &Uuml;bergib dem Bot im Environment via <CODE>MCP_SERVER_URLS</CODE> eine Komma-getrennte Liste der internen Docker-Hostnamen (z.B. <CODE>http://mcp-server:8787,http://mcp-broker:8788</CODE>).</LI>
+<LI><B>Schema-Isolation:</B> Falls der Broker eigene relationale Daten braucht, quetsche sie nicht in die Core-Tabellen. Erstelle per Supabase Studio ein neues Schema (z.B. <CODE>CREATE SCHEMA broker;</CODE>). PostgREST spiegelt dieses Schema sofort in eine isolierte REST-API.</LI>
+<LI><B>Starten:</B> F&uuml;hre <CODE>docker compose up -d</CODE> aus. Der neue Broker-Agent l&auml;dt seine Text-Prompts, meldet sich bei Conduit an und steht bereit.</LI>
 </OL>
 
 <H3>13.4 Praxis-Beispiel: Konfiguration des Broker-Agenten</H3>
-<P>Hier sind konkrete Beispiele, wie die in 13.3 beschriebenen Konzepte als Code aussehen.</P>
+<P>Die Umsetzung des Volumen-Mounts und der Tool-Injektion in der <CODE>docker-compose.yml</CODE>:</P>
 
-<H4>A) Der Docker Compose Block (Auszug)</H4>
-<P>So sieht der neue Agent und sein winziger MCP-Server in der <CODE>docker-compose.yml</CODE> aus:</P>
 <PRE><CODE class="language-yaml">
-  # --- Der winzige MCP-Server fuer die IB-Broker API ---
+  # --- Broker MCP-Server ---
   mcp-broker:
     build:
-      context: ./agent-broker/mcp
+      context: ./agent-broker/mcp-server
     container_name: openbrain-mcp-broker
     restart: unless-stopped
+    volumes:
+      # WICHTIG: Metadaten-Prompt als Volume gemountet
+      - ./agent-broker/metadata-prompt.txt:/app/metadata-prompt.txt:ro
     environment:
       IB_BROKER_API_KEY: ${IB_BROKER_KEY}
       PORT: "8788"
-    ports:
-      - "8788:8788"
 
-  # --- Der Broker-Agent (Bot) ---
+  # --- Broker Matrix-Bot ---
   agent-broker-bot:
     build:
       context: ./agent-broker/bot
@@ -502,41 +468,21 @@ cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
       - mcp-server
       - mcp-broker
     volumes:
-      # WICHTIG: Prompt wird gemountet fuer schnelles Testen
+      # WICHTIG: Agenten-Prompt als Volume gemountet f&uuml;r schnelles Testen
       - ./agent-broker/prompt.txt:/app/prompt.txt:ro
     environment:
       MATRIX_HOMESERVER_URL: http://conduit:6167
       MATRIX_USER: broker
       MATRIX_PASSWORD: ${MATRIX_BROKER_PASSWORD}
-      # Bot erhaelt Zugriff auf BEIDE MCP-Server (Basis-Gedaechtnis + Broker-Tools)
+      # Dem Bot beide Welten er&ouml;ffnen: Core-Ged&auml;chtnis + Broker-Tools
       MCP_SERVER_URLS: "http://mcp-server:8787,http://mcp-broker:8788"
       LM_STUDIO_URL: http://host.docker.internal:1234
     extra_hosts:
       - "host.docker.internal:host-gateway"
 </CODE></PRE>
 
-<H4>B) Die Prompt-Datei (agent-broker/prompt.txt)</H4>
-<P>Der Prompt definiert exakt die Identitaet, die verfuegbaren Tools und die Handlungsanweisungen des Agenten. Er referenziert sowohl Tools des Basis-MCPs als auch des neuen Broker-MCPs:</P>
-<PRE><CODE class="language-markdown">
-Du bist der Open Brain Broker-Agent. 
-Deine Aufgabe ist es, das Portfolio des Nutzers zu ueberwachen, Trades vorzuschlagen und auszufuehren.
-
-VERFUEGBARE WERKZEUGE:
-1. IB-Broker Tools (vom mcp-broker):
-   - get_portfolio(): Holt die aktuellen Positionen und den Kontostand.
-   - place_order(symbol, quantity, action): Fuehrt einen Kauf/Verkauf aus.
-2. Open Brain Memory Tools (vom mcp-server):
-   - capture_thought(content): Speichere Notizen oder Trade-Begruendungen im Gedaechtnis.
-   - search_thoughts(query): Suche nach vergangenen Analysen oder Nutzer-Vorgaben.
-
-REGELN:
-- Bevor du einen Trade ausfuehrst (place_order), MUSST du den Nutzer im Chat um explizite Bestaetigung bitten.
-- Nach jedem erfolgreichen Trade, rufe 'capture_thought' auf, um die Transaktion und die Begruendung im Open Brain zu dokumentieren.
-- Frage niemals nach sensiblen Passwoertern im Chat. Alle APIs sind bereits ueber den MCP-Server autorisiert.
-</CODE></PRE>
-
 <HR>
-<P ALIGN="CENTER"><I>Ende des Handbuchs. Wissen ist Macht - Lokales Wissen ist Freiheit.<BR>Erstellt von Antigravity (AI) fuer das Open Brain Projekt.</I></P>
+<P ALIGN="CENTER"><I>Ende des Handbuchs. Wissen ist Macht &ndash; Lokales Wissen ist Freiheit.<BR>Erstellt von Antigravity (AI) f&uuml;r das Open Brain Projekt.</I></P>
 
 </BODY>
 </HTML>
