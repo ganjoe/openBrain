@@ -106,6 +106,25 @@ async function main() {
         if (!event.content || !event.content.body || event.sender === userId) return;
 
         const userMessage = event.content.body;
+        const msgLower = userMessage.toLowerCase();
+        const botName = process.env.MATRIX_USER!.toLowerCase();
+
+        // 1. Bots ignorieren Nachrichten von anderen Bots, es sei denn, sie werden namentlich erwähnt
+        const isFromBot = event.sender.includes("@ea:") || event.sender.includes("@cco:");
+        const isMentioned = msgLower.includes(botName) || msgLower.includes(`@${botName}`);
+        
+        if (isFromBot && !isMentioned) {
+            console.log(`🔕 [${botName}] Ignoriere Nachricht von anderem Bot.`);
+            return;
+        }
+        
+        // 2. Bots ignorieren Menschen, wenn ein anderer Bot explizit angesprochen wurde
+        const mentionsEa = msgLower.includes("ea");
+        const mentionsCco = msgLower.includes("cco");
+        
+        if (botName === "ea" && mentionsCco && !mentionsEa) return;
+        if (botName === "cco" && mentionsEa && !mentionsCco) return;
+
         console.log(`\n💬 Received message: ${userMessage}`);
 
         matrixClient.setTyping(roomId, true, 30000).catch(console.error);

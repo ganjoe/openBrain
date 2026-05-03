@@ -355,6 +355,14 @@ graph TD
 <H3>9.2 Der ReAct-Loop & Historien-Management</H3>
 <P>Der Bot antwortet nicht auf direktem Weg. Er operiert in einem strengen autonomen Zyklus: <B>Thought</B> (Welches Tool brauche ich?) &rarr; <B>Action</B> (Tool-Call via HTTP) &rarr; <B>Observation</B> (Auswertung des JSON-Responses). Zur Wahrung des Kontext-Fensters l&auml;dt der Bot vor jedem Loop die letzten 10 Matrix-Nachrichten aus der <CODE>chat_messages</CODE> Tabelle. Dies ist effektiv RAG (Retrieval-Augmented Generation) f&uuml;r den Chat-State.</P>
 
+<H3>9.3 Multi-Agenten Kommunikation: Natural Language Delegation</H3>
+<P>Wenn mehrere Bots (z.B. der Executive Assistant und der Chief Creative Officer) im selben Matrix-Raum (War Room) agieren, entsteht schnell das Problem des Feedback-Loops: Bot A antwortet auf Bot B, Bot B wieder auf Bot A. Um dies zu verhindern und gleichzeitig 100% Transparenz f&uuml;r den menschlichen Superuser zu garantieren, nutzt Open Brain das Konzept der <B>Natural Language Delegation</B>.</P>
+<UL>
+<LI><B>Erw&auml;hnungs-Filter (Mention-Routing):</B> Auf Code-Ebene (<CODE>index.ts</CODE>) greift ein strikter Filter. Ein Bot ignoriert grunds&auml;tzlich alle Nachrichten von anderen Bots, es sei denn, sein eigener Name (z.B. <CODE>cco</CODE>) wird explizit im Text erw&auml;hnt. Ebenso ignorieren Bots Nachrichten von Menschen, wenn darin explizit ein <I>anderer</I> Bot angesprochen wird.</LI>
+<LI><B>Der Raum als Bus:</B> Bots kommunizieren untereinander nicht &uuml;ber versteckte APIs, sondern indem sie wie Menschen miteinander im Chat sprechen. Wenn der EA-Bot den CCO-Bot anweisen m&ouml;chte, generiert er eine normale Chat-Nachricht beginnend mit <CODE>cco, ...</CODE>. Der CCO-Bot liest dies, f&uuml;hrt die Aktion aus und antwortet mit <CODE>ea, ...</CODE>.</LI>
+</UL>
+<P>Dieses Paradigma erlaubt es, komplexe Agenten-Ketten zu bilden (Bot A delegiert an Bot B, der delegiert an Bot C), w&auml;hrend der Nutzer jeden einzelnen Delegationsschritt transparent im Element-Client verfolgen und eingreifen kann.</P>
+
 <A NAME="fluss"></A>
 <H2>10. Detaillierte Szenarien des Informationsflusses</H2>
 
