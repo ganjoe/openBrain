@@ -476,46 +476,81 @@ cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 <LI><B>Starten:</B> F&uuml;hre <CODE>docker compose up -d</CODE> aus. Der neue Broker-Agent l&auml;dt seine Text-Prompts, meldet sich bei Conduit an und steht bereit.</LI>
 </OL>
 
-<H3>13.4 Praxis-Beispiel: Konfiguration des Broker-Agenten</H3>
-<P>Die Umsetzung des Volumen-Mounts und der Tool-Injektion in der <CODE>docker-compose.yml</CODE>:</P>
+<H3>13.4 Ultimative Schritt-f&uuml;r-Schritt Anleitung: Agenten-Deployment (Edition: Qualle mit Neuralink)</H3>
+<P>Dieses Kapitel dokumentiert den exakten, atomaren Prozess zur Instanziierung eines neuen Agenten am Beispiel von <CODE>agent-cco</CODE>. Jeder Befehl ist zwingend in dieser Reihenfolge auszuf&uuml;hren.</P>
 
+<H4>Schritt 1: Das Fork-Paradigma (Dateisystem)</H4>
+<P>Wir nutzen <CODE>agent-ea</CODE> als stabiles Template. Kopiere den gesamten Ordner:</P>
+<PRE><B>Terminal:</B> cp -r agent-ea agent-cco</PRE>
+<P>L&ouml;sche alte State-Files, falls vorhanden, um einen sauberen Start zu garantieren:</P>
+<PRE><B>Terminal:</B> rm -f agent-cco/bot/bot-storage.json</PRE>
+
+<H4>Schritt 2: Die semantische Programmierung (Prompts)</H4>
+<P>Passe die Textdateien im neuen Ordner an. Die <CODE>prompt.txt</CODE> definiert das Verhalten im Chat, die <CODE>metadata-prompt.txt</CODE> die Struktur in der Datenbank.</P>
+
+<H4>Schritt 3: Die Identit&auml;t deklarieren (.env)</H4>
+<P>&Ouml;ffne die <CODE>.env</CODE> im Root-Verzeichnis und f&uuml;ge die neuen Zugangsdaten am Ende hinzu:</P>
+<PRE><CODE class="language-bash">
+# CCO Agent (Chief Creative Officer)
+MATRIX_CCO_USER=cco_bot
+MATRIX_CCO_PASSWORD=dein_super_sicheres_passwort_123
+</CODE></PRE>
+
+<H4>Schritt 4: Den Account im Chatserver registrieren (API-Call)</H4>
+<P>Da wir "No Federation" nutzen, muss der Account manuell im lokalen Conduit registriert werden. Wir nutzen einen dedizierten Container-Call, um Netzwerk-Issues zu vermeiden:</P>
+<PRE><CODE class="language-bash">
+# 1. Registrierungs-Session generieren und User anlegen
+docker run --rm --network openbrain_default curlimages/curl curl -s -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"username":"cco_bot", "password":"dein_super_sicheres_passwort_123", "auth":{"type":"m.login.dummy"}}' \
+  http://conduit:6167/_matrix/client/v3/register?kind=user
+</CODE></PRE>
+<P><I>Hinweis: Die R&uuml;ckgabe <CODE>{"access_token": "..."}</CODE> best&auml;tigt den Erfolg.</I></P>
+
+<H4>Schritt 5: Die Infrastruktur erweitern (docker-compose.yml)</H4>
+<P>F&uuml;ge am Ende der <CODE>services</CODE>-Sektion die neuen Container hinzu. Achte auf den eindeutigen Port (<CODE>8788</CODE>) f&uuml;r den MCP-Server:</P>
 <PRE><CODE class="language-yaml">
-  # --- Broker MCP-Server ---
-  mcp-broker:
+  # --- CCO MCP Server ---
+  mcp-cco:
     build:
-      context: ./agent-broker/mcp-server
-    container_name: openbrain-mcp-broker
+      context: ./agent-cco/mcp-server
+    container_name: openbrain-mcp-cco
     restart: unless-stopped
     volumes:
-      # WICHTIG: Metadaten-Prompt als Volume gemountet
-      - ./agent-broker/metadata-prompt.txt:/app/metadata-prompt.txt:ro
+      - ./agent-cco/metadata-prompt.txt:/app/metadata-prompt.txt:ro
     environment:
-      IB_BROKER_API_KEY: ${IB_BROKER_KEY}
+      SUPABASE_URL: http://gateway:80
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      OLLAMA_URL: http://ollama:11434
       PORT: "8788"
+    ports:
+      - "8788:8788"
 
-  # --- Broker Matrix-Bot ---
-  agent-broker-bot:
+  # --- CCO Matrix Bot ---
+  agent-cco-bot:
     build:
-      context: ./agent-broker/bot
-    container_name: openbrain-broker-bot
+      context: ./agent-cco/bot
+    container_name: openbrain-cco-bot
     restart: unless-stopped
     depends_on:
       - conduit
-      - mcp-server
-      - mcp-broker
+      - mcp-cco
     volumes:
-      # WICHTIG: Agenten-Prompt als Volume gemountet f&uuml;r schnelles Testen
-      - ./agent-broker/prompt.txt:/app/prompt.txt:ro
+      - ./agent-cco/prompt.txt:/app/prompt.txt:ro
     environment:
       MATRIX_HOMESERVER_URL: http://conduit:6167
-      MATRIX_USER: broker
-      MATRIX_PASSWORD: ${MATRIX_BROKER_PASSWORD}
-      # Dem Bot beide Welten er&ouml;ffnen: Core-Ged&auml;chtnis + Broker-Tools
-      MCP_SERVER_URLS: "http://mcp-server:8787,http://mcp-broker:8788"
+      MATRIX_USER: ${MATRIX_CCO_USER}
+      MATRIX_PASSWORD: ${MATRIX_CCO_PASSWORD}
+      MCP_SERVER_URLS: http://mcp-cco:8788
       LM_STUDIO_URL: http://host.docker.internal:1234
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 </CODE></PRE>
+
+<H4>Schritt 6: Z&uuml;ndung und Erfolgskontrolle</H4>
+<P>Baue und starte die neuen Services:</P>
+<PRE><B>Terminal:</B> docker compose up -d --build agent-cco-bot</PRE>
+<P>Pr&uuml;fe die Logs auf den "Ready"-State:</P>
+<PRE><B>Terminal:</B> docker logs -f openbrain-cco-bot</PRE>
+<P>Ergebnis: <CODE>✅ EA Bot is now syncing and listening!</CODE></P>
 
 <HR>
 <P ALIGN="CENTER"><I>Ende des Handbuchs. Wissen ist Macht &ndash; Lokales Wissen ist Freiheit.<BR>Erstellt von Antigravity (AI) f&uuml;r das Open Brain Projekt.</I></P>

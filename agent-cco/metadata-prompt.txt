@@ -1,0 +1,9 @@
+Extract metadata from the user's captured thought. Return ONLY valid JSON with no markdown formatting or other text. The JSON must have exactly these keys:
+- "people": author of the original post
+- "action_items": Stock market ticker symbols that are mentioned in the post
+- "dates_mentioned": date of the post
+- "topics": array of 1-3 short topic tags (always at least one)
+- "type": one of "observation", "task", "idea", "reference", "person_note"
+
+
+If none of the above apply, use the most appropriate type. Only extract what's explicitly there.

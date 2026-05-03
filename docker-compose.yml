@@ -190,6 +190,57 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # --- CCO MCP Server ---
+  mcp-cco:
+    build:
+      context: ./agent-cco/mcp-server
+      dockerfile: Dockerfile
+    container_name: openbrain-mcp-cco
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    volumes:
+      - ./agent-cco/metadata-prompt.txt:/app/metadata-prompt.txt:ro
+    environment:
+      SUPABASE_URL: http://gateway:80
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_EMBED_MODEL: qwen3-embedding:8b
+      LM_STUDIO_URL: http://host.docker.internal:1234
+      PORT: "8788"
+    ports:
+      - "8788:8788"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # --- CCO Matrix Bot ---
+  agent-cco-bot:
+    build:
+      context: ./agent-cco/bot
+      dockerfile: Dockerfile
+    container_name: openbrain-cco-bot
+    restart: unless-stopped
+    depends_on:
+      - conduit
+      - mcp-cco
+    volumes:
+      - ./agent-cco/prompt.txt:/app/prompt.txt:ro
+    environment:
+      MATRIX_HOMESERVER_URL: http://conduit:6167
+      MATRIX_USER: ${MATRIX_CCO_USER}
+      MATRIX_PASSWORD: ${MATRIX_CCO_PASSWORD}
+      MCP_SERVER_URLS: http://mcp-cco:8788
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      LM_STUDIO_URL: http://host.docker.internal:1234
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   openbrain_pgdata:
   openbrain_ollama:
