@@ -242,13 +242,14 @@ for (const [key, val] of Object.entries(m)) {
 
 <A NAME="studio"></A>
 <H2>4. Die Administrations-Schicht: Supabase Studio & Meta</H2>
-<P>Trotz der 100% lokalen Ausf&uuml;hrung orchestrieren wir die Datenbank &uuml;ber das grafische Supabase Studio. Es liefert Cloud-Level UX f&uuml;r ein Air-Gapped System.</P>
+<P>Trotz der 100% lokalen ("Air-Gapped") Ausf&uuml;hrung nutzen wir das grafische Frontend von Supabase. Es handelt sich um ein vollst&auml;ndiges lokales Deployment ihrer Open-Source-Architektur, nicht um eine Cloud-Anbindung.</P>
 
-<H3>4.1 Das Dashboard</H3>
-<P>&Uuml;ber Port 3000 wird das Next.js Frontend ausgeliefert. Hier l&auml;sst sich der JSONB-State manuell debuggen, SQL-Logs analysieren und Query-Performance profilieren.</P>
+<H3>4.1 Das Dashboard (Port 3000)</H3>
+<P>Das Supabase Studio ist im Grunde ein modernes, webbasiertes <CODE>pgAdmin</CODE> oder <CODE>DBeaver</CODE>, geschrieben in Next.js. Da die Agenten ihre Metadaten als komplexe <CODE>JSONB</CODE>-Objekte speichern, ist eine reine Terminal-Ansicht (<CODE>psql</CODE>) oft ineffizient. &Uuml;ber Port 3000 erh&auml;ltst du eine grafische Tabellenansicht. Generiert das LLM ein fehlerhaftes JSON, l&auml;sst sich der State hier direkt auf Datenbank-Ebene patchen und debuggen. Zudem liefert es Werkzeuge zur Analyse von SQL-Logs und Query-Performance.</P>
 
-<H3>4.2 Der meta-Service</H3>
-<P>Der Container <CODE>openbrain-meta</CODE> ist eine Abstraktionsschicht. Das TypeScript-Frontend (Studio) kann nicht nativ das Postgres <CODE>information_schema</CODE> abfragen. Meta exponiert dieses Schema als API, fungiert also als Introspektions-Bibliothekar f&uuml;r die Web-UI.</P>
+<H3>4.2 Der meta-Service (Warum ein extra Container?)</H3>
+<P>Eine h&auml;ufige Frage zur Architektur ist, warum das Frontend einen zus&auml;tzlichen Meta-Container ben&ouml;tigt. Das Problem: Das Next.js Frontend (Studio) verbindet sich nicht direkt &uuml;ber ein rohes TCP/SQL-Protokoll mit PostgreSQL, um das Schema zu lesen. Es erwartet eine HTTP-REST-API, die ihm die Tabellenstruktur erkl&auml;rt.</P>
+<P>Genau hier greift der <CODE>openbrain-meta</CODE> Container: Er ist die Abstraktionsschicht. Er greift nativ auf das <CODE>information_schema</CODE> von Postgres zu (die System-Tabellen, in denen steht: "Tabelle X hat Spalte Y vom Typ Z") und &uuml;bersetzt dieses interne SQL-Schema on-the-fly in eine JSON-API. Das Studio fragt Meta per HTTP, Meta fragt Postgres. Meta fungiert also als zwingend notwendiger "Introspektions-Bibliothekar", damit die UI wei&szlig;, welche Tabellen und Spalten gerendert werden m&uuml;ssen.</P>
 
 <A NAME="ollama"></A>
 <H2>5. Die Embedding-Schicht: Ollama & Vektorisierung</H2>
@@ -262,16 +263,51 @@ for (const [key, val] of Object.entries(m)) {
 
 <A NAME="gateway"></A>
 <H2>6. Die Proxy-Schicht: Nginx - Der Dirigent des Netzwerkverkehrs</H2>
-<P>Der Nginx-Container l&auml;uft als asynchroner Event-Driven Reverse Proxy. Er ist der un&uuml;berwindbare Checkpoint zwischen den Microservices und der Au&szlig;enwelt.</P>
+<P>Der Nginx-Container l&auml;uft als asynchroner Event-Driven Reverse Proxy. Er ist der un&uuml;berwindbare Checkpoint zwischen den Microservices und der Au&szlig;enwelt. Aber was bedeutet das im Kontext dieser Applikation genau?</P>
 
-<H3>6.1 Die Notwendigkeit des Reverse Proxys</H3>
-<P>Anstatt interne Ports (<CODE>3001</CODE>, <CODE>8080</CODE>, <CODE>5432</CODE>) wild im Docker-Netz zu belassen, b&uuml;ndelt Nginx alles auf Port 8001. Dies reduziert die Attack-Surface signifikant und erm&ouml;glicht zentrales Logging von HTTP-Anfragen.</P>
+<H3>6.1 Proxy vs. Reverse Proxy</H3>
+<P>Ein klassischer <B>Proxy</B> (z.B. in einem Firmennetzwerk) maskiert den Client: Der angerufene Server wei&szlig; nicht, welcher Rechner die Webseite tats&auml;chlich angefordert hat. Ein <B>Reverse Proxy</B> dreht dieses Prinzip um: Er maskiert die Backend-Infrastruktur gegen&uuml;ber dem aufrufenden Client.</P>
+<P>In Open Brain laufen verschiedene Dienste (z.B. PostgREST f&uuml;r die API, Meta f&uuml;r das Schema). Anstatt all diese internen Ports wild im Docker-Netz nach au&szlig;en zu &ouml;ffnen, b&uuml;ndelt Nginx alles auf einem einzigen zentralen Eingangspunkt (Port 8001). Jeder Request von au&szlig;en landet zuerst bei Nginx, der ihn pr&uuml;ft und an den richtigen internen Container weiterleitet. Das reduziert die Angriffsfl&auml;che signifikant und erm&ouml;glicht zentrales Logging.</P>
 
-<H3>6.2 Pfad-Harmonisierung (Supabase Emulation)</H3>
-<P>Das ist der entscheidende Trick der Architektur: Supabase-SDKs (die wir im MCP nutzen) erwarten hartkodierte Cloud-Endpunkte wie <CODE>/rest/v1/</CODE>. Nginx emuliert diese Cloud-Infrastruktur lokal durch Regex-Rewriting. Ein Request an <CODE>/rest/v1/thoughts</CODE> wird von Nginx modifiziert und transparent an <CODE>postgrest:3000/thoughts</CODE> delegiert. Dadurch m&uuml;ssen wir die npm-Packages nicht forken oder umschreiben.</P>
+<H3>6.2 Pfad-Harmonisierung (Was macht das SDK?)</H3>
+<P>Der MCP-Server interagiert mit der Datenbank &uuml;ber das <B>Supabase-SDK</B> (Software Development Kit). Ein SDK ist eine Bibliothek abstrahierter Funktionen, die API-Aufrufe kapselt. Da dieses spezifische SDK f&uuml;r den produktiven Betrieb in der Supabase-Cloud entworfen wurde, implementiert es hartkodierte API-Routen wie <CODE>/rest/v1/</CODE>.</P>
+<P>Da unsere Infrastruktur vollst&auml;ndig lokal operiert, existiert dieser URI-Namespace nicht nativ. Nginx &uuml;bernimmt an dieser Stelle das <B>Path-Rewriting</B>: Initiiert das SDK einen HTTP-Request an <CODE>/rest/v1/thoughts</CODE>, interceptiert Nginx diesen, entfernt per Regex das Cloud-Pr&auml;fix und delegiert den modifizierten Request an den lokalen <CODE>postgrest</CODE>-Container. Durch diese Emulation der Cloud-API-Struktur auf Netzwerkebene entf&auml;llt die Notwendigkeit, den Quellcode der externen npm-Pakete forken und patchen zu m&uuml;ssen.</P>
 
-<H3>6.3 CORS-Management</H3>
-<P>Nginx injiziert zentral die <CODE>Access-Control-Allow-Origin</CODE> Header f&uuml;r Preflight-Requests (OPTIONS). Dies erlaubt es Web-Clients (Studio), Cross-Origin Anfragen an PostgREST zu stellen, ohne dass die Backend-Dienste CORS implementieren m&uuml;ssen.</P>
+<H3>6.3 CORS-Management & Preflight-Requests</H3>
+<P>Das <B>CORS</B> (Cross-Origin Resource Sharing) Protokoll ist ein Sicherheitskonzept von Web-Browsern. Es blockiert standardm&auml;&szlig;ig clientseitige HTTP-Anfragen, wenn die anfordernde Domain (hier: Studio auf Port 3000) nicht mit der Ziel-Domain (hier: PostgREST auf Port 3001) identisch ist.</P>
+<P>Bei Cross-Origin-Szenarien f&uuml;hrt der Browser vor dem eigentlichen Request zwingend einen <B>Preflight-Request</B> (HTTP-Methode <CODE>OPTIONS</CODE>) aus, um die autorisierten Origins des Zielservers abzufragen. Um die internen Microservices nicht mit der Implementierung von Frontend-Sicherheitsprotokollen zu belasten, terminiert Nginx diese Preflight-Requests zentral. Nginx f&auml;ngt den <CODE>OPTIONS</CODE>-Call ab und beantwortet ihn direkt durch Injektion des <CODE>Access-Control-Allow-Origin</CODE> Headers. Der Browser wertet die HTTP-Response aus, autorisiert die Verbindung und f&uuml;hrt den eigentlichen Request durch, w&auml;hrend die Backend-Container von der CORS-Logik vollst&auml;ndig entkoppelt bleiben.</P>
+
+<H3>6.4 Architektur-Diagramm: Nginx Routing</H3>
+<P>Das folgende Diagramm veranschaulicht, wie Nginx als zentraler Flaschenhals ("Choke Point") fungiert und die Cloud-Pfade transparent f&uuml;r die internen Container &uuml;bersetzt:</P>
+
+<div class="mermaid">
+graph TD
+    classDef client fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef proxy fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef internal fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef db fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+
+    MCP["MCP Server<br/>(Supabase JS SDK)"]:::client
+    Studio["Supabase Studio<br/>(Web Frontend)"]:::client
+    
+    subgraph Docker Network Boundary
+        Nginx{"Nginx Reverse Proxy<br/>Port 8001"}:::proxy
+    end
+    
+    subgraph Air-Gapped Backend
+        PostgREST["PostgREST API<br/>Port 3000"]:::internal
+        Auth["Auth Service<br/>(Future Extension)"]:::internal
+        DB[("PostgreSQL")]:::db
+    end
+
+    MCP -- "POST /rest/v1/thoughts" --> Nginx
+    Studio -- "GET /rest/v1/..." --> Nginx
+    
+    Nginx -- "Match: /rest/v1/*<br/>Rewrite: /thoughts" --> PostgREST
+    Nginx -. "Match: /auth/v1/*" .-> Auth
+    
+    PostgREST -- "Native TCP/SQL" --> DB
+</div>
 
 <A NAME="matrix"></A>
 <H2>7. Die Chat-Infrastruktur: Matrix Conduit & Element</H2>
