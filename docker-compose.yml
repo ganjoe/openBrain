@@ -176,11 +176,13 @@ services:
     depends_on:
       - conduit
       - mcp-server
+    volumes:
+      - ./agent-ea/prompt.txt:/app/prompt.txt:ro
     environment:
       MATRIX_HOMESERVER_URL: http://conduit:6167
       MATRIX_USER: ${MATRIX_EA_USER}
       MATRIX_PASSWORD: ${MATRIX_EA_PASSWORD}
-      MCP_SERVER_URL: http://mcp-server:8787
+      MCP_SERVER_URLS: http://mcp-server:8787
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
       LM_STUDIO_URL: http://host.docker.internal:1234
     extra_hosts:

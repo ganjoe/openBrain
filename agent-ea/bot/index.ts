@@ -1,27 +1,33 @@
 import { MatrixClient, SimpleFsStorageProvider, AutojoinRoomsMixin } from "matrix-bot-sdk";
+import * as fs from "fs";
 
 // 1. Configuration from Environment
 const MATRIX_URL = process.env.MATRIX_HOMESERVER_URL || "http://localhost:6167";
 const MATRIX_USER = process.env.MATRIX_USER || "ea";
 const MATRIX_PASSWORD = process.env.MATRIX_PASSWORD || "freeadamnemesisx1";
-const MCP_SERVER_URL = process.env.MCP_SERVER_URL || "http://localhost:8787";
+const MCP_SERVER_URLS_STR = process.env.MCP_SERVER_URLS || process.env.MCP_SERVER_URL || "http://localhost:8787";
 const MCP_ACCESS_KEY = process.env.MCP_ACCESS_KEY || "";
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL || "http://localhost:1234";
+
+const MCP_SERVER_URLS = MCP_SERVER_URLS_STR.split(",").map(url => url.trim()).filter(url => url.length > 0);
 
 // 2. Setup Matrix Storage
 const storage = new SimpleFsStorageProvider("bot-storage.json");
 
-// 3. System Prompt
-const SYSTEM_PROMPT = `Du bist der Executive Assistant (EA) von Open Brain. 
-Deine Aufgabe ist es, das Wissen des Nutzers zu verwalten.
-Dir stehen MCP-Tools zur Verfügung (z.B. capture_thought, search_thoughts). 
-Nutze sie aktiv, wenn der Nutzer etwas speichern oder abrufen möchte.
-Wenn du ein Tool aufrufst, formuliere danach eine kurze, freundliche Bestätigung.
-Bleibe professionell, aber locker.`;
+// 3. System Prompt (Dynamic)
+let SYSTEM_PROMPT = `Du bist ein generischer Agent. Bitte mounte eine prompt.txt.`;
+const PROMPT_PATH = process.env.PROMPT_PATH || "/app/prompt.txt";
+if (fs.existsSync(PROMPT_PATH)) {
+    SYSTEM_PROMPT = fs.readFileSync(PROMPT_PATH, "utf-8");
+} else if (fs.existsSync("prompt.txt")) {
+    SYSTEM_PROMPT = fs.readFileSync("prompt.txt", "utf-8");
+} else {
+    console.warn(`⚠️ Warning: No prompt.txt found at ${PROMPT_PATH}. Using fallback prompt.`);
+}
 
 // --- Simple Stateless MCP Client via HTTP/JSON-RPC ---
 class StatelessMcpClient {
-    constructor(private url: string, private key: string) {}
+    constructor(public url: string, private key: string) {}
 
     private async request(method: string, params: any) {
         const res = await fetch(`${this.url}?key=${this.key}`, {
@@ -91,9 +97,9 @@ async function main() {
     const matrixClient = new MatrixClient(MATRIX_URL, accessToken, storage);
     AutojoinRoomsMixin.setupOnClient(matrixClient);
 
-    // --- B. Setup Stateless MCP Client ---
-    console.log(`🔌 Using Stateless MCP Client for ${MCP_SERVER_URL}...`);
-    const mcpClient = new StatelessMcpClient(MCP_SERVER_URL, MCP_ACCESS_KEY);
+    // --- B. Setup Stateless MCP Clients ---
+    console.log(`🔌 Setup MCP Clients for: ${MCP_SERVER_URLS.join(", ")}`);
+    const mcpClients = MCP_SERVER_URLS.map(url => new StatelessMcpClient(url, MCP_ACCESS_KEY));
 
     // --- C. Listen for Chat Messages ---
     matrixClient.on("room.message", async (roomId, event) => {
@@ -105,7 +111,7 @@ async function main() {
         matrixClient.setTyping(roomId, true, 30000).catch(console.error);
 
         try {
-            await handleMessage(matrixClient, mcpClient, roomId, userMessage);
+            await handleMessage(matrixClient, mcpClients, roomId, userMessage);
         } catch (error) {
             console.error("❌ Error handling message:", error);
             matrixClient.sendMessage(roomId, {
@@ -152,24 +158,36 @@ async function loadHistoryFromDb(roomId: string, limit: number = 10) {
     }
 }
 
-async function handleMessage(matrixClient: MatrixClient, mcpClient: StatelessMcpClient, roomId: string, userMessage: string) {
+async function handleMessage(matrixClient: MatrixClient, mcpClients: StatelessMcpClient[], roomId: string, userMessage: string) {
     // 1. Speichere neue User-Nachricht asynchron
     saveMessageToDb(roomId, "user", "user", userMessage);
 
     // 2. Lade Historie und Tools
-    const [history, toolsResult] = await Promise.all([
-        loadHistoryFromDb(roomId, 10),
-        mcpClient.listTools()
-    ]);
+    const historyPromise = loadHistoryFromDb(roomId, 10);
+    
+    const availableTools: any[] = [];
+    const toolToClientMap = new Map<string, StatelessMcpClient>();
 
-    const availableTools = toolsResult.tools.map((t: any) => ({
-        type: "function",
-        function: {
-            name: t.name,
-            description: t.description,
-            parameters: t.inputSchema
+    await Promise.all(mcpClients.map(async (client) => {
+        try {
+            const res = await client.listTools();
+            for (const t of res.tools) {
+                availableTools.push({
+                    type: "function",
+                    function: {
+                        name: t.name,
+                        description: t.description,
+                        parameters: t.inputSchema
+                    }
+                });
+                toolToClientMap.set(t.name, client);
+            }
+        } catch (err) {
+            console.error(`❌ Failed to load tools from ${client.url}:`, err);
         }
     }));
+
+    const history = await historyPromise;
 
     const messages: any[] = [
         { role: "system", content: SYSTEM_PROMPT },
@@ -187,7 +205,10 @@ async function handleMessage(matrixClient: MatrixClient, mcpClient: StatelessMcp
             console.log(`🛠️ Calling tool: ${toolCall.function.name}`);
             try {
                 const args = JSON.parse(toolCall.function.arguments);
-                const result = await mcpClient.callTool(toolCall.function.name, args);
+                const client = toolToClientMap.get(toolCall.function.name);
+                if (!client) throw new Error(`Tool ${toolCall.function.name} not found on any connected MCP server.`);
+                
+                const result = await client.callTool(toolCall.function.name, args);
                 
                 const toolResultText = result.content.map((c: any) => c.type === 'text' ? c.text : JSON.stringify(c)).join("\n");
                 

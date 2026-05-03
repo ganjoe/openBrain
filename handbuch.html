@@ -31,6 +31,7 @@
 <LI><A HREF="#fluss">Detaillierte Szenarien des Informationsflusses</A>
 <LI><A HREF="#sicherheit">Tiefgreifendes Sicherheits- und Rollenkonzept</A>
 <LI><A HREF="#wartung">Wartung: Backup & Wiederherstellung</A>
+<LI><A HREF="#deployment">Deployment & Setup: Vom GitHub Repo zum laufenden System</A>
 </OL>
 <HR>
 
@@ -46,8 +47,142 @@
 <LI><B>Inference Layer (Intelligenz):</B> Ollama und LM Studio sind die "Motoren". Sie verwandeln Rohdaten in Informationen. Sie haben keinen eigenen Speicher, sondern arbeiten zustandslos.
 <LI><B>Application Layer (Interaktion):</B> Der MCP-Server und der Matrix-Bot sind die Dirigenten. Sie wissen, wann welches Tool gerufen werden muss, um eine Nutzeranfrage zu beantworten.</UL>
 
-<H3>1.2 Das Docker-Netzwerk</H3>
-<P>Innerhalb von Docker sind alle Container im Netzwerk "openbrain_default" verbunden. Sie koennen sich untereinander ueber ihre Service-Namen (z.B. <CODE>http://db:5432</CODE>) erreichen. Nach aussen hin sind sie jedoch isoliert. Ein direkter Zugriff von deinem Windows-Rechner auf die Datenbank ist nur ueber den gemappten Port 5433 moeglich, was eine zusaetzliche Sicherheitsschicht darstellt.</P>
+<H3>1.2 Das Docker-Netzwerk und Container-Beziehungen</H3>
+<P>Innerhalb von Docker sind alle Container in einem gemeinsamen, isolierten virtuellen Netzwerk namens <CODE>openbrain_default</CODE> verbunden. Dieses Netzwerk ermoeglicht es den Diensten, ueber ihre Container-Namen (z.B. <CODE>http://db:5432</CODE> oder <CODE>http://postgrest:3000</CODE>) miteinander zu kommunizieren, ohne dass externe IP-Adressen bekannt sein muessen. Nach aussen hin sind die Container jedoch durch Docker abgeschirmt und nur ueber explizit freigegebene ("gemappte") Ports erreichbar. Ein direkter Zugriff von deinem Windows-Rechner auf die Datenbank ist beispielsweise nur ueber den gemappten Port 5433 moeglich, was eine zusaetzliche Sicherheitsschicht darstellt.</P>
+
+<P>Die Beziehungen und Abhaengigkeiten der Container sind detailliert wie folgt strukturiert:</P>
+<UL>
+<LI><B>Die Daten-Basis:</B> Der Container <CODE>openbrain-db</CODE> (PostgreSQL) bildet das Fundament. Er ist von aussen nicht direkt ansprechbar, sondern wird intern von <CODE>postgrest</CODE>, <CODE>meta</CODE> und indirekt vom MCP-Server genutzt.</LI>
+<LI><B>API & Orchestrierung:</B> Das <CODE>gateway</CODE> (Nginx) nimmt Anfragen von aussen (oder vom Studio/MCP) entgegen und leitet diese an <CODE>postgrest</CODE> weiter. <CODE>postgrest</CODE> uebersetzt REST-Anfragen in SQL-Befehle fuer die Datenbank.</LI>
+<LI><B>KI & Agenten:</B> Der <CODE>mcp-server</CODE> agiert als zentraler KI-Tool-Hub. Er kommuniziert mit <CODE>ollama</CODE> zur Erstellung von Embeddings, greift via <CODE>gateway</CODE> auf die Datenbank zu und leitet Inference-Anfragen an das lokale <B>LM Studio</B> auf dem Host-Rechner weiter (ueber <CODE>host.docker.internal:1234</CODE>). Der <CODE>agent-ea-bot</CODE> ist das ausführende Organ des Assistenten, der ueber <CODE>conduit</CODE> mit dem Nutzer in Matrix chattet und bei Bedarf Werkzeuge des <CODE>mcp-server</CODE>s aufruft.</LI>
+<LI><B>Frontends:</B> <CODE>element-web</CODE> und <CODE>studio</CODE> dienen als Benutzeroberflaechen, die sich jeweils mit <CODE>conduit</CODE> bzw. <CODE>gateway</CODE>/<CODE>meta</CODE> verbinden, um dem Nutzer grafischen Zugriff auf Chat und Daten zu gewaehren.</LI>
+</UL>
+
+<P>Das folgende Diagramm visualisiert den detaillierten Informationsfluss und die Netzwerktopologie:</P>
+
+<div class="mermaid">
+graph TD
+    subgraph Host ["Host Maschine PC"]
+        User["Benutzer Browser oder Apps"]
+        LMStudio["LM Studio - Lokales LLM - Port 1234"]
+    end
+
+    subgraph OpenBrainNet ["Docker Netzwerk: openbrain_default"]
+        
+        subgraph Frontend ["Frontends"]
+            Element["Element Web - Port 8080"]
+            Studio["Supabase Studio - Port 3000"]
+        end
+
+        subgraph Agenten ["Agentik und API"]
+            Gateway["Nginx Gateway - Port 8001"]
+            MCP["MCP Server - Port 8787"]
+            EABot["EA Bot"]
+            Conduit["Matrix Server Conduit - Port 6167"]
+        end
+
+        subgraph Backend ["Backend und KI"]
+            PostgREST["PostgREST - Port 3001"]
+            Meta["PG Meta"]
+            Ollama["Ollama Embeddings - Port 11434"]
+        end
+
+        subgraph Data ["Datenbank"]
+            DB[(PostgreSQL db - Port 5433)]
+        end
+        
+    end
+
+    %% Verbindungen
+    User -->|Chat| Element
+    User -->|Admin| Studio
+    User -.->|Lokaler DB Zugriff| DB
+    
+    Element -->|Matrix API| Conduit
+    EABot -->|Matrix API| Conduit
+    EABot -->|MCP Tools| MCP
+    EABot -->|Inference host.docker.internal| LMStudio
+    
+    MCP -->|Inference host.docker.internal| LMStudio
+    MCP -->|Embeddings API| Ollama
+    MCP -->|REST Requests| Gateway
+    
+    Studio -->|Meta Daten| Meta
+    Studio -->|DB API via Gateway| Gateway
+    
+    Gateway -->|Forwarding| PostgREST
+    
+    PostgREST -->|SQL Queries| DB
+    Meta -->|SQL Schema| DB
+</div>
+<script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true });
+</script>
+
+<H3>1.3 Multi-Agenten Docker-Netzwerk (UML Komponenten-Diagramm)</H3>
+<P>Wenn das System, wie in Abschnitt 13 beschrieben, zu einem Multi-Agenten-System ausgebaut wird, zeigt dieses Architektur-Diagramm exakt, wie die einzelnen Docker-Container miteinander verbunden sind. Zur besseren Uebersicht sind die <B>geteilten Kern-Dienste (blau)</B>, die fuer das gesamte System exakt einmal laufen, optisch getrennt von einer <B>generischen Agenten-Instanz (orange)</B> und ihrer jeweiligen spezifischen <B>MCP-Erweiterung (gruen, gestrichelt)</B>. Das Diagramm stellt beispielhaft dar, wie ein beliebiger Agent (<CODE>openbrain-xy-bot</CODE>) in das Netzwerk integriert wird. Er nutzt zwingend das zentrale Basis-Gedaechtnis (<CODE>openbrain-mcp</CODE>) und bei Bedarf seine eigene Werkzeug-Erweiterung (<CODE>openbrain-xy-mcp</CODE>).</P>
+
+<div class="mermaid">
+flowchart TD
+    classDef core fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef agent_inst fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef mcp_ext fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,stroke-dasharray: 5 5;
+
+    subgraph Host ["Host System und Externe APIs"]
+        LMStudio["LM Studio - Port 1234"]
+        XYAPI["Externe API (z.B. Broker)"]
+    end
+
+    subgraph DockerNet ["Docker Netzwerk: openbrain_default"]
+        
+        subgraph Chat_Layer ["Chat und Frontends"]
+            element[openbrain-element]:::core
+            studio[openbrain-studio]:::core
+            conduit[openbrain-conduit]:::core
+        end
+
+        subgraph Agent_Layer ["Agenten Bot"]
+            xy_bot[openbrain-xy-bot]:::agent_inst
+        end
+
+        subgraph Tool_Layer ["MCP Tool Server"]
+            mcp[openbrain-mcp]:::core
+            xy_mcp[openbrain-xy-mcp]:::mcp_ext
+            ollama[openbrain-ollama]:::core
+        end
+
+        subgraph API_Layer ["API Layer"]
+            gateway[openbrain-gateway]:::core
+            postgrest[openbrain-postgrest]:::core
+            meta[openbrain-meta]:::core
+        end
+
+        subgraph DB_Layer ["Datenbank"]
+            db[(openbrain-db)]:::core
+        end
+    end
+
+    %% Agent Connections
+    xy_bot -->|Matrix API| conduit
+    xy_bot -->|Memory Tools| mcp
+    xy_bot -->|Spezifische Tools| xy_mcp
+    xy_bot -->|Inference host.docker.internal| LMStudio
+
+    %% MCP Connections
+    mcp -->|Embeddings| ollama
+    mcp -->|REST Requests| gateway
+    xy_mcp -.->|API Calls| XYAPI
+
+    %% API Connections
+    gateway -->|Forwarding| postgrest
+    postgrest -->|SQL| db
+    meta -->|SQL Schema| db
+    
+    studio -->|Meta Daten| meta
+    studio -->|DB API via Gateway| gateway
+    element -->|Matrix Client API| conduit
+</div>
 
 <A NAME="db"></A>
 <H2>2. Die Daten-Schicht: PostgreSQL, pgvector & Chat-Backup</H2>
@@ -175,6 +310,8 @@
 
 <A NAME="fluss"></A>
 <H2>10. Detaillierte Szenarien des Informationsflusses</H2>
+
+<H3>10.1 Textuelles Beispiel: Eine Ausgabe speichern</H3>
 <P>Um die Komplexitaet zu verstehen, verfolgen wir eine Anfrage: <I>"Notier dir: Ich habe heute 50 Euro fuer Benzin ausgegeben."</I></P>
 <OL>
 <LI><B>Matrix:</B> Die Nachricht landet bei Conduit.
@@ -185,6 +322,58 @@
 <LI><B>PostgREST:</B> Sendet ein POST-Request mit Text, Vektor und JSON-Metadaten.
 <LI><B>PostgreSQL:</B> Speichert den Datensatz in <CODE>thoughts</CODE> UND speichert die Chat-Nachricht in <CODE>chat_messages</CODE>.
 <LI><B>EA-Bot:</B> Schreibt dir: "Alles klar, ich habe die Ausgabe unter Finanzen/Auto gespeichert."</OL>
+
+<H3>10.2 Sequenzdiagramm: Einen Gedanken erfassen</H3>
+<P>Hier ist der genaue technische Ablauf visualisiert, wenn der Admin den Bot anweist: <I>"merk dir diesen gedanken: mcp ist toll"</I>. Der Prozess zeigt alle Schritte vom Chat-Eingang bis zum endgueltigen Eintrag in der Datenbank.</P>
+
+<div class="mermaid">
+sequenceDiagram
+    actor Admin
+    participant Matrix as Matrix Conduit
+    participant Bot as EA Bot
+    participant MCP as MCP Server
+    participant LMStudio as LM Studio
+    participant Ollama as Ollama
+    participant Gateway as Nginx Gateway
+    participant DB as PostgreSQL via PostgREST
+
+    Admin->>Matrix: merk dir diesen gedanken: mcp ist toll
+    Matrix->>Bot: Push Event Neue Nachricht
+    
+    rect rgb(240, 248, 255)
+        note right of Bot: 1. Intent Analyse
+        Bot->>LMStudio: Sende Chat-Historie und aktuelle Nachricht
+        LMStudio-->>Bot: LLM entscheidet: Rufe Tool capture_thought auf
+    end
+
+    Bot->>MCP: Tool Call: capture_thought(content: mcp ist toll)
+    
+    rect rgb(255, 240, 245)
+        note right of MCP: 2. Datenanreicherung (MCP Server)
+        MCP->>LMStudio: Prompt: Extrahiere Metadaten aus Text
+        LMStudio-->>MCP: JSON type: observation, topics: mcp, tech
+        
+        MCP->>Ollama: POST /api/embeddings (Text)
+        Ollama-->>MCP: Generierter 4096-dimensionaler Vektor
+    end
+
+    rect rgb(240, 255, 240)
+        note right of MCP: 3. Speicherung
+        MCP->>Gateway: POST /rest/v1/thoughts (Text, Metadaten, Vektor)
+        Gateway->>DB: INSERT INTO thoughts
+        DB-->>Gateway: 201 Created
+        Gateway-->>MCP: Erfolg (Eintrag erstellt)
+        
+        Bot->>Gateway: POST /rest/v1/chat_messages (Chat-Log)
+        Gateway->>DB: INSERT INTO chat_messages
+        DB-->>Bot: Erfolg
+    end
+    
+    MCP-->>Bot: Tool Result: Gedanke erfolgreich gespeichert
+    
+    Bot->>Matrix: Antwort: Ist notiert!
+    Matrix->>Admin: Anzeige der Bestaetigung im Client
+</div>
 
 <A NAME="sicherheit"></A>
 <H2>11. Tiefgreifendes Sicherheits- und Rollenkonzept</H2>
@@ -209,6 +398,100 @@ docker exec openbrain-db pg_dumpall -c -U postgres > backup_datum.sql
 <PRE>
 cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 </PRE>
+
+<A NAME="deployment"></A>
+<H2>13. Deployment & Setup: Vom GitHub Repo zum laufenden System</H2>
+<P>Dieses Kapitel beschreibt, wie du das gesamte Open Brain Projekt aus dem Quellcode hochfaehrst und es fuer deine Zwecke (z.B. Multi-Agenten-Betrieb) anpasst.</P>
+
+<H3>13.1 Voraussetzungen</H3>
+<UL>
+<LI>Ein Host-System (Linux, macOS, oder Windows mit WSL2)</LI>
+<LI><B>Docker</B> und <B>Docker Compose</B> installiert</LI>
+<LI><B>LM Studio</B> lokal installiert und laufend (auf Port 1234, Local Inference Server aktiviert)</LI>
+</UL>
+
+<H3>13.2 Initiales Setup (Das Fundament)</H3>
+<P>Der Start des Kern-Systems ist auf maximale Einfachheit ausgelegt:</P>
+<OL>
+<LI><B>Repository klonen:</B> Lade dir den Code herunter (<CODE>git clone https://github.com/NateBJones/open-brain.git</CODE>).</LI>
+<LI><B>Umgebungsvariablen setzen:</B> Kopiere die Datei <CODE>.env.example</CODE> zu <CODE>.env</CODE> und fuelle die Passwoerter und Keys aus. Die Schluessel (z.B. <CODE>JWT_SECRET</CODE>, <CODE>SERVICE_ROLE_KEY</CODE>) muessen kryptografisch sicher sein.</LI>
+<LI><B>System starten:</B> Fuehre im Hauptverzeichnis den Befehl <CODE>docker compose up -d --build</CODE> aus. Docker laedt alle noetigen Images herunter, baut die lokalen Container (MCP, Bot) und startet das Netzwerk.</LI>
+<LI><B>Datenbank-Initialisierung:</B> Beim allerersten Start fuehrt PostgreSQL automatisch die SQL-Skripte im Ordner <CODE>./init</CODE> aus. Hierbei wird das Schema erstellt, <CODE>pgvector</CODE> aktiviert und das RLS-Sicherheitskonzept angewendet.</LI>
+<LI><B>Matrix-Setup:</B> Oeffne Element Web (Port 8080), registriere den Admin-Nutzer auf dem lokalen Conduit-Server und erstelle den Chat-Raum fuer den Bot.</LI>
+</OL>
+
+<H3>13.3 Einen neuen Agenten hinzufuegen (Multi-Agenten Architektur)</H3>
+<P>Das Hinzufuegen eines weiteren Agenten (z.B. eines Trading-Brokers oder eines Social-Media-Analysten) erfordert eine strikte Trennung von Logik, Tools und Daten. Gehe nach diesem exakten Ablaufplan vor:</P>
+<OL>
+<LI><B>Neuen Matrix-Account anlegen:</B> Registriere einen neuen Nutzer (z.B. <CODE>@broker:localhost</CODE>) in Conduit. Dieser Account ist das exklusive Gesicht des neuen Agenten im Chat.</LI>
+<LI><B>Einen winzigen MCP-Server bauen:</B> Ein "winziger MCP-Server" ist ein eigenstaendiger, sehr ressourcensparender Docker-Container, der ausschliesslich die API-Anbindung fuer genau eine externe Datenquelle (z.B. die IB-Broker API) kapselt. Er laeuft z.B. als Node.js oder Deno Prozess, bietet einen HTTP SSE-Endpunkt (Server-Sent Events) an und registriert spezifische Tools (wie <CODE>place_order</CODE>). Dieser Server weiss absolut nichts von Chat-Logik oder der Datenbank. Er ist ein reines, netzwerk-isoliertes Werkzeug, das seine Funktionen im internen Docker-Netzwerk (z.B. ueber <CODE>http://mcp-broker:8788</CODE>) bereitstellt.</LI>
+<LI><B>Prompt-Konfiguration als Volume mounten:</B> Die Persoenlichkeit und das Regelwerk des Agenten (System Prompt) muessen zwingend als externe Textdatei (z.B. <CODE>./agent-broker/prompt.txt</CODE>) als Volume in den Bot-Container gemountet werden. Vermeide es, Prompts als Umgebungsvariablen hart zu codieren! Durch den Datei-Mount kannst du den Prompt waehrend der Testphase und Optimierung jederzeit auf deinem Host-System in VS Code anpassen. Die Aenderungen sind beim naechsten Aufruf sofort fuer den Bot-Container verfuegbar, ohne dass du ihn neu starten oder bauen musst.</LI>
+<LI><B>Bot-Container in Docker Compose definieren:</B> Dupliziere den Block <CODE>agent-ea-bot</CODE> in deiner <CODE>docker-compose.yml</CODE> und benenne ihn in <CODE>agent-broker-bot</CODE> um. Passe die Zugangsdaten fuer Matrix an. Gib diesem Bot Zugriff auf mehrere Werkzeuge, indem du ihm die URLs zum zentralen <CODE>mcp-server</CODE> (fuer das Open Brain Gedaechtnis) UND zu deinem neuen <CODE>mcp-broker</CODE> Server uebergibst.</LI>
+<LI><B>Datenbank-Schema strikt trennen:</B> Erweitere die Datenbank fachlich sauber ueber das Supabase Studio. Anstatt alle neuen Daten in die bestehenden Standard-Tabellen zu quetschen, erstellst du ein neues, dediziertes PostgreSQL-Schema (z.B. <CODE>CREATE SCHEMA broker;</CODE>) und legst dort deine fachspezifischen Tabellen (z.B. <CODE>trades</CODE>) ab. PostgREST publiziert dieses neue Schema sofort als separate REST-API. So garantierst du, dass der neue Agent seine Daten sauber ablegt und das Kern-Gedaechtnis des Basis-Systems nicht korrumpiert.</LI>
+<LI><B>Agenten starten:</B> Fuehre <CODE>docker compose up -d</CODE> aus. Der neue Agent meldet sich im Matrix-Netzwerk an, laedt seine Tools aus den verbundenen MCP-Servern und ist sofort einsatzbereit.</LI>
+</OL>
+
+<H3>13.4 Praxis-Beispiel: Konfiguration des Broker-Agenten</H3>
+<P>Hier sind konkrete Beispiele, wie die in 13.3 beschriebenen Konzepte als Code aussehen.</P>
+
+<H4>A) Der Docker Compose Block (Auszug)</H4>
+<P>So sieht der neue Agent und sein winziger MCP-Server in der <CODE>docker-compose.yml</CODE> aus:</P>
+<PRE><CODE class="language-yaml">
+  # --- Der winzige MCP-Server fuer die IB-Broker API ---
+  mcp-broker:
+    build:
+      context: ./agent-broker/mcp
+    container_name: openbrain-mcp-broker
+    restart: unless-stopped
+    environment:
+      IB_BROKER_API_KEY: ${IB_BROKER_KEY}
+      PORT: "8788"
+    ports:
+      - "8788:8788"
+
+  # --- Der Broker-Agent (Bot) ---
+  agent-broker-bot:
+    build:
+      context: ./agent-broker/bot
+    container_name: openbrain-broker-bot
+    restart: unless-stopped
+    depends_on:
+      - conduit
+      - mcp-server
+      - mcp-broker
+    volumes:
+      # WICHTIG: Prompt wird gemountet fuer schnelles Testen
+      - ./agent-broker/prompt.txt:/app/prompt.txt:ro
+    environment:
+      MATRIX_HOMESERVER_URL: http://conduit:6167
+      MATRIX_USER: broker
+      MATRIX_PASSWORD: ${MATRIX_BROKER_PASSWORD}
+      # Bot erhaelt Zugriff auf BEIDE MCP-Server (Basis-Gedaechtnis + Broker-Tools)
+      MCP_SERVER_URLS: "http://mcp-server:8787,http://mcp-broker:8788"
+      LM_STUDIO_URL: http://host.docker.internal:1234
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+</CODE></PRE>
+
+<H4>B) Die Prompt-Datei (agent-broker/prompt.txt)</H4>
+<P>Der Prompt definiert exakt die Identitaet, die verfuegbaren Tools und die Handlungsanweisungen des Agenten. Er referenziert sowohl Tools des Basis-MCPs als auch des neuen Broker-MCPs:</P>
+<PRE><CODE class="language-markdown">
+Du bist der Open Brain Broker-Agent. 
+Deine Aufgabe ist es, das Portfolio des Nutzers zu ueberwachen, Trades vorzuschlagen und auszufuehren.
+
+VERFUEGBARE WERKZEUGE:
+1. IB-Broker Tools (vom mcp-broker):
+   - get_portfolio(): Holt die aktuellen Positionen und den Kontostand.
+   - place_order(symbol, quantity, action): Fuehrt einen Kauf/Verkauf aus.
+2. Open Brain Memory Tools (vom mcp-server):
+   - capture_thought(content): Speichere Notizen oder Trade-Begruendungen im Gedaechtnis.
+   - search_thoughts(query): Suche nach vergangenen Analysen oder Nutzer-Vorgaben.
+
+REGELN:
+- Bevor du einen Trade ausfuehrst (place_order), MUSST du den Nutzer im Chat um explizite Bestaetigung bitten.
+- Nach jedem erfolgreichen Trade, rufe 'capture_thought' auf, um die Transaktion und die Begruendung im Open Brain zu dokumentieren.
+- Frage niemals nach sensiblen Passwoertern im Chat. Alle APIs sind bereits ueber den MCP-Server autorisiert.
+</CODE></PRE>
 
 <HR>
 <P ALIGN="CENTER"><I>Ende des Handbuchs. Wissen ist Macht - Lokales Wissen ist Freiheit.<BR>Erstellt von Antigravity (AI) fuer das Open Brain Projekt.</I></P>
