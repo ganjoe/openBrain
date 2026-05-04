@@ -54,7 +54,7 @@
 <UL>
 <LI><B>Die Daten-Basis:</B> <CODE>openbrain-db</CODE> (PostgreSQL 17). Ausschie&szlig;lich intern f&uuml;r <CODE>postgrest</CODE> und <CODE>meta</CODE> erreichbar.
 <LI><B>API & Orchestrierung:</B> <CODE>gateway</CODE> (Nginx) fungiert als zentraler Reverse-Proxy. Er transformiert <CODE>/rest/v1/</CODE> Anfragen via URL-Rewriting zu sauberen <CODE>postgrest</CODE> Calls und managt CORS-Header zentral.
-<LI><B>KI & Agenten:</B> Der <CODE>mcp-server</CODE> operiert als zentraler Tool-Hub. Er ruft <CODE>ollama</CODE> per REST API f&uuml;r Embeddings auf und tunnelt LLM-Inferenz-Requests &uuml;ber <CODE>host.docker.internal:1234</CODE> an das Host-System. Der <CODE>agent-ea-bot</CODE> f&uuml;hrt den ReAct-Loop aus, f&uuml;hrt den ReAct-Loop aus und kommuniziert mit anderen Agenten ausschlie&szlig;lich via MQTT-Bus (The Nexus).
+<LI><B>KI & Agenten:</B> Pro Agent laufen zwei Container: <CODE>mcp-server</CODE> (Tool-Hub) und <CODE>agent-bot</CODE> (ReAct-Loop). Agenten-Identit&auml;t kommt ausschlie&szlig;lich aus <CODE>config.yaml</CODE> &mdash; nie hartkodiert.
 <LI><B>The Nexus:</B> <CODE>nexus-broker</CODE> (Mosquitto MQTT, Port 1883) ist der asynchrone Kommunikations-Bus. <CODE>nexus-service</CODE> (Port 7734) loggt jede Nachricht. <CODE>nexus-frontend</CODE> (Port 7733) ist das Admin-Dashboard.</LI>
 </UL>
 
@@ -62,58 +62,65 @@
 
 <div class="mermaid">
 graph TD
-    subgraph Host ["Host Maschine PC"]
-        User["Benutzer Browser oder Apps"]
-        LMStudio["LM Studio - Lokales LLM - Port 1234"]
+    subgraph Host ["Host Maschine"]
+        User["Admin Browser"]
+        LMStudio["LM Studio - Port 1234"]
     end
 
     subgraph OpenBrainNet ["Docker Netzwerk: openbrain_default"]
         
-        subgraph Frontend ["Frontends"]
-            Element["Element Web - Port 8080"]
+        subgraph NexusLayer ["The Nexus"]
+            Broker["Mosquitto MQTT - Port 1883"]
+            NexusSvc["Nexus Service - Port 7734"]
+            NexusUI["Nexus Dashboard - Port 7733"]
+        end
+
+        subgraph Agenten ["Agenten"]
+            Gateway["Nginx Gateway - Port 8001"]
+            MCPEA["MCP EA - Port 8787"]
+            MCPCCO["MCP CCO - Port 8788"]
+            EABot["EA Bot"]
+            CCOBot["CCO Bot"]
+        end
+
+        subgraph Backend ["Backend"]
+            PostgREST["PostgREST - Port 3001"]
+            Meta["PG Meta"]
+            Ollama["Ollama - Port 11434"]
             Studio["Supabase Studio - Port 3000"]
         end
 
-        subgraph Agenten ["Agentik und API"]
-            Gateway["Nginx Gateway - Port 8001"]
-            MCP["MCP Server - Port 8787"]
-            EABot["EA Bot"]
-            Conduit["Matrix Server Conduit - Port 6167"]
-        end
-
-        subgraph Backend ["Backend und KI"]
-            PostgREST["PostgREST - Port 3001"]
-            Meta["PG Meta"]
-            Ollama["Ollama Embeddings - Port 11434"]
-        end
-
         subgraph Data ["Datenbank"]
-            DB[(PostgreSQL db - Port 5433)]
+            DB[(PostgreSQL + nexus_messages)]
         end
         
     end
 
-    %% Verbindungen
-    User -->|Chat| Element
-    User -->|Admin| Studio
-    User -.->|Lokaler DB Zugriff| DB
-    
-    Element -->|Matrix API| Conduit
-    EABot -->|Matrix API| Conduit
-    EABot -->|MCP Tools| MCP
-    EABot -->|Inference host.docker.internal| LMStudio
-    
-    MCP -->|Inference host.docker.internal| LMStudio
-    MCP -->|Embeddings API| Ollama
-    MCP -->|REST Requests| Gateway
-    
-    Studio -->|Meta Daten| Meta
-    Studio -->|DB API via Gateway| Gateway
-    
-    Gateway -->|Forwarding| PostgREST
-    
-    PostgREST -->|SQL Queries| DB
-    Meta -->|SQL Schema| DB
+    %% Nexus Verbindungen
+    User --> |Dashboard| NexusUI
+    User --> |Admin| Studio
+
+    NexusSvc --> |Subscribe| Broker
+    NexusSvc --> |Log| Gateway
+    NexusUI --> |SSE| NexusSvc
+
+    EABot --> |MQTT| Broker
+    CCOBot --> |MQTT| Broker
+    Broker --> |Push| EABot
+    Broker --> |Push| CCOBot
+    EABot --> |Tools| MCPEA
+    CCOBot --> |Tools| MCPCCO
+    EABot --> |Inference| LMStudio
+    CCOBot --> |Inference| LMStudio
+    MCPEA --> |Embeddings| Ollama
+    MCPEA --> |REST| Gateway
+    MCPCCO --> |Embeddings| Ollama
+    MCPCCO --> |REST| Gateway
+    Gateway --> |Forward| PostgREST
+    PostgREST --> |SQL| DB
+    Meta --> |Schema| DB
+    Studio --> |Meta| Meta
+    Studio --> |API| Gateway
 </div>
 <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
@@ -126,20 +133,21 @@ graph TD
 <div class="mermaid">
 flowchart TD
     classDef core fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef nexus fill:#e8eaf6,stroke:#3949ab,stroke-width:2px;
     classDef agent_inst fill:#fff3e0,stroke:#e65100,stroke-width:2px;
     classDef mcp_ext fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,stroke-dasharray: 5 5;
 
-    subgraph Host ["Host System und Externe APIs"]
+    subgraph Host ["Host System"]
         LMStudio["LM Studio - Port 1234"]
-        XYAPI["Externe API (z.B. Broker)"]
+        XYAPI["Externe API"]
     end
 
     subgraph DockerNet ["Docker Netzwerk: openbrain_default"]
         
-        subgraph Chat_Layer ["Chat und Frontends"]
-            element[openbrain-element]:::core
-            studio[openbrain-studio]:::core
-            conduit[openbrain-conduit]:::core
+        subgraph Nexus_Layer ["The Nexus"]
+            broker[nexus-broker MQTT]:::nexus
+            nexus_svc[nexus-service]:::nexus
+            nexus_ui[nexus-frontend]:::nexus
         end
 
         subgraph Agent_Layer ["Agenten Bot"]
@@ -150,6 +158,7 @@ flowchart TD
             mcp[openbrain-mcp]:::core
             xy_mcp[openbrain-xy-mcp]:::mcp_ext
             ollama[openbrain-ollama]:::core
+            studio[openbrain-studio]:::core
         end
 
         subgraph API_Layer ["API Layer"]
@@ -159,29 +168,31 @@ flowchart TD
         end
 
         subgraph DB_Layer ["Datenbank"]
-            db[(openbrain-db)]:::core
+            db[(openbrain-db + nexus_messages)]:::core
         end
     end
 
-    %% Agent Connections
-    xy_bot -->|Matrix API| conduit
-    xy_bot -->|Memory Tools| mcp
+    %% Nexus Bus
+    xy_bot -->|MQTT| broker
+    broker -->|Push| xy_bot
+    nexus_svc -->|Subscribe| broker
+    nexus_svc -->|Log| gateway
+    nexus_ui -->|SSE| nexus_svc
+
+    %% Agent Tools
+    xy_bot -->|Local MCP| mcp
     xy_bot -->|Spezifische Tools| xy_mcp
-    xy_bot -->|Inference host.docker.internal| LMStudio
+    xy_bot -->|Inference| LMStudio
+    xy_mcp -.->|API| XYAPI
 
-    %% MCP Connections
     mcp -->|Embeddings| ollama
-    mcp -->|REST Requests| gateway
-    xy_mcp -.->|API Calls| XYAPI
+    mcp -->|REST| gateway
 
-    %% API Connections
-    gateway -->|Forwarding| postgrest
+    gateway -->|Forward| postgrest
     postgrest -->|SQL| db
-    meta -->|SQL Schema| db
-    
-    studio -->|Meta Daten| meta
-    studio -->|DB API via Gateway| gateway
-    element -->|Matrix Client API| conduit
+    meta -->|Schema| db
+    studio -->|Meta| meta
+    studio -->|API| gateway
 </div>
 
 <A NAME="db"></A>
@@ -216,15 +227,16 @@ for (const [key, val] of Object.entries(m)) {
 
 <P><B>Die Konsequenz f&uuml;r Entwickler:</B> Da die Datenbank JSONB nicht limitiert und der Code dynamisch iteriert, hast du bei der Agenten-Erstellung v&ouml;llige Freiheit. Ein Koch-Bot kann in seinem Metadaten-Prompt anweisen, v&ouml;llig neue Arrays wie <CODE>"zutaten": ["Mehl", "Zucker"]</CODE> zu extrahieren. Diese werden sauber als JSONB gespeichert und bei einer sp&auml;teren LLM-Suche automatisch formatiert an den Bot zur&uuml;ckgeliefert. Keine einzige Zeile TypeScript-Code muss daf&uuml;r ver&auml;ndert werden.</P>
 
-<H3>2.3 Tabelle 'chat_messages': Das Interaktions-Backup</H3>
-<P>Eine oft &uuml;bersehene, aber architektonisch kritische Komponente ist die Tabelle <CODE>chat_messages</CODE>. Sie fungiert als permanentes Backup aller Chat-Interaktionen zwischen Nutzer und Agenten.</P>
+<H3>2.3 Tabelle 'nexus_messages': Das Kommunikations-Audit-Log</H3>
+<P>Die Tabelle <CODE>nexus_messages</CODE> ist der persistente Audit-Trail aller Agenten-Kommunikation. Jede MQTT-Nachricht die durch den Nexus-Broker l&auml;uft wird hier gespeichert.</P>
 <UL>
-<LI><B>room_id (TEXT):</B> Die ID des Matrix-Raums. Erm&ouml;glicht die kryptografische Trennung von Gespr&auml;chen.</LI>
-<LI><B>sender (TEXT):</B> Identifikator des Absenders (Nutzer oder Bot).</LI>
-<LI><B>role (TEXT):</B> Die Rolle f&uuml;r das LLM (user/assistant).</LI>
-<LI><B>content (TEXT):</B> Der eigentliche Payload der Nachricht.</LI>
-<LI><B>created_at (TIMESTAMPTZ):</B> Monoton steigender Zeitstempel der Nachricht.</LI></UL>
-<P>Dieses Chat-Logging ist der Schl&uuml;ssel zur <B>Historien-Persistenz</B>. Ein Bot ist by-design zustandslos. Startet er neu, rehydriert er seinen State durch Laden der letzten 10 Nachrichten aus dieser Tabelle. Gleichzeitig existiert eine unver&auml;nderliche Historie (Audit-Log) aller Aktionen.</P>
+<LI><B>from_agent (TEXT):</B> ID des Absenders (aus <CODE>config.yaml</CODE>, nie hardkodiert).</LI>
+<LI><B>to_agent (TEXT):</B> ID des Empf&auml;ngers.</LI>
+<LI><B>msg_type (TEXT):</B> Nachrichtentyp: <CODE>chat</CODE>, <CODE>status</CODE>, <CODE>mcp_request</CODE>.</LI>
+<LI><B>unix_ts (BIGINT):</B> Unix-Timestamp f&uuml;r performante Zeitfilter.</LI>
+<LI><B>full_json (JSONB):</B> Das vollst&auml;ndige Nachrichtenobjekt inkl. Header und Content.</LI>
+<LI><B>created_at (TIMESTAMPTZ):</B> Monoton steigender DB-Timestamp.</LI></UL>
+<P>Die Persistenz ist der Schl&uuml;ssel zur <B>Historien-Persistenz</B>. Das Dashboard nutzt <CODE>/api/history?since=0</CODE> um beim Start alle Nachrichten zu laden. Der SSE-Stream liefert neue Nachrichten in Echtzeit.</P>
 
 <A NAME="postgrest"></A>
 <H2>3. Die API-Schicht: PostgREST & Automatisierung</H2>
@@ -309,22 +321,20 @@ graph TD
     PostgREST -- "Native TCP/SQL" --> DB
 </div>
 
-<A NAME="matrix"></A>
-<H2>7. Die Chat-Infrastruktur: Matrix Conduit & Element</H2>
-<P>Matrix liefert ein dezentrales, event-basiertes Protokoll f&uuml;r die Mensch-Maschine Kommunikation. Wir forcieren "No Federation", wodurch das Protokoll vollst&auml;ndig air-gapped betrieben wird.</P>
-
-<H3>7.1 Conduit: Matrix in Rust</H3>
-<P>Der klassische Synapse-Server (Python) ist zu ressourcenintensiv. Wir deployen <B>Conduit</B>, eine hochperformante Rust-Implementierung. Es betreibt den gesamten Matrix-Homeserver in einem Bruchteil des Speichers und sichert Events atomar in einer SQLite-Datenbank.</P>
-
-<H3>7.2 Element: Der GUI Client</H3>
-<P>Element dient als Frontend-React-App. Da Matrix ein Standard-API-Protokoll definiert, agiert Element als blo&szlig;es View-Layer. Es authentifiziert sich bei Conduit und synchronisiert Chat-R&auml;ume via HTTP-Long-Polling oder WebSockets.</P>
+<A NAME="nexus"></A>
+<H2>7. The Nexus: MQTT-basierter Agenten-Kommunikations-Hub</H2>
+<P>The Nexus ersetzt die fr&uuml;here Matrix/Conduit/Element-Infrastruktur vollst&auml;ndig. Der zentrale Kommunikations-Mechanismus ist ein <B>MQTT Message Broker (Mosquitto)</B>.</P>
+<H3>7.1 Warum MQTT statt Matrix?</H3>
+<P>MQTT (ISO/IEC 20922) ist ein leichtgewichtiges Pub/Sub-Protokoll mit persistenter TCP-Verbindung und &lt;5ms Latenz. Im Gegensatz zu Matrix-Rooms sind Topics dynamisch und ohne vorherige Konfiguration nutzbar. Jeder Agent subscribt beim Start seine eigene <CODE>agents/{id}/inbox</CODE> &mdash; keine Room-IDs, keine Registrierung.</P>
+<H3>7.2 Cross-Agent MCP via MQTT</H3>
+<P>Will Agent A ein Tool von Agent B nutzen, publiziert er auf <CODE>agents/B/mcp/request</CODE>. Agent B f&uuml;hrt das Tool aus und antwortet auf <CODE>agents/A/mcp/response/{req_id}</CODE>. Kein Agent kennt die HTTP-URL eines anderen. Der Nexus-Service loggt jeden Cross-Agent-MCP-Call mit <CODE>msg_type: mcp_request</CODE>.</P>
 
 <A NAME="mcp"></A>
 <H2>8. Der Tool-Server: Deep Dive in die Deno MCP Implementierung</H2>
 <P>Der MCP-Server ist das technologische Bindeglied zwischen Bot und Datenbank. Er exponiert LLM-lesbare Werkzeuge und orchestriert die Vektorisierung. Wir nutzen hierf&uuml;r <B>Deno</B> anstelle von Node.js.</P>
 
 <H3>8.1 Das Fork-Paradigma: Ein MCP-Server pro Bot</H3>
-<P>Open Brain verfolgt bei der Agenten-Erstellung ein konsequentes <B>Template- und Fork-Paradigma</B>. Ein vollst&auml;ndiger Agent besteht nicht nur aus einem Matrix-Bot, sondern <B>immer auch aus seinem eigenen Tool-Server (MCP)</B>.</P>
+<P>Open Brain verfolgt bei der Agenten-Erstellung ein konsequentes <B>Template- und Fork-Paradigma</B>. Ein vollst&auml;ndiger Agent besteht aus einem <B>eigenen MCP-Server</B> und einem <B>MQTT-Bot</B>. Kein Matrix-Konto, keine Room-IDs.</P>
 <P>Da jeder Bot seinen eigenen MCP-Server besitzt, l&auml;dt dieser auch eine eigene <CODE>metadata-prompt.txt</CODE>. Dies eliminiert System-weites Schema-Lock-in: Jeder Agent etabliert durch seinen gekoppelten MCP-Server seine v&ouml;llig eigene JSONB-Struktur in der Datenbank, ohne Kern-Komponenten oder andere Agenten jemals zu tangieren.</P>
 
 <H3>8.2 Deep Dive: Die exakte Mechanik von 'capture_thought'</H3>
@@ -344,7 +354,7 @@ graph TD
 
 <A NAME="bot"></A>
 <H2>9. Der Executive Assistant: Bot-Logik, Historie & Agentik</H2>
-<P>Der <CODE>agent-ea-bot</CODE> ist das ausf&uuml;hrende Frontend der Intelligenz. Er parst Matrix-Events und steuert den ReAct-Loop.</P>
+<P>Der <CODE>agent-ea-bot</CODE> ist das ausf&uuml;hrende Frontend der Intelligenz. Er subscribed seinen MQTT-Topic und steuert den ReAct-Loop.</P>
 
 <H3>9.1 Die Zwei-Prompt Strategie</H3>
 <P>Ein oft missverstandenes Konzept: <I>Welcher Prompt steuert eigentlich was?</I></P>
@@ -353,10 +363,10 @@ graph TD
 <LI><B>2. Der Metadaten-Prompt (Das "Wie"):</B> Wie im MCP-Kapitel erkl&auml;rt, greift erst nach dem Tool-Aufruf die <CODE>metadata-prompt.txt</CODE> des MCP-Servers, um den Text strukturiert in JSONB zu formen.</UL>
 
 <H3>9.2 Der ReAct-Loop & Historien-Management</H3>
-<P>Der Bot antwortet nicht auf direktem Weg. Er operiert in einem strengen autonomen Zyklus: <B>Thought</B> (Welches Tool brauche ich?) &rarr; <B>Action</B> (Tool-Call via HTTP) &rarr; <B>Observation</B> (Auswertung des JSON-Responses). Zur Wahrung des Kontext-Fensters l&auml;dt der Bot vor jedem Loop die letzten 10 Matrix-Nachrichten aus der <CODE>chat_messages</CODE> Tabelle. Dies ist effektiv RAG (Retrieval-Augmented Generation) f&uuml;r den Chat-State.</P>
+<P>Der Bot antwortet nicht auf direktem Weg. Er operiert in einem strengen autonomen Zyklus: <B>Thought</B> (Welches Tool?) &rarr; <B>Action</B> (Tool-Call via HTTP) &rarr; <B>Observation</B> (Auswertung des JSON-Responses). Historien-Management: Der Bot l&auml;dt beim Start die letzten 10 Nachrichten aus der <CODE>nexus_messages</CODE>-Tabelle (gefiltert auf seinen eigenen Agenten-Vektor). Dies ist effektiv RAG f&uuml;r den Chat-State.</P>
 
 <H3>9.3 Multi-Agenten Kommunikation: Natural Language Delegation</H3>
-<P>Wenn mehrere Bots (z.B. der Executive Assistant und der Chief Creative Officer) im selben Matrix-Raum (War Room) agieren, entsteht schnell das Problem des Feedback-Loops: Bot A antwortet auf Bot B, Bot B wieder auf Bot A. Um dies zu verhindern und gleichzeitig 100% Transparenz f&uuml;r den menschlichen Superuser zu garantieren, nutzt Open Brain das Konzept der <B>Natural Language Delegation</B>.</P>
+<P>Wenn mehrere Bots (z.B. EA und CCO) auf dem Nexus aktiv sind, entsteht ohne Filtering das Problem des Feedback-Loops. Open Brain nutzt <B>Natural Language Delegation</B> via MQTT:</P>
 <UL>
 <LI><B>Erw&auml;hnungs-Filter (Mention-Routing):</B> Auf Code-Ebene (<CODE>index.ts</CODE>) greift ein strikter Filter. Ein Bot ignoriert grunds&auml;tzlich alle MQTT-Nachrichten von anderen Bots, es sei denn, sein eigener Name (z.B. <CODE>cco</CODE>) wird explizit im Nachrichtentext erw&auml;hnt. Die Agenten-ID ist nie im Code hartkodiert &mdash; sie wird aus <CODE>config.yaml</CODE> geladen.</LI>
 <LI><B>Der Raum als Bus:</B> Bots kommunizieren nicht &uuml;ber versteckte APIs, sondern via MQTT. Wenn EA den CCO anweisen m&ouml;chte, publiziert er eine Nachricht auf <CODE>agents/cco/inbox</CODE>. CCO subscribed diesen Topic, f&uuml;hrt die Aktion aus und antwortet auf <CODE>agents/ea/inbox</CODE>. Der Nexus-Service loggt jeden Schritt transparent.</LI>
@@ -373,7 +383,7 @@ graph TD
 <LI><B>Bot:</B> LLM erkennt Intent. Trigger: Rufe <CODE>capture_thought</CODE> auf.
 <LI><B>MCP-Server:</B> Nimmt Text, ruft LM Studio mit <CODE>metadata-prompt</CODE> auf &rarr; JSON <CODE>{type: "observation", amount: 50}</CODE> wird generiert.
 <LI><B>Ollama:</B> Berechnet Embedding-Vektor.
-<LI><B>PostgreSQL:</B> Speichert <CODE>thoughts</CODE> Datensatz und Matrix-Event synchron.
+<LI><B>PostgreSQL:</B> Speichert <CODE>thoughts</CODE> Datensatz und Nexus-Message synchron.
 <LI><B>Bot:</B> Erh&auml;lt Success-Code vom MCP, generiert Antwort und publiziert sie auf <CODE>agents/boss/inbox</CODE>. Nexus loggt die Antwort in <CODE>nexus_messages</CODE>.</OL>
 
 <H3>10.2 Sequenzdiagramm: Einen Gedanken erfassen</H3>
