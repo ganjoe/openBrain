@@ -230,3 +230,49 @@ GRANT EXECUTE ON FUNCTION match_thoughts TO anon;
 GRANT EXECUTE ON FUNCTION search_thoughts_keyword TO anon;
 GRANT EXECUTE ON FUNCTION hybrid_search_thoughts TO anon;
 GRANT EXECUTE ON FUNCTION upsert_thought TO anon;
+
+-- ============================================================
+-- 10. Nexus Message Log
+--     Stores all inter-agent MQTT messages in full JSONB form.
+--     The Nexus-Service writes here; the dashboard reads here.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS nexus_messages (
+  id          BIGSERIAL PRIMARY KEY,
+  from_agent  TEXT      NOT NULL,
+  to_agent    TEXT      NOT NULL,
+  msg_type    TEXT      NOT NULL DEFAULT 'chat',
+  unix_ts     BIGINT    NOT NULL,
+  date_str    TEXT,
+  full_json   JSONB     NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Agenten-Vektor index: fast bidirectional lookup (ea<->cco, boss<->ea, ...)
+CREATE INDEX IF NOT EXISTS idx_nexus_vector
+  ON nexus_messages (from_agent, to_agent);
+
+-- Time index: History-Provider (since=unix_ts)
+CREATE INDEX IF NOT EXISTS idx_nexus_unix
+  ON nexus_messages (unix_ts);
+
+-- Type index: Status-Channel + MCP-Stream filter
+CREATE INDEX IF NOT EXISTS idx_nexus_type
+  ON nexus_messages (msg_type);
+
+-- RLS + Permissions
+ALTER TABLE nexus_messages ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Nexus full access" ON nexus_messages;
+CREATE POLICY "Nexus full access"
+  ON nexus_messages
+  FOR ALL
+  USING (true);
+
+GRANT ALL ON TABLE public.nexus_messages TO postgres;
+GRANT ALL ON TABLE public.nexus_messages TO service_role;
+GRANT ALL ON TABLE public.nexus_messages TO authenticator;
+GRANT ALL ON TABLE public.nexus_messages TO anon;
+GRANT ALL ON SEQUENCE public.nexus_messages_id_seq TO postgres;
+GRANT ALL ON SEQUENCE public.nexus_messages_id_seq TO service_role;
+GRANT ALL ON SEQUENCE public.nexus_messages_id_seq TO authenticator;
+GRANT ALL ON SEQUENCE public.nexus_messages_id_seq TO anon;

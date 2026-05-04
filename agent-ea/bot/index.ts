@@ -1,294 +1,396 @@
-import { MatrixClient, SimpleFsStorageProvider, AutojoinRoomsMixin } from "matrix-bot-sdk";
 import * as fs from "fs";
+import * as path from "path";
+import * as mqtt from "mqtt";
+import * as yaml from "js-yaml";
 
-// 1. Configuration from Environment
-const MATRIX_URL = process.env.MATRIX_HOMESERVER_URL || "http://localhost:6167";
-const MATRIX_USER = process.env.MATRIX_USER || "ea";
-const MATRIX_PASSWORD = process.env.MATRIX_PASSWORD || "freeadamnemesisx1";
-const MCP_SERVER_URLS_STR = process.env.MCP_SERVER_URLS || process.env.MCP_SERVER_URL || "http://localhost:8787";
-const MCP_ACCESS_KEY = process.env.MCP_ACCESS_KEY || "";
+// ─────────────────────────────────────────────────────────────
+// 1. Load config.yaml — single source of truth for agent identity
+// ─────────────────────────────────────────────────────────────
+interface AgentConfig {
+  agent:  { id: string; name: string; display_name: string };
+  mqtt:   { broker_url: string; lwt_topic: string; lwt_payload: string };
+  mcp:    { local_servers: Array<{ url: string; label: string }> };
+}
+
+const CONFIG_PATH = process.env.CONFIG_PATH || "/app/config.yaml";
+let config: AgentConfig;
+
+try {
+  config = yaml.load(fs.readFileSync(CONFIG_PATH, "utf-8")) as AgentConfig;
+  console.log(`🤖 Agent identity loaded: ${config.agent.id} (${config.agent.name})`);
+} catch (e) {
+  console.error("❌ Failed to load config.yaml:", e);
+  process.exit(1);
+}
+
+const AGENT_ID       = config.agent.id;           // e.g. "ea" — never hardcoded
+const INBOX_TOPIC    = `agents/${AGENT_ID}/inbox`;
+const MCP_REQ_TOPIC  = `agents/+/mcp/request`;    // watch cross-agent MCP requests
+const MCP_RESP_TOPIC = `agents/${AGENT_ID}/mcp/response/+`;
+
+// ─────────────────────────────────────────────────────────────
+// 2. Other environment config
+// ─────────────────────────────────────────────────────────────
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL || "http://localhost:1234";
+const MCP_ACCESS_KEY = process.env.MCP_ACCESS_KEY || "";
+const POSTGREST_URL  = process.env.POSTGREST_URL || "http://postgrest:3000";
 
-const MCP_SERVER_URLS = MCP_SERVER_URLS_STR.split(",").map(url => url.trim()).filter(url => url.length > 0);
-
-// 2. Setup Matrix Storage
-const storage = new SimpleFsStorageProvider("bot-storage.json");
-
-// 3. System Prompt (Dynamic)
-let SYSTEM_PROMPT = `Du bist ein generischer Agent. Bitte mounte eine prompt.txt.`;
+// ─────────────────────────────────────────────────────────────
+// 3. System prompt (mounted via Docker volume)
+// ─────────────────────────────────────────────────────────────
+let SYSTEM_PROMPT = `Du bist ${config.agent.name}. Bitte mounte eine prompt.txt.`;
 const PROMPT_PATH = process.env.PROMPT_PATH || "/app/prompt.txt";
 if (fs.existsSync(PROMPT_PATH)) {
-    SYSTEM_PROMPT = fs.readFileSync(PROMPT_PATH, "utf-8");
-} else if (fs.existsSync("prompt.txt")) {
-    SYSTEM_PROMPT = fs.readFileSync("prompt.txt", "utf-8");
+  SYSTEM_PROMPT = fs.readFileSync(PROMPT_PATH, "utf-8");
 } else {
-    console.warn(`⚠️ Warning: No prompt.txt found at ${PROMPT_PATH}. Using fallback prompt.`);
+  console.warn(`⚠️  No prompt.txt at ${PROMPT_PATH} — using fallback.`);
 }
 
-// --- Simple Stateless MCP Client via HTTP/JSON-RPC ---
+// ─────────────────────────────────────────────────────────────
+// 4. Pending cross-agent MCP request callbacks
+//    key: request_id  value: resolve function
+// ─────────────────────────────────────────────────────────────
+const pendingMcpRequests = new Map<string, (result: any) => void>();
+
+// ─────────────────────────────────────────────────────────────
+// 5. Stateless MCP HTTP client (for LOCAL servers only)
+// ─────────────────────────────────────────────────────────────
 class StatelessMcpClient {
-    constructor(public url: string, private key: string) {}
+  constructor(public url: string, private key: string) {}
 
-    private async request(method: string, params: any) {
-        const res = await fetch(`${this.url}?key=${this.key}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                jsonrpc: "2.0",
-                method: method,
-                params: params,
-                id: Date.now()
-            })
-        });
-
-        const text = await res.text();
-        let jsonStr = text;
-
-        // If it's an SSE response (starts with event: message), extract the data line
-        if (text.includes("event: message")) {
-            const dataLine = text.split("\n").find(line => line.startsWith("data: "));
-            if (dataLine) {
-                jsonStr = dataLine.substring(6);
-            }
-        }
-
-        try {
-            const data = JSON.parse(jsonStr);
-            if (data.error) throw new Error(data.error.message);
-            return data.result;
-        } catch (e: any) {
-            console.error("❌ Failed to parse MCP response:", text);
-            throw new Error(`Invalid MCP response: ${e.message}`);
-        }
-    }
-
-    async listTools() {
-        return this.request("tools/list", {});
-    }
-
-    async callTool(name: string, args: any) {
-        return this.request("tools/call", { name, arguments: args });
-    }
-}
-
-async function main() {
-    console.log("🚀 Starting EA Bot (Stateless Mode)...");
-
-    // --- A. Login to Matrix ---
-    console.log(`🔑 Logging into Matrix at ${MATRIX_URL} as ${MATRIX_USER}...`);
-    const authResponse = await fetch(`${MATRIX_URL}/_matrix/client/v3/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            type: "m.login.password",
-            identifier: { type: "m.id.user", user: MATRIX_USER },
-            password: MATRIX_PASSWORD
-        })
+  private async request(method: string, params: any) {
+    const res = await fetch(`${this.url}?key=${this.key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method, params, id: Date.now() }),
     });
 
-    if (!authResponse.ok) {
-        console.error("❌ Matrix Login failed:", await authResponse.text());
-        process.exit(1);
+    const text = await res.text();
+    let jsonStr = text;
+
+    if (text.includes("event: message")) {
+      const dataLine = text.split("\n").find(l => l.startsWith("data: "));
+      if (dataLine) jsonStr = dataLine.substring(6);
     }
-    const authData = await authResponse.json();
-    const accessToken = authData.access_token;
-    const userId = authData.user_id;
 
-    const matrixClient = new MatrixClient(MATRIX_URL, accessToken, storage);
-    AutojoinRoomsMixin.setupOnClient(matrixClient);
+    const data = JSON.parse(jsonStr);
+    if (data.error) throw new Error(data.error.message);
+    return data.result;
+  }
 
-    // --- B. Setup Stateless MCP Clients ---
-    console.log(`🔌 Setup MCP Clients for: ${MCP_SERVER_URLS.join(", ")}`);
-    const mcpClients = MCP_SERVER_URLS.map(url => new StatelessMcpClient(url, MCP_ACCESS_KEY));
+  async listTools()              { return this.request("tools/list", {}); }
+  async callTool(name: string, args: any) { return this.request("tools/call", { name, arguments: args }); }
+}
 
-    // --- C. Listen for Chat Messages ---
-    matrixClient.on("room.message", async (roomId, event) => {
-        if (!event.content || !event.content.body || event.sender === userId) return;
+// ─────────────────────────────────────────────────────────────
+// 6. Cross-agent MCP via MQTT (publish request, await response)
+// ─────────────────────────────────────────────────────────────
+function callCrossAgentTool(
+  mqttClient: mqtt.MqttClient,
+  targetAgentId: string,
+  toolName: string,
+  toolArgs: any,
+  timeoutMs = 15000
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const requestId = `${AGENT_ID}-${Date.now()}`;
 
-        const userMessage = event.content.body;
-        const msgLower = userMessage.toLowerCase();
-        const botName = process.env.MATRIX_USER!.toLowerCase();
+    pendingMcpRequests.set(requestId, resolve);
 
-        // 1. Bots ignorieren Nachrichten von anderen Bots, es sei denn, sie werden namentlich erwähnt
-        const isFromBot = event.sender.includes("@ea:") || event.sender.includes("@cco:");
-        const isMentioned = msgLower.includes(botName) || msgLower.includes(`@${botName}`);
-        
-        if (isFromBot && !isMentioned) {
-            console.log(`🔕 [${botName}] Ignoriere Nachricht von anderem Bot.`);
-            return;
-        }
-        
-        // 2. Bots ignorieren Menschen, wenn ein anderer Bot explizit angesprochen wurde
-        const mentionsEa = msgLower.includes("ea");
-        const mentionsCco = msgLower.includes("cco");
-        
-        if (botName === "ea" && mentionsCco && !mentionsEa) return;
-        if (botName === "cco" && mentionsEa && !mentionsCco) return;
-
-        console.log(`\n💬 Received message: ${userMessage}`);
-
-        matrixClient.setTyping(roomId, true, 30000).catch(console.error);
-
-        try {
-            await handleMessage(matrixClient, mcpClients, roomId, userMessage);
-        } catch (error) {
-            console.error("❌ Error handling message:", error);
-            matrixClient.sendMessage(roomId, {
-                msgtype: "m.text",
-                body: "Sorry, ich hatte ein internes Problem bei der Verarbeitung."
-            });
-        } finally {
-            matrixClient.setTyping(roomId, false).catch(console.error);
-        }
+    const payload = JSON.stringify({
+      header: {
+        from: AGENT_ID,
+        to: targetAgentId,
+        date: "",
+        unix: Math.floor(Date.now() / 1000),
+        msg_type: "mcp_request",
+      },
+      mcp: { server: targetAgentId, command: toolName, params: toolArgs },
+      request_id: requestId,
     });
 
-    await matrixClient.start();
-    console.log(`✅ EA Bot is now syncing and listening!`);
+    mqttClient.publish(`agents/${targetAgentId}/mcp/request`, payload, { qos: 1 });
+
+    setTimeout(() => {
+      if (pendingMcpRequests.has(requestId)) {
+        pendingMcpRequests.delete(requestId);
+        reject(new Error(`Cross-agent MCP timeout: ${targetAgentId}/${toolName}`));
+      }
+    }, timeoutMs);
+  });
 }
 
-const POSTGREST_URL = "http://postgrest:3000";
-
-// --- Database Helpers ---
-async function saveMessageToDb(roomId: string, sender: string, role: string, content: string) {
-    try {
-        await fetch(`${POSTGREST_URL}/chat_messages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ room_id: roomId, sender, role, content })
-        });
-    } catch (e) {
-        console.error("❌ DB save failed:", e);
-    }
+// ─────────────────────────────────────────────────────────────
+// 7. Database helpers (PostgREST — unchanged from old bot)
+// ─────────────────────────────────────────────────────────────
+async function saveMessageToDb(sender: string, role: string, content: string) {
+  try {
+    await fetch(`${POSTGREST_URL}/chat_messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room_id: AGENT_ID, sender, role, content }),
+    });
+  } catch (e) {
+    console.error("❌ DB save failed:", e);
+  }
 }
 
-async function loadHistoryFromDb(roomId: string, limit: number = 10) {
-    try {
-        const res = await fetch(`${POSTGREST_URL}/chat_messages?room_id=eq.${encodeURIComponent(roomId)}&order=created_at.desc&limit=${limit}`);
-        if (!res.ok) return [];
-        const data: any[] = await res.json();
-        // PostgREST returns desc, so we need to reverse to chronological order
-        return data.reverse().map(row => ({
-            role: row.role,
-            content: row.content
-        }));
-    } catch (e) {
-        console.error("❌ DB load failed:", e);
-        return [];
-    }
+async function loadHistoryFromDb(limit = 10) {
+  try {
+    const res = await fetch(
+      `${POSTGREST_URL}/chat_messages?room_id=eq.${AGENT_ID}&order=created_at.desc&limit=${limit}`
+    );
+    if (!res.ok) return [];
+    const data: any[] = await res.json();
+    return data.reverse().map(r => ({ role: r.role, content: r.content }));
+  } catch {
+    return [];
+  }
 }
 
-async function handleMessage(matrixClient: MatrixClient, mcpClients: StatelessMcpClient[], roomId: string, userMessage: string) {
-    // 1. Speichere neue User-Nachricht asynchron
-    saveMessageToDb(roomId, "user", "user", userMessage);
-
-    // 2. Lade Historie und Tools
-    const historyPromise = loadHistoryFromDb(roomId, 10);
-    
-    const availableTools: any[] = [];
-    const toolToClientMap = new Map<string, StatelessMcpClient>();
-
-    await Promise.all(mcpClients.map(async (client) => {
-        try {
-            const res = await client.listTools();
-            for (const t of res.tools) {
-                availableTools.push({
-                    type: "function",
-                    function: {
-                        name: t.name,
-                        description: t.description,
-                        parameters: t.inputSchema
-                    }
-                });
-                toolToClientMap.set(t.name, client);
-            }
-        } catch (err) {
-            console.error(`❌ Failed to load tools from ${client.url}:`, err);
-        }
-    }));
-
-    const history = await historyPromise;
-
-    const messages: any[] = [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...history,
-        { role: "user", content: userMessage }
-    ];
-
-    console.log("🧠 Asking LM Studio...");
-    let response: any = await callLMStudio(messages, availableTools);
-
-    while (response.tool_calls && response.tool_calls.length > 0) {
-        messages.push(response.message);
-
-        for (const toolCall of response.tool_calls) {
-            console.log(`🛠️ Calling tool: ${toolCall.function.name}`);
-            try {
-                const args = JSON.parse(toolCall.function.arguments);
-                const client = toolToClientMap.get(toolCall.function.name);
-                if (!client) throw new Error(`Tool ${toolCall.function.name} not found on any connected MCP server.`);
-                
-                const result = await client.callTool(toolCall.function.name, args);
-                
-                const toolResultText = result.content.map((c: any) => c.type === 'text' ? c.text : JSON.stringify(c)).join("\n");
-                
-                messages.push({
-                    role: "tool",
-                    tool_call_id: toolCall.id,
-                    name: toolCall.function.name,
-                    content: toolResultText
-                });
-            } catch (err: any) {
-                console.error(`❌ Tool failed: ${err.message}`);
-                messages.push({
-                    role: "tool",
-                    tool_call_id: toolCall.id,
-                    name: toolCall.function.name,
-                    content: `Error: ${err.message}`
-                });
-            }
-        }
-        console.log("🧠 Asking LM Studio again...");
-        response = await callLMStudio(messages, availableTools);
-    }
-
-    if (response.message && response.message.content) {
-        // Speichere Assistant-Antwort asynchron
-        saveMessageToDb(roomId, "ea", "assistant", response.message.content);
-        
-        await matrixClient.sendMessage(roomId, {
-            msgtype: "m.text",
-            body: response.message.content
-        });
-    }
-}
-
+// ─────────────────────────────────────────────────────────────
+// 8. LM Studio helper (unchanged)
+// ─────────────────────────────────────────────────────────────
 async function callLMStudio(messages: any[], tools: any[]) {
-    const payload: any = {
-        model: "local-model",
-        messages: messages,
-        temperature: 0.2
-    };
-    if (tools.length > 0) payload.tools = tools;
+  const payload: any = { model: "local-model", messages, temperature: 0.2 };
+  if (tools.length > 0) payload.tools = tools;
 
-    const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-        const errorText = await res.text();
-        console.error("❌ LM Studio returned error:", errorText);
-        throw new Error(`LM Studio error: ${res.status} - ${errorText}`);
-    }
-    
-    const data: any = await res.json();
-    if (!data.choices || data.choices.length === 0) {
-        console.error("❌ LM Studio response missing choices:", JSON.stringify(data));
-        throw new Error("LM Studio returned empty or invalid response");
-    }
-    
-    const message = data.choices[0].message;
-    return { message, tool_calls: message.tool_calls || null };
+  const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) throw new Error(`LM Studio error: ${res.status} — ${await res.text()}`);
+
+  const data: any = await res.json();
+  if (!data.choices?.length) throw new Error("LM Studio returned empty response");
+
+  const message = data.choices[0].message;
+  return { message, tool_calls: message.tool_calls || null };
 }
 
-main().catch(console.error);
+// ─────────────────────────────────────────────────────────────
+// 9. Nexus message envelope builder
+// ─────────────────────────────────────────────────────────────
+function buildEnvelope(to: string, text: string, mcpInfo?: any): string {
+  const envelope: any = {
+    header: {
+      from: AGENT_ID,
+      to,
+      date: new Date().toISOString().slice(0, 10),
+      unix: Math.floor(Date.now() / 1000),
+      msg_type: "chat",
+    },
+    content: { text },
+  };
+  if (mcpInfo) envelope.mcp = mcpInfo;
+  return JSON.stringify(envelope);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 10. Handle incoming chat message
+// ─────────────────────────────────────────────────────────────
+async function handleIncoming(
+  mqttClient: mqtt.MqttClient,
+  localMcpClients: StatelessMcpClient[],
+  envelope: any
+) {
+  const from    = envelope.header?.from || "unknown";
+  const text    = envelope.content?.text || "";
+  const textL   = text.toLowerCase();
+
+  // Ignore own messages
+  if (from === AGENT_ID) return;
+
+  // Mention-based routing: ignore if a different agent is explicitly addressed
+  const isMentioned = textL.includes(AGENT_ID);
+
+  // If message is from another agent, require explicit mention
+  const knownAgents = config.mcp.local_servers.map(() => ""); // dynamic placeholder
+  const isFromAgent = from !== "boss" && from !== AGENT_ID;
+  if (isFromAgent && !isMentioned) {
+    console.log(`🔕 [${AGENT_ID}] ignoring message from agent '${from}' (not mentioned)`);
+    return;
+  }
+
+  console.log(`\n💬 [${AGENT_ID}] message from '${from}': ${text.slice(0, 80)}`);
+  saveMessageToDb(from, "user", text);
+
+  // Load history + tools in parallel
+  const historyPromise = loadHistoryFromDb(10);
+
+  const availableTools: any[] = [];
+  const toolToClient = new Map<string, StatelessMcpClient>();
+
+  await Promise.all(
+    localMcpClients.map(async (c) => {
+      try {
+        const res = await c.listTools();
+        for (const t of res.tools) {
+          availableTools.push({
+            type: "function",
+            function: { name: t.name, description: t.description, parameters: t.inputSchema },
+          });
+          toolToClient.set(t.name, c);
+        }
+      } catch (err) {
+        console.error(`❌ Tool list failed for ${c.url}:`, err);
+      }
+    })
+  );
+
+  const history = await historyPromise;
+  const messages: any[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    ...history,
+    { role: "user", content: text },
+  ];
+
+  console.log("🧠 Calling LM Studio...");
+  let response = await callLMStudio(messages, availableTools);
+
+  while (response.tool_calls?.length > 0) {
+    messages.push(response.message);
+
+    for (const tc of response.tool_calls) {
+      console.log(`🛠️  Tool: ${tc.function.name}`);
+      try {
+        const args   = JSON.parse(tc.function.arguments);
+        const client = toolToClient.get(tc.function.name);
+        if (!client) throw new Error(`Tool not found: ${tc.function.name}`);
+
+        const result      = await client.callTool(tc.function.name, args);
+        const resultText  = result.content
+          .map((c: any) => (c.type === "text" ? c.text : JSON.stringify(c)))
+          .join("\n");
+
+        messages.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: resultText });
+      } catch (err: any) {
+        console.error(`❌ Tool error: ${err.message}`);
+        messages.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: `Error: ${err.message}` });
+      }
+    }
+
+    response = await callLMStudio(messages, availableTools);
+  }
+
+  const replyText = response.message?.content || "";
+  if (!replyText) return;
+
+  saveMessageToDb(AGENT_ID, "assistant", replyText);
+
+  // Publish reply to the sender's inbox (or boss channel)
+  const replyTopic   = `agents/${from}/inbox`;
+  const replyPayload = buildEnvelope(from, replyText);
+  mqttClient.publish(replyTopic, replyPayload, { qos: 1 });
+  console.log(`📤 [${AGENT_ID}] replied to '${from}'`);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 11. Handle incoming MCP request (cross-agent)
+// ─────────────────────────────────────────────────────────────
+async function handleMcpRequest(
+  mqttClient: mqtt.MqttClient,
+  localMcpClients: StatelessMcpClient[],
+  envelope: any
+) {
+  const requestId = envelope.request_id;
+  const from      = envelope.header?.from || "unknown";
+  const mcp       = envelope.mcp || {};
+  const tool      = mcp.command || "";
+  const params    = mcp.params || {};
+
+  if (!tool || !requestId) return;
+
+  console.log(`🔧 [${AGENT_ID}] cross-agent MCP request from '${from}': ${tool}`);
+
+  // Find tool in local servers
+  let result: any = { error: `Tool '${tool}' not found on ${AGENT_ID}` };
+  for (const c of localMcpClients) {
+    try {
+      result = await c.callTool(tool, params);
+      break;
+    } catch { /* try next */ }
+  }
+
+  const responseTopic = `agents/${from}/mcp/response/${requestId}`;
+  mqttClient.publish(responseTopic, JSON.stringify({ request_id: requestId, result }), { qos: 1 });
+}
+
+// ─────────────────────────────────────────────────────────────
+// 12. Main
+// ─────────────────────────────────────────────────────────────
+async function main() {
+  console.log(`🚀 Starting Nexus agent: ${AGENT_ID} (${config.agent.name})`);
+
+  // Local MCP clients
+  const localMcpClients = config.mcp.local_servers.map(
+    (s) => new StatelessMcpClient(s.url, MCP_ACCESS_KEY)
+  );
+  console.log(`🔌 Local MCP servers: ${config.mcp.local_servers.map(s => s.label).join(", ")}`);
+
+  // MQTT connect with LWT
+  const lwt = JSON.parse(config.mqtt.lwt_payload);
+  lwt.unix  = Math.floor(Date.now() / 1000);
+
+  const mqttClient = await mqtt.connectAsync(config.mqtt.broker_url, {
+    clientId:  `agent-${AGENT_ID}-${Date.now()}`,
+    clean:     true,
+    will: {
+      topic:   config.mqtt.lwt_topic,
+      payload: Buffer.from(JSON.stringify(lwt)),
+      qos:     1,
+      retain:  true,
+    },
+  });
+
+  console.log(`✅ MQTT connected to ${config.mqtt.broker_url}`);
+
+  // Subscribe
+  await mqttClient.subscribeAsync(INBOX_TOPIC,    { qos: 1 });
+  await mqttClient.subscribeAsync(MCP_REQ_TOPIC,  { qos: 1 });
+  await mqttClient.subscribeAsync(MCP_RESP_TOPIC, { qos: 1 });
+  console.log(`📡 Subscribed: ${INBOX_TOPIC} | ${MCP_REQ_TOPIC} | ${MCP_RESP_TOPIC}`);
+
+  // Publish online status
+  const onlinePayload = JSON.stringify({ agent: AGENT_ID, status: "online", unix: Math.floor(Date.now() / 1000) });
+  mqttClient.publish(config.mqtt.lwt_topic, onlinePayload, { qos: 1, retain: true });
+
+  // Message router
+  mqttClient.on("message", async (topic: string, rawPayload: Buffer) => {
+    let envelope: any;
+    try {
+      envelope = JSON.parse(rawPayload.toString("utf-8"));
+    } catch {
+      console.warn(`⚠️  Non-JSON on topic ${topic}`);
+      return;
+    }
+
+    try {
+      if (topic.endsWith("/mcp/request") && topic.includes(`agents/${AGENT_ID}/`)) {
+        await handleMcpRequest(mqttClient, localMcpClients, envelope);
+      } else if (topic.match(/\/mcp\/response\//)) {
+        // Resolve pending cross-agent MCP call
+        const reqId = envelope.request_id;
+        const resolve = pendingMcpRequests.get(reqId);
+        if (resolve) {
+          pendingMcpRequests.delete(reqId);
+          resolve(envelope.result);
+        }
+      } else {
+        // Regular inbox message → ReAct loop
+        await handleIncoming(mqttClient, localMcpClients, envelope);
+      }
+    } catch (err) {
+      console.error("❌ Message handler error:", err);
+    }
+  });
+
+  console.log(`✅ ${config.agent.name} (${AGENT_ID}) is listening on The Nexus`);
+}
+
+main().catch((err) => {
+  console.error("💥 Fatal error:", err);
+  process.exit(1);
+});

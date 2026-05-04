@@ -2,12 +2,16 @@
 # All services run locally, no external API dependencies.
 #
 # Services:
-#   db        - PostgreSQL 17 + pgvector (vector database)
-#   postgrest - REST API layer (Supabase-compatible)
-#   studio    - Supabase Studio Web UI
-#   ollama    - Embedding model (CPU-only, no GPU)
-#   gateway   - Nginx proxy to handle /rest/v1 paths
-#   mcp-server - MCP endpoint for AI clients
+#   db           - PostgreSQL 17 + pgvector (vector database)
+#   postgrest    - REST API layer (Supabase-compatible)
+#   studio       - Supabase Studio Web UI
+#   ollama       - Embedding model (CPU-only, no GPU)
+#   gateway      - Nginx proxy to handle /rest/v1 paths
+#   mcp-server   - MCP endpoint for EA agent
+#   mcp-cco      - MCP endpoint for CCO agent
+#   nexus-broker  - Mosquitto MQTT broker (inter-agent bus)
+#   nexus-service - FastAPI service: MQTT logger + REST API (Port 7734)
+#   nexus-frontend- Dashboard web UI (Port 7733)
 
 services:
   # --- PostgreSQL with pgvector ---
@@ -114,30 +118,52 @@ services:
     ports:
       - "8001:80"
 
-  # --- Matrix Server (Conduit) ---
-  conduit:
-    image: matrixconduit/matrix-conduit:latest
-    container_name: openbrain-conduit
-    restart: unless-stopped
-    environment:
-      CONDUIT_CONFIG: "/etc/conduit.toml"
-    volumes:
-      - openbrain_matrix:/var/lib/matrix-conduit/
-      - ./core/matrix/conduit.toml:/etc/conduit.toml:ro
-    ports:
-      - "6167:6167"
 
-  # --- Matrix Web Frontend (Element) ---
-  element-web:
-    image: vectorim/element-web:latest
-    container_name: openbrain-element
+  # --- The Nexus: MQTT Broker (Mosquitto) ---
+  nexus-broker:
+    image: eclipse-mosquitto:2
+    container_name: openbrain-nexus-broker
     restart: unless-stopped
     volumes:
-      - ./core/matrix/element-config.json:/app/config.json:ro
+      - ./nexus/broker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - openbrain_mqtt:/mosquitto/data
     ports:
-      - "8080:80"
+      - "1883:1883"
+      - "9001:9001"
+
+  # --- The Nexus: FastAPI Service (MQTT logger + REST API) ---
+  nexus-service:
+    build:
+      context: ./nexus/service
+      dockerfile: Dockerfile
+    container_name: openbrain-nexus-service
+    restart: unless-stopped
     depends_on:
-      - conduit
+      db:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+      nexus-broker:
+        condition: service_started
+    environment:
+      GATEWAY_URL: http://gateway:80
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      MQTT_BROKER_HOST: nexus-broker
+      MQTT_BROKER_PORT: "1883"
+    ports:
+      - "7734:7734"
+
+  # --- The Nexus: Web Dashboard ---
+  nexus-frontend:
+    build:
+      context: ./nexus/frontend
+      dockerfile: Dockerfile
+    container_name: openbrain-nexus-frontend
+    restart: unless-stopped
+    depends_on:
+      - nexus-service
+    ports:
+      - "7733:80"
 
   # --- MCP Server: AI client endpoint ---
   mcp-server:
@@ -176,17 +202,16 @@ services:
     container_name: openbrain-ea-bot
     restart: unless-stopped
     depends_on:
-      - conduit
+      - nexus-broker
       - mcp-server
     volumes:
       - ./agent-ea/prompt.txt:/app/prompt.txt:ro
+      - ./agent-ea/config.yaml:/app/config.yaml:ro
     environment:
-      MATRIX_HOMESERVER_URL: http://conduit:6167
-      MATRIX_USER: ${MATRIX_EA_USER}
-      MATRIX_PASSWORD: ${MATRIX_EA_PASSWORD}
-      MCP_SERVER_URLS: http://mcp-server:8787
+      CONFIG_PATH: /app/config.yaml
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
       LM_STUDIO_URL: http://host.docker.internal:1234
+      POSTGREST_URL: http://postgrest:3000
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -227,21 +252,21 @@ services:
     container_name: openbrain-cco-bot
     restart: unless-stopped
     depends_on:
-      - conduit
+      - nexus-broker
       - mcp-cco
     volumes:
       - ./agent-cco/prompt.txt:/app/prompt.txt:ro
+      - ./agent-cco/config.yaml:/app/config.yaml:ro
     environment:
-      MATRIX_HOMESERVER_URL: http://conduit:6167
-      MATRIX_USER: ${MATRIX_CCO_USER}
-      MATRIX_PASSWORD: ${MATRIX_CCO_PASSWORD}
-      MCP_SERVER_URLS: http://mcp-cco:8788
+      CONFIG_PATH: /app/config.yaml
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
       LM_STUDIO_URL: http://host.docker.internal:1234
+      POSTGREST_URL: http://postgrest:3000
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
 volumes:
   openbrain_pgdata:
   openbrain_ollama:
-  openbrain_matrix:
+  openbrain_mqtt:
+

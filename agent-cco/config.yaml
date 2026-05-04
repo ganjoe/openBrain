@@ -1,0 +1,17 @@
+# Chief Communications Officer — Nexus Agent Configuration
+# Agent identity is defined ONLY here. Never hardcode IDs in source code.
+
+agent:
+  id: "cco"
+  name: "Chief Communications Officer"
+  display_name: "CCO"
+
+mqtt:
+  broker_url: "mqtt://nexus-broker:1883"
+  lwt_topic: "agents/status"
+  lwt_payload: '{"agent":"cco","status":"offline","unix":0}'
+
+mcp:
+  local_servers:
+    - url: "http://mcp-cco:8788"
+      label: "openbrain-memory"

@@ -8,7 +8,7 @@
 <TABLE WIDTH="100%" BORDER="0">
 <TR>
 <TD><H1>Open Brain: Das Grosse Technische Handbuch</H1></TD>
-<TD ALIGN="RIGHT"><B>Edition: Enzyklopaedie</B><BR>Version: 3.3 (Extended)<BR>April 2026</TD>
+<TD ALIGN="RIGHT"><B>Edition: Enzyklopaedie</B><BR>Version: 4.0 (The Nexus)<BR>Mai 2026</TD>
 </TR>
 </TABLE>
 <HR>
@@ -25,7 +25,7 @@
 <LI><A HREF="#studio">Die Administrations-Schicht: Supabase Studio & Meta</A>
 <LI><A HREF="#ollama">Die Embedding-Schicht: Ollama & Vektorisierung</A>
 <LI><A HREF="#gateway">Die Proxy-Schicht: Nginx - Der Dirigent des Netzwerkverkehrs</A>
-<LI><A HREF="#matrix">Die Chat-Infrastruktur: Matrix Conduit & Element</A>
+<LI><A HREF="#nexus">The Nexus: MQTT-basierter Agenten-Kommunikations-Hub</A>
 <LI><A HREF="#mcp">Der Tool-Server: Deep Dive in die Deno MCP Implementierung</A>
 <LI><A HREF="#bot">Der Executive Assistant: Bot-Logik, Historie & Agentik</A>
 <LI><A HREF="#fluss">Detaillierte Szenarien des Informationsflusses</A>
@@ -54,8 +54,8 @@
 <UL>
 <LI><B>Die Daten-Basis:</B> <CODE>openbrain-db</CODE> (PostgreSQL 17). Ausschie&szlig;lich intern f&uuml;r <CODE>postgrest</CODE> und <CODE>meta</CODE> erreichbar.
 <LI><B>API & Orchestrierung:</B> <CODE>gateway</CODE> (Nginx) fungiert als zentraler Reverse-Proxy. Er transformiert <CODE>/rest/v1/</CODE> Anfragen via URL-Rewriting zu sauberen <CODE>postgrest</CODE> Calls und managt CORS-Header zentral.
-<LI><B>KI & Agenten:</B> Der <CODE>mcp-server</CODE> operiert als zentraler Tool-Hub. Er ruft <CODE>ollama</CODE> per REST API f&uuml;r Embeddings auf und tunnelt LLM-Inferenz-Requests &uuml;ber <CODE>host.docker.internal:1234</CODE> an das Host-System. Der <CODE>agent-ea-bot</CODE> f&uuml;hrt den ReAct-Loop aus, greift via Matrix API auf <CODE>conduit</CODE> zu und feuert Tool-Calls gegen den MCP-Server.
-<LI><B>Frontends:</B> <CODE>element-web</CODE> und <CODE>studio</CODE> dienen als statische Web-UIs, die Client-seitig direkt mit den jeweiligen Backend-APIs (<CODE>conduit</CODE> bzw. <CODE>gateway</CODE>) kommunizieren.</LI>
+<LI><B>KI & Agenten:</B> Der <CODE>mcp-server</CODE> operiert als zentraler Tool-Hub. Er ruft <CODE>ollama</CODE> per REST API f&uuml;r Embeddings auf und tunnelt LLM-Inferenz-Requests &uuml;ber <CODE>host.docker.internal:1234</CODE> an das Host-System. Der <CODE>agent-ea-bot</CODE> f&uuml;hrt den ReAct-Loop aus, f&uuml;hrt den ReAct-Loop aus und kommuniziert mit anderen Agenten ausschlie&szlig;lich via MQTT-Bus (The Nexus).
+<LI><B>The Nexus:</B> <CODE>nexus-broker</CODE> (Mosquitto MQTT, Port 1883) ist der asynchrone Kommunikations-Bus. <CODE>nexus-service</CODE> (Port 7734) loggt jede Nachricht. <CODE>nexus-frontend</CODE> (Port 7733) ist das Admin-Dashboard.</LI>
 </UL>
 
 <P>Das folgende Architektur-Diagramm visualisiert die detaillierte Netzwerktopologie und den Datenfluss:</P>
@@ -358,10 +358,10 @@ graph TD
 <H3>9.3 Multi-Agenten Kommunikation: Natural Language Delegation</H3>
 <P>Wenn mehrere Bots (z.B. der Executive Assistant und der Chief Creative Officer) im selben Matrix-Raum (War Room) agieren, entsteht schnell das Problem des Feedback-Loops: Bot A antwortet auf Bot B, Bot B wieder auf Bot A. Um dies zu verhindern und gleichzeitig 100% Transparenz f&uuml;r den menschlichen Superuser zu garantieren, nutzt Open Brain das Konzept der <B>Natural Language Delegation</B>.</P>
 <UL>
-<LI><B>Erw&auml;hnungs-Filter (Mention-Routing):</B> Auf Code-Ebene (<CODE>index.ts</CODE>) greift ein strikter Filter. Ein Bot ignoriert grunds&auml;tzlich alle Nachrichten von anderen Bots, es sei denn, sein eigener Name (z.B. <CODE>cco</CODE>) wird explizit im Text erw&auml;hnt. Ebenso ignorieren Bots Nachrichten von Menschen, wenn darin explizit ein <I>anderer</I> Bot angesprochen wird.</LI>
-<LI><B>Der Raum als Bus:</B> Bots kommunizieren untereinander nicht &uuml;ber versteckte APIs, sondern indem sie wie Menschen miteinander im Chat sprechen. Wenn der EA-Bot den CCO-Bot anweisen m&ouml;chte, generiert er eine normale Chat-Nachricht beginnend mit <CODE>cco, ...</CODE>. Der CCO-Bot liest dies, f&uuml;hrt die Aktion aus und antwortet mit <CODE>ea, ...</CODE>.</LI>
+<LI><B>Erw&auml;hnungs-Filter (Mention-Routing):</B> Auf Code-Ebene (<CODE>index.ts</CODE>) greift ein strikter Filter. Ein Bot ignoriert grunds&auml;tzlich alle MQTT-Nachrichten von anderen Bots, es sei denn, sein eigener Name (z.B. <CODE>cco</CODE>) wird explizit im Nachrichtentext erw&auml;hnt. Die Agenten-ID ist nie im Code hartkodiert &mdash; sie wird aus <CODE>config.yaml</CODE> geladen.</LI>
+<LI><B>Der Raum als Bus:</B> Bots kommunizieren nicht &uuml;ber versteckte APIs, sondern via MQTT. Wenn EA den CCO anweisen m&ouml;chte, publiziert er eine Nachricht auf <CODE>agents/cco/inbox</CODE>. CCO subscribed diesen Topic, f&uuml;hrt die Aktion aus und antwortet auf <CODE>agents/ea/inbox</CODE>. Der Nexus-Service loggt jeden Schritt transparent.</LI>
 </UL>
-<P>Dieses Paradigma erlaubt es, komplexe Agenten-Ketten zu bilden (Bot A delegiert an Bot B, der delegiert an Bot C), w&auml;hrend der Nutzer jeden einzelnen Delegationsschritt transparent im Element-Client verfolgen und eingreifen kann.</P>
+<P>Dieses Paradigma erlaubt es, komplexe Agenten-Ketten zu bilden (Bot A delegiert an Bot B, der delegiert an Bot C), w&auml;hrend der Nutzer jeden einzelnen Delegationsschritt transparent im Nexus-Dashboard (Port 7733) verfolgen und eingreifen kann.</P>
 
 <A NAME="fluss"></A>
 <H2>10. Detaillierte Szenarien des Informationsflusses</H2>
@@ -369,12 +369,12 @@ graph TD
 <H3>10.1 Textuelles Beispiel: Eine Ausgabe speichern</H3>
 <P>Ein Trace f&uuml;r die Anfrage: <I>"Notier dir: Ich habe 50 Euro f&uuml;r Benzin ausgegeben."</I></P>
 <OL>
-<LI><B>Matrix:</B> Event landet via HTTP bei Conduit.
+<LI><B>MQTT/Nexus:</B> Boss publiziert Nachricht auf <CODE>agents/ea/inbox</CODE>. Nexus-Service empf&auml;ngt und loggt.
 <LI><B>Bot:</B> LLM erkennt Intent. Trigger: Rufe <CODE>capture_thought</CODE> auf.
 <LI><B>MCP-Server:</B> Nimmt Text, ruft LM Studio mit <CODE>metadata-prompt</CODE> auf &rarr; JSON <CODE>{type: "observation", amount: 50}</CODE> wird generiert.
 <LI><B>Ollama:</B> Berechnet Embedding-Vektor.
 <LI><B>PostgreSQL:</B> Speichert <CODE>thoughts</CODE> Datensatz und Matrix-Event synchron.
-<LI><B>Bot:</B> Erh&auml;lt Success-Code vom MCP und generiert Abschluss-Antwort f&uuml;r den Nutzer.</OL>
+<LI><B>Bot:</B> Erh&auml;lt Success-Code vom MCP, generiert Antwort und publiziert sie auf <CODE>agents/boss/inbox</CODE>. Nexus loggt die Antwort in <CODE>nexus_messages</CODE>.</OL>
 
 <H3>10.2 Sequenzdiagramm: Einen Gedanken erfassen</H3>
 <P>Das folgende Sequenzdiagramm visualisiert den exakten technischen Ablauf, wenn der Nutzer den Befehl <I>"merk dir diesen gedanken: mcp ist toll"</I> erteilt. Es belegt die asynchrone Trennung zwischen Bot-Intent und MCP-Anreicherung.</P>
@@ -382,7 +382,7 @@ graph TD
 <div class="mermaid">
 sequenceDiagram
     actor Admin
-    participant Matrix as Matrix Conduit
+    participant Nexus as Nexus Broker MQTT
     participant Bot as EA Bot
     participant MCP as MCP Server
     participant LMStudio as LM Studio
@@ -390,8 +390,8 @@ sequenceDiagram
     participant Gateway as Nginx Gateway
     participant DB as PostgreSQL via PostgREST
 
-    Admin->>Matrix: merk dir diesen gedanken: mcp ist toll
-    Matrix->>Bot: Push Event Neue Nachricht
+    Admin->>Nexus: Publish agents/ea/inbox
+    Nexus->>Bot: MQTT Push inbox message
     
     rect rgb(240, 248, 255)
         note right of Bot: 1. Intent Analyse
@@ -424,8 +424,8 @@ sequenceDiagram
     
     MCP-->>Bot: Tool Result: Gedanke erfolgreich gespeichert
     
-    Bot->>Matrix: Antwort: Ist notiert!
-    Matrix->>Admin: Anzeige der Best&auml;tigung im Client
+    Bot->>Nexus: Publish agents/boss/inbox reply
+    Nexus->>Admin: SSE Dashboard zeigt Antwort
 </div>
 
 <A NAME="sicherheit"></A>
@@ -468,20 +468,34 @@ cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 <OL>
 <LI><B>Repository klonen:</B> Lade den Code via <CODE>git clone</CODE> herunter.</LI>
 <LI><B>Umgebungsvariablen:</B> Kopiere <CODE>.env.example</CODE> zu <CODE>.env</CODE>. Ersetze die Platzhalter f&uuml;r <CODE>JWT_SECRET</CODE> und <CODE>SERVICE_ROLE_KEY</CODE> durch kryptografisch sichere Strings.</LI>
-<LI><B>System starten:</B> F&uuml;hre <CODE>docker compose up -d --build</CODE> aus. Docker zieht die Basis-Images, baut die TypeScript/Rust-Container und spannt das <CODE>openbrain_default</CODE> Netzwerk auf.</LI>
-<LI><B>Datenbank-Initialisierung:</B> Der PostgreSQL-Container f&uuml;hrt beim initialen Start automatisch die Scripte im <CODE>./init</CODE> Ordner aus. Dies konfiguriert das Schema, die <CODE>pgvector</CODE> Extension und die RLS-Policies.</LI>
-<LI><B>Matrix-Setup:</B> Rufe Element Web (<CODE>http://localhost:8080</CODE>) auf, registriere deinen Admin-User auf dem lokalen Conduit-Homeserver und lade den Bot in einen neuen Raum ein.</LI>
+<LI><B>System starten:</B> F&uuml;hre <CODE>docker compose up -d --build</CODE> aus. Docker zieht die Basis-Images, baut alle Container und spannt das <CODE>openbrain_default</CODE> Netzwerk auf.</LI>
+<LI><B>Datenbank-Initialisierung:</B> Der PostgreSQL-Container f&uuml;hrt beim initialen Start automatisch die Scripte im <CODE>./init</CODE> Ordner aus. Dies konfiguriert das Schema, die <CODE>pgvector</CODE> Extension, die RLS-Policies und die <CODE>nexus_messages</CODE>-Tabelle.</LI>
+<LI><B>Nexus-Dashboard:</B> &Ouml;ffne <CODE>http://localhost:7733</CODE>. Das Dashboard l&auml;dt automatisch alle bekannten Agenten als Checkboxes sobald die ersten Nachrichten eintreffen.</LI>
 </OL>
+
+<P><B>Infrastruktur-&Uuml;bersicht nach dem Start:</B></P>
+<TABLE BORDER="1" CELLPADDING="4">
+<TR><TH>Service</TH><TH>Port</TH><TH>Beschreibung</TH></TR>
+<TR><TD>Supabase Studio</TD><TD>3000</TD><TD>Datenbank-Admin UI</TD></TR>
+<TR><TD>PostgREST</TD><TD>3001</TD><TD>REST API</TD></TR>
+<TR><TD>Nginx Gateway</TD><TD>8001</TD><TD>Reverse Proxy</TD></TR>
+<TR><TD>Ollama</TD><TD>11434</TD><TD>Embedding Model</TD></TR>
+<TR><TD>MCP Server (EA)</TD><TD>8787</TD><TD>Tool-Server f&uuml;r EA</TD></TR>
+<TR><TD>MCP Server (CCO)</TD><TD>8788</TD><TD>Tool-Server f&uuml;r CCO</TD></TR>
+<TR><TD>MQTT Broker</TD><TD>1883 / 9001 WS</TD><TD>Nexus Agenten-Bus</TD></TR>
+<TR><TD><B>Nexus API</B></TD><TD><B>7734</B></TD><TD>REST + SSE Endpunkte</TD></TR>
+<TR><TD><B>Nexus Dashboard</B></TD><TD><B>7733</B></TD><TD>Admin Dashboard</TD></TR>
+</TABLE>
 
 <H3>13.3 Neuen Agenten deployen (Das Fork-Paradigma)</H3>
 <P>Die Instanziierung eines neuen Agenten (z.B. "Trading-Broker") erfordert exakt diesen pragmatischen Workflow:</P>
 <OL>
-<LI><B>Neuen Matrix-Account anlegen:</B> Registriere z.B. <CODE>@broker:localhost</CODE> in Conduit. Dies ist die Identit&auml;t des neuen Bots.</LI>
+<LI><B>Agent-Ordner forken:</B> <CODE>cp -r agent-ea agent-xyz</CODE>. Kein Matrix-Account n&ouml;tig &mdash; die Identit&auml;t kommt aus <CODE>config.yaml</CODE>.</LI>
 <LI><B>Den MCP-Server forken:</B> Kopiere den Ordner <CODE>agent-ea/mcp-server</CODE> zu <CODE>agent-broker/mcp-server</CODE>. F&uuml;ge dort deine dedizierte API-Logik f&uuml;r Drittsysteme (z.B. IB-Broker API) als neue Hono-Endpunkte hinzu. Dieser Server l&auml;uft netzwerkisoliert und enth&auml;lt keinerlei Chat-Logik.</LI>
 <LI><B>Prompt-Konfiguration als Volume mounten (KRITISCH):</B> Prompts geh&ouml;ren niemals hart in den Code oder als Environment Variables in die <CODE>docker-compose.yml</CODE>! Erstelle <CODE>prompt.txt</CODE> und <CODE>metadata-prompt.txt</CODE> und mounte sie via Docker Volumes als read-only (<CODE>:ro</CODE>) in die Bot- und MCP-Container. Das erm&ouml;glicht dir, die Prompts jederzeit on-the-fly im Host-Editor anzupassen, ohne Container neu bauen zu m&uuml;ssen.</LI>
-<LI><B>Container deklarieren:</B> Dupliziere in der <CODE>docker-compose.yml</CODE> die Bot- und MCP-Bl&ouml;cke. &Uuml;bergib dem Bot im Environment via <CODE>MCP_SERVER_URLS</CODE> eine Komma-getrennte Liste der internen Docker-Hostnamen (z.B. <CODE>http://mcp-server:8787,http://mcp-broker:8788</CODE>).</LI>
+<LI><B>Container deklarieren:</B> Dupliziere in der <CODE>docker-compose.yml</CODE> die Bot- und MCP-Bl&ouml;cke. Mounte <CODE>config.yaml</CODE> als read-only Volume. Der Bot liest MCP-URLs, MQTT-Broker und Agenten-ID automatisch daraus.</LI>
 <LI><B>Schema-Isolation:</B> Falls der Broker eigene relationale Daten braucht, quetsche sie nicht in die Core-Tabellen. Erstelle per Supabase Studio ein neues Schema (z.B. <CODE>CREATE SCHEMA broker;</CODE>). PostgREST spiegelt dieses Schema sofort in eine isolierte REST-API.</LI>
-<LI><B>Starten:</B> F&uuml;hre <CODE>docker compose up -d</CODE> aus. Der neue Broker-Agent l&auml;dt seine Text-Prompts, meldet sich bei Conduit an und steht bereit.</LI>
+<LI><B>Starten:</B> <CODE>docker compose up -d --build agent-xyz-bot</CODE>. Der neue Agent verbindet sich via MQTT und erscheint sofort als Checkbox im Dashboard.</LI>
 </OL>
 
 <H3>13.4 Ultimative Schritt-f&uuml;r-Schritt Anleitung: Agenten-Deployment (Edition: Qualle mit Neuralink)</H3>
@@ -496,24 +510,24 @@ cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 <H4>Schritt 2: Die semantische Programmierung (Prompts)</H4>
 <P>Passe die Textdateien im neuen Ordner an. Die <CODE>prompt.txt</CODE> definiert das Verhalten im Chat, die <CODE>metadata-prompt.txt</CODE> die Struktur in der Datenbank.</P>
 
-<H4>Schritt 3: Die Identit&auml;t deklarieren (.env)</H4>
+<H4>Schritt 3: Identit&auml;t in config.yaml deklarieren</H4>
 <P>&Ouml;ffne die <CODE>.env</CODE> im Root-Verzeichnis und f&uuml;ge die neuen Zugangsdaten am Ende hinzu:</P>
 <PRE><CODE class="language-bash">
 # CCO Agent (Chief Creative Officer)
-MATRIX_CCO_USER=cco_bot
-MATRIX_CCO_PASSWORD=dein_super_sicheres_passwort_123
+agent:
+  id: "cco"
+  name: "Chief Communications Officer"
+mqtt:
+  broker_url: "mqtt://nexus-broker:1883"
 </CODE></PRE>
 
-<H4>Schritt 4: Den Account im Chatserver registrieren (API-Call)</H4>
-<P>Da wir "No Federation" nutzen, muss der Account manuell im lokalen Conduit registriert werden. Wir nutzen einen dedizierten Container-Call, um Netzwerk-Issues zu vermeiden:</P>
+<H4>Schritt 4: Docker-Compose erweitern</H4>
+<P>F&uuml;ge Bot- und MCP-Bl&ouml;cke in die <CODE>docker-compose.yml</CODE> ein und mounte beide Konfigurations-Volumes:</P>
 <PRE><CODE class="language-bash">
 # 1. Registrierungs-Session generieren und User anlegen
-docker run --rm --network openbrain_default curlimages/curl curl -s -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"username":"cco_bot", "password":"dein_super_sicheres_passwort_123", "auth":{"type":"m.login.dummy"}}' \
-  http://conduit:6167/_matrix/client/v3/register?kind=user
+docker compose up -d --build agent-cco-bot mcp-cco
 </CODE></PRE>
-<P><I>Hinweis: Die R&uuml;ckgabe <CODE>{"access_token": "..."}</CODE> best&auml;tigt den Erfolg.</I></P>
+
 
 <H4>Schritt 5: Die Infrastruktur erweitern (docker-compose.yml)</H4>
 <P>F&uuml;ge am Ende der <CODE>services</CODE>-Sektion die neuen Container hinzu. Achte auf den eindeutigen Port (<CODE>8788</CODE>) f&uuml;r den MCP-Server:</P>
@@ -541,15 +555,14 @@ docker run --rm --network openbrain_default curlimages/curl curl -s -X POST \
     container_name: openbrain-cco-bot
     restart: unless-stopped
     depends_on:
-      - conduit
+      - nexus-broker
       - mcp-cco
     volumes:
       - ./agent-cco/prompt.txt:/app/prompt.txt:ro
     environment:
-      MATRIX_HOMESERVER_URL: http://conduit:6167
-      MATRIX_USER: ${MATRIX_CCO_USER}
-      MATRIX_PASSWORD: ${MATRIX_CCO_PASSWORD}
-      MCP_SERVER_URLS: http://mcp-cco:8788
+      CONFIG_PATH: /app/config.yaml
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      LM_STUDIO_URL: http://host.docker.internal:1234
       LM_STUDIO_URL: http://host.docker.internal:1234
 </CODE></PRE>
 
@@ -558,7 +571,7 @@ docker run --rm --network openbrain_default curlimages/curl curl -s -X POST \
 <PRE><B>Terminal:</B> docker compose up -d --build agent-cco-bot</PRE>
 <P>Pr&uuml;fe die Logs auf den "Ready"-State:</P>
 <PRE><B>Terminal:</B> docker logs -f openbrain-cco-bot</PRE>
-<P>Ergebnis: <CODE>✅ EA Bot is now syncing and listening!</CODE></P>
+<P>Ergebnis: <CODE>✅ Chief Communications Officer (cco) is listening on The Nexus</CODE></P>
 
 <HR>
 <P ALIGN="CENTER"><I>Ende des Handbuchs. Wissen ist Macht &ndash; Lokales Wissen ist Freiheit.<BR>Erstellt von Antigravity (AI) f&uuml;r das Open Brain Projekt.</I></P>

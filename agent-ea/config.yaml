@@ -1,0 +1,19 @@
+# Executive Assistant — Nexus Agent Configuration
+# Agent identity is defined ONLY here. Never hardcode IDs in source code.
+
+agent:
+  id: "ea"
+  name: "Executive Assistant"
+  display_name: "EA"
+
+mqtt:
+  broker_url: "mqtt://nexus-broker:1883"
+  # Topics are derived from agent.id at runtime — do not hardcode here
+  lwt_topic: "agents/status"
+  lwt_payload: '{"agent":"ea","status":"offline","unix":0}'
+
+mcp:
+  # Local MCP servers this agent can call directly via HTTP
+  local_servers:
+    - url: "http://mcp-server:8787"
+      label: "openbrain-memory"

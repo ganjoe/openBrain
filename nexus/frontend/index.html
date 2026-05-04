@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Nexus</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- marked.js for Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+</head>
+<body>
+
+  <div id="app">
+
+    <!-- ── Sidebar ──────────────────────────────────────────── -->
+    <aside id="sidebar">
+      <h1 id="logo">⬡ NEXUS</h1>
+
+      <section class="panel">
+        <h2>Filter</h2>
+
+        <label class="checkbox-row" id="label-status">
+          <input type="checkbox" id="filter-status" />
+          <span class="dot dot-status"></span>
+          Status Channel
+        </label>
+
+        <div id="agent-list">
+          <!-- Populated dynamically via /api/agents -->
+          <p class="hint">Lade Agenten…</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Senden</h2>
+        <input id="send-from" type="text" placeholder="Von (z.B. boss)" />
+        <input id="send-to"   type="text" placeholder="An (z.B. ea)" />
+        <textarea id="send-text" rows="3" placeholder="Nachricht…"></textarea>
+        <button id="send-btn">Senden ↑</button>
+      </section>
+    </aside>
+
+    <!-- ── Main stream ──────────────────────────────────────── -->
+    <main id="stream-pane">
+      <header id="stream-header">
+        <span id="room-label">Global Stream</span>
+        <span id="conn-indicator" class="indicator offline">●</span>
+      </header>
+
+      <div id="messages"></div>
+    </main>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
