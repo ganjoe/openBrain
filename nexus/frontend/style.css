@@ -87,6 +87,7 @@ aside#sidebar {
   flex-shrink: 0;
 }
 .dot-status  { background: var(--status); }
+.dot-history { background: #9b59b6; }
 .dot-agent   { background: var(--accent); }
 .dot-offline { background: var(--offline); }
 

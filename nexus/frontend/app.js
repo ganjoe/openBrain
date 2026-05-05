@@ -29,6 +29,7 @@ const $sendBtn       = document.getElementById("send-btn");
 const $sendFrom      = document.getElementById("send-from");
 const $sendTo        = document.getElementById("send-to");
 const $sendText      = document.getElementById("send-text");
+const $filterHistory = document.getElementById("filter-history");
 
 // ── Helpers ───────────────────────────────────────────────────
 function formatTime(unix) {
@@ -254,10 +255,17 @@ function connectSSE() {
 }
 
 // ── Load history on start ─────────────────────────────────────
-async function loadHistory() {
+async function loadHistory(forceFull = false) {
+  const since = forceFull ? 0 : state.lastSeenUnix;
   try {
-    const r   = await fetch(`${API}/api/history?since=${state.lastSeenUnix}`);
+    const r   = await fetch(`${API}/api/history?since=${since}`);
     const rows = await r.json();
+
+    if (forceFull) {
+      state.messages = [];
+      $messages.innerHTML = "";
+    }
+
     rows.forEach(row => {
       // DB rows have full_json as the envelope
       const msg = row.full_json || row;
@@ -267,6 +275,18 @@ async function loadHistory() {
     console.error("History load failed:", e);
   }
 }
+
+// ── History Toggle ────────────────────────────────────────────
+$filterHistory.addEventListener("change", () => {
+  if ($filterHistory.checked) {
+    loadHistory(true);
+  } else {
+    // Optional: reload missed messages only
+    state.messages = [];
+    $messages.innerHTML = "";
+    loadHistory(false);
+  }
+});
 
 // ── Load known agents on start ────────────────────────────────
 async function loadAgents() {

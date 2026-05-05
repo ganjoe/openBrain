@@ -203,16 +203,9 @@ async function handleIncoming(
   // Ignore own messages
   if (from === AGENT_ID) return;
 
-  // Mention-based routing: ignore if a different agent is explicitly addressed
-  const isMentioned = textL.includes(AGENT_ID);
-
-  // If message is from another agent, require explicit mention
-  const knownAgents = config.mcp.local_servers.map(() => ""); // dynamic placeholder
+  // If message is from another agent, we process it as long as it's in our inbox.
+  // The 'isMentioned' check was previously here but is redundant for private inboxes.
   const isFromAgent = from !== "boss" && from !== AGENT_ID;
-  if (isFromAgent && !isMentioned) {
-    console.log(`🔕 [${AGENT_ID}] ignoring message from agent '${from}' (not mentioned)`);
-    return;
-  }
 
   console.log(`\n💬 [${AGENT_ID}] message from '${from}': ${text.slice(0, 80)}`);
   saveMessageToDb(from, "user", text);
