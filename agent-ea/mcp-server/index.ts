@@ -457,6 +457,48 @@ server.registerTool(
   }
 );
 
+// Tool 5: Delegate / Ask Agent
+server.registerTool(
+  "message_agent",
+  {
+    title: "Message Another Agent",
+    description: "Send a direct message or delegation request to another agent (e.g. 'cco' or 'ea') via the Nexus. Do not wait for the result in this turn; the other agent will reply asynchronously.",
+    inputSchema: {
+      target_agent: z.string().describe("The ID of the agent to message (e.g. 'cco')"),
+      message: z.string().describe("The message or task to send"),
+    },
+  },
+  async ({ target_agent, message }) => {
+    try {
+      const r = await fetch("http://nexus-service:7734/api/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from_agent: "ea",
+          to: target_agent,
+          text: message
+        }),
+      });
+
+      if (!r.ok) {
+        return {
+          content: [{ type: "text" as const, text: `Failed to message agent: ${r.status}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: `Message successfully sent to ${target_agent}. You do not need to do anything else right now.` }],
+      };
+    } catch (err: unknown) {
+      return {
+        content: [{ type: "text" as const, text: `Error: ${(err as Error).message}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
 // --- Hono App with Auth + CORS ---
 
 const corsHeaders = {

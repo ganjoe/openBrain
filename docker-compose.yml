@@ -194,7 +194,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # --- EA Matrix Bot: The Bridge ---
+  # --- EA Bot: Executive Agent ---
   agent-ea-bot:
     build:
       context: ./agent-ea/bot
@@ -244,7 +244,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # --- CCO Matrix Bot ---
+  # --- CCO Bot: Chief Communication Officer ---
   agent-cco-bot:
     build:
       context: ./agent-cco/bot

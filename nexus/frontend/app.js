@@ -13,7 +13,7 @@ const API = window.location.origin.replace("7733", "7734");
 // ── State ─────────────────────────────────────────────────────
 const state = {
   agents:        [],          // list of known agent IDs
-  activeFilter:  new Set(),   // checked agent IDs
+  activeFilter:  new Set(["boss"]), // checked agent IDs (boss default)
   statusMode:    false,       // status-channel checkbox
   messages:      [],          // all buffered messages (capped at 500)
   lastSeenUnix:  parseInt(localStorage.getItem("nexus_last_seen") || "0"),
@@ -26,6 +26,9 @@ const $roomLabel   = document.getElementById("room-label");
 const $connIndicator = document.getElementById("conn-indicator");
 const $filterStatus  = document.getElementById("filter-status");
 const $sendBtn       = document.getElementById("send-btn");
+const $sendFrom      = document.getElementById("send-from");
+const $sendTo        = document.getElementById("send-to");
+const $sendText      = document.getElementById("send-text");
 
 // ── Helpers ───────────────────────────────────────────────────
 function formatTime(unix) {
@@ -156,6 +159,15 @@ function renderAgentCheckboxes() {
     cb.addEventListener("change", () => {
       if (cb.checked) state.activeFilter.add(id);
       else            state.activeFilter.delete(id);
+
+      // Auto-fill Send fields based on selection count
+      const activeArray = [...state.activeFilter];
+      if (activeArray.length === 1) {
+        $sendFrom.value = activeArray[0];
+      } else if (activeArray.length === 2) {
+        $sendTo.value = activeArray[1];
+      }
+
       // Disable status mode when agent selected
       if (state.activeFilter.size > 0) {
         state.statusMode = false;
@@ -206,6 +218,14 @@ $sendBtn.addEventListener("click", async () => {
     if (r.ok) document.getElementById("send-text").value = "";
   } catch (e) {
     console.error("Send failed:", e);
+  }
+});
+
+// Send on Enter (Shift+Enter for newline)
+$sendText.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    $sendBtn.click();
   }
 });
 
@@ -261,6 +281,7 @@ async function loadAgents() {
 
 // ── Boot ──────────────────────────────────────────────────────
 (async () => {
+  $sendFrom.value = "boss"; // Initial value
   await loadAgents();
   await loadHistory();
   connectSSE();
