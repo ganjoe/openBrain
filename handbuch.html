@@ -352,6 +352,14 @@ graph TD
 <LI><B>Native TypeScript:</B> Kein Webpack, kein Babel. Zero-Config TypeScript-Ausf&uuml;hrung.
 <LI><B>Streamable HTTP (SSE):</B> Der Server nutzt <CODE>@hono/mcp</CODE> f&uuml;r Server-Sent Events. Dies erm&ouml;glicht Multi-Client-Support &uuml;ber Netzwerkgrenzen hinweg, im Gegensatz zur klassischen stdio-Kommunikation lokaler Skripte.</UL>
 
+<H3>8.4 Zero-Config Agent Brains (Daten-Isolation)</H3>
+<P>Anstatt alle Agenten auf einen globalen Wissenspool zugreifen zu lassen, implementiert das System eine strikte Daten-Trennung ("Own Brain" Architektur) auf Metadaten-Ebene. Dies wird komplett ohne Code-&Auml;nderungen &uuml;ber die <CODE>docker-compose.yml</CODE> gesteuert:</P>
+<UL>
+<LI><B>AGENT_ID:</B> Wird als Environment Variable an den MCP-Server &uuml;bergeben. Bei jedem <CODE>capture_thought</CODE> wird diese ID automatisch als <CODE>{"owner": "..."}</CODE> in die Metadaten injiziert.</LI>
+<LI><B>GLOBAL_BRAIN_ACCESS (false):</B> Der Standard. Der MCP-Server zwingt bei jedem Lesezugriff (Suche, Stats, List) den Filter <CODE>{"owner": AGENT_ID}</CODE> auf. Der Agent ist blind f&uuml;r das Wissen anderer Agenten und agiert v&ouml;llig isoliert.</LI>
+<LI><B>GLOBAL_BRAIN_ACCESS (true):</B> (Z.B. f&uuml;r den Executive Assistant). Der Filter-Zwang entf&auml;llt. Dem LLM wird in den Such-Tools stattdessen ein optionaler Parameter <CODE>owner</CODE> angeboten. Der Agent kann gezielt die Brains anderer Agenten durchsuchen oder globale Analysen &uuml;ber das gesamte Open Brain fahren.</LI>
+</UL>
+
 <A NAME="bot"></A>
 <H2>9. Der Executive Assistant: Bot-Logik, Historie & Agentik</H2>
 <P>Der <CODE>agent-ea-bot</CODE> ist das ausf&uuml;hrende Frontend der Intelligenz. Er subscribed seinen MQTT-Topic und steuert den ReAct-Loop.</P>
@@ -365,11 +373,11 @@ graph TD
 <H3>9.2 Der ReAct-Loop & Historien-Management</H3>
 <P>Der Bot antwortet nicht auf direktem Weg. Er operiert in einem strengen autonomen Zyklus: <B>Thought</B> (Welches Tool?) &rarr; <B>Action</B> (Tool-Call via HTTP) &rarr; <B>Observation</B> (Auswertung des JSON-Responses). Historien-Management: Der Bot l&auml;dt beim Start die letzten 10 Nachrichten aus der <CODE>nexus_messages</CODE>-Tabelle (gefiltert auf seinen eigenen Agenten-Vektor). Dies ist effektiv RAG f&uuml;r den Chat-State.</P>
 
-<H3>9.3 Multi-Agenten Kommunikation: Natural Language Delegation</H3>
-<P>Wenn mehrere Bots (z.B. EA und CCO) auf dem Nexus aktiv sind, entsteht ohne Filtering das Problem des Feedback-Loops. Open Brain nutzt <B>Natural Language Delegation</B> via MQTT:</P>
+<H3>9.3 Multi-Agenten Kommunikation: Tool-Based Delegation</H3>
+<P>Wenn mehrere Bots (z.B. EA und CCO) auf dem Nexus aktiv sind, muss die Delegation logisch und steuerbar sein. Open Brain nutzt <B>Tool-Based Delegation</B> &uuml;ber den MQTT-Bus:</P>
 <UL>
-<LI><B>Erw&auml;hnungs-Filter (Mention-Routing):</B> Auf Code-Ebene (<CODE>index.ts</CODE>) greift ein strikter Filter. Ein Bot ignoriert grunds&auml;tzlich alle MQTT-Nachrichten von anderen Bots, es sei denn, sein eigener Name (z.B. <CODE>cco</CODE>) wird explizit im Nachrichtentext erw&auml;hnt. Die Agenten-ID ist nie im Code hartkodiert &mdash; sie wird aus <CODE>config.yaml</CODE> geladen.</LI>
-<LI><B>Der Raum als Bus:</B> Bots kommunizieren nicht &uuml;ber versteckte APIs, sondern via MQTT. Wenn EA den CCO anweisen m&ouml;chte, publiziert er eine Nachricht auf <CODE>agents/cco/inbox</CODE>. CCO subscribed diesen Topic, f&uuml;hrt die Aktion aus und antwortet auf <CODE>agents/ea/inbox</CODE>. Der Nexus-Service loggt jeden Schritt transparent.</LI>
+<LI><B>Das 'message_agent' MCP-Tool:</B> Anstatt auf fehleranf&auml;llige Text-Pr&auml;fixe ("cco, mach dies") zu setzen, verf&uuml;gen die Agenten &uuml;ber ein dediziertes MCP-Tool <CODE>message_agent</CODE>. Das LLM entscheidet durch Reasoning, ob eine Aufgabe delegiert werden muss, und ruft das Tool auf. Dieses Tool sendet die Nachricht &uuml;ber die Nexus REST-API transparent in den korrekten Topic.</LI>
+<LI><B>Private Inboxes ohne Mention-Filter:</B> Jeder Agent lauscht exklusiv auf seiner privaten <CODE>agents/{id}/inbox</CODE>. Er verarbeitet bedingungslos jede Nachricht, die dort ankommt, da sie explizit an ihn delegiert wurde. Ein Namens-Filter (Mention-Routing) im Text ist nicht mehr n&ouml;tig.</LI>
 </UL>
 <P>Dieses Paradigma erlaubt es, komplexe Agenten-Ketten zu bilden (Bot A delegiert an Bot B, der delegiert an Bot C), w&auml;hrend der Nutzer jeden einzelnen Delegationsschritt transparent im Nexus-Dashboard (Port 7733) verfolgen und eingreifen kann.</P>
 
@@ -555,6 +563,8 @@ docker compose up -d --build agent-cco-bot mcp-cco
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       OLLAMA_URL: http://ollama:11434
       PORT: "8788"
+      AGENT_ID: "cco"
+      GLOBAL_BRAIN_ACCESS: "false"
     ports:
       - "8788:8788"
 

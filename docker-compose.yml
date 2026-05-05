@@ -189,6 +189,8 @@ services:
       OLLAMA_EMBED_MODEL: qwen3-embedding:8b
       LM_STUDIO_URL: http://host.docker.internal:1234
       PORT: "8787"
+      AGENT_ID: "ea"
+      GLOBAL_BRAIN_ACCESS: "true"
     ports:
       - "8787:8787"
     extra_hosts:
@@ -239,6 +241,8 @@ services:
       OLLAMA_EMBED_MODEL: qwen3-embedding:8b
       LM_STUDIO_URL: http://host.docker.internal:1234
       PORT: "8788"
+      AGENT_ID: "cco"
+      GLOBAL_BRAIN_ACCESS: "false"
     ports:
       - "8788:8788"
     extra_hosts:

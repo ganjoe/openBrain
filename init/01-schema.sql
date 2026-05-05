@@ -102,7 +102,8 @@ $$;
 -- 6b. Keyword search function
 CREATE OR REPLACE FUNCTION search_thoughts_keyword(
   query_text text,
-  match_count int DEFAULT 10
+  match_count int DEFAULT 10,
+  filter jsonb DEFAULT '{}'::jsonb
 )
 RETURNS TABLE (
   id uuid,
@@ -120,8 +121,9 @@ BEGIN
     t.metadata,
     t.created_at
   FROM thoughts t
-  WHERE t.content ILIKE '%' || query_text || '%'
-     OR t.metadata::text ILIKE '%' || query_text || '%'
+  WHERE (t.content ILIKE '%' || query_text || '%'
+         OR t.metadata::text ILIKE '%' || query_text || '%')
+    AND (filter = '{}'::jsonb OR t.metadata @> filter)
   ORDER BY t.created_at DESC
   LIMIT match_count;
 END;
