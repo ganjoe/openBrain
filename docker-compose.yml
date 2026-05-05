@@ -243,6 +243,7 @@ services:
       PORT: "8788"
       AGENT_ID: "cco"
       GLOBAL_BRAIN_ACCESS: "false"
+      X_BEARER_TOKEN: ${X_BEARER_TOKEN}
     ports:
       - "8788:8788"
     extra_hosts:

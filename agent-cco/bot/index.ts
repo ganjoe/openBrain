@@ -61,7 +61,10 @@ class StatelessMcpClient {
   private async request(method: string, params: any) {
     const res = await fetch(`${this.url}?key=${this.key}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream"
+      },
       body: JSON.stringify({ jsonrpc: "2.0", method, params, id: Date.now() }),
     });
 
