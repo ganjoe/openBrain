@@ -20,7 +20,7 @@
 <H2>Inhaltsverzeichnis</H2>
 <OL>
 <LI><A HREF="#architektur">System-Architektur: Das lokale Nervensystem</A>
-<LI><A HREF="#db">Die Daten-Schicht: PostgreSQL, pgvector & Chat-Backup</A>
+<LI><A HREF="#db">Die Daten-Schicht: Die 3-Saeulen-Architektur</A>
 <LI><A HREF="#postgrest">Die API-Schicht: PostgREST & Automatisierung</A>
 <LI><A HREF="#studio">Die Administrations-Schicht: Supabase Studio & Meta</A>
 <LI><A HREF="#ollama">Die Embedding-Schicht: Ollama & Vektorisierung</A>
@@ -91,7 +91,7 @@ graph TD
         end
 
         subgraph Data ["Datenbank"]
-            DB[(PostgreSQL + nexus_messages)]
+            DB[(PostgreSQL + open_brain)]
         end
         
     end
@@ -168,7 +168,7 @@ flowchart TD
         end
 
         subgraph DB_Layer ["Datenbank"]
-            db[(openbrain-db + nexus_messages)]:::core
+            db[(openbrain-db + open_brain)]:::core
         end
     end
 
@@ -196,20 +196,25 @@ flowchart TD
 </div>
 
 <A NAME="db"></A>
-<H2>2. Die Daten-Schicht: PostgreSQL, pgvector & Chat-Backup</H2>
-<P>Das Herzst&uuml;ck von Open Brain ist eine PostgreSQL 17 Datenbank. Wir nutzen exzessiv die JSONB-Typisierung in Kombination mit dem <CODE>pgvector</CODE> Plugin, um strukturierte Agenten-Metadaten nahtlos mit hochdimensionalen semantischen Vektoren zu fusionieren.</P>
+<H2>2. Die Daten-Schicht: Die 3-Saeulen-Architektur</H2>
+<P>Das Open Brain nutzt eine spezialisierte 3-Saeulen-Architektur, um maximale Uebersichtlichkeit und Kontext-Trennung zu gewaehrleisten. Wir nutzen PostgreSQL 17 mit <CODE>pgvector</CODE>, verzichten aber bewusst auf Datenbank-interne RLS-Logik zugunsten von <B>expliziter Filter-Logik im Code</B>.</P>
 
-<H3>2.1 Vektor-Semantik: pgvector</H3>
-<P>Traditionelle RDBMS scheitern an semantischer &Auml;hnlichkeitssuche. Durch <B>pgvector</B> wird jeder Gedanke zwingend durch ein Embedding-Modell (Ollama) in einen <CODE>VECTOR(4096)</CODE> transformiert. Bei Query-Zeit berechnet die Datenbank die Cosine Distance (<CODE><=></CODE> Operator) zwischen dem Such-Vektor und dem indizierten Vektorraum der Tabelle. Dies erm&ouml;glicht blitzschnelle nearest-neighbor Suchen direkt auf SQL-Ebene.</P>
+<H3>2.1 Die 3 Saeulen</H3>
 
-<H3>2.2 Tabelle 'thoughts' und der JSONB-Deep-Dive</H3>
-<P>Die Tabelle <CODE>thoughts</CODE> ist das persistente Gedaechtnis. Ihr Schema ist bewusst asymmetrisch designt:</P>
+<H4>1. open_brain (Valuable Thoughts)</H4>
+<P>Diese Tabelle beherbergt das eigentliche Langzeitgedaechtnis. Sie ist optimiert fuer semantische Suche und Deduplizierung.</P>
 <UL>
-<LI><B>content (TEXT):</B> Das unstrukturierte Rohmaterial (z.B. ein Meeting-Protokoll).</LI>
-<LI><B>embedding (VECTOR(4096)):</B> Die numerische Repr&auml;sentation f&uuml;r RAG-Pipelines.</LI>
-<LI><B>metadata (JSONB):</B> Der Game-Changer der Architektur. Die Schemalosigkeit von JSONB in PostgreSQL 17 erlaubt unendlich granulare Metadaten-Strukturen pro Agent.</LI>
-<LI><B>content_fingerprint (TEXT):</B> Ein SHA256-Hash des Inhalts zur kryptografischen Deduplizierung.</LI>
+<LI><B>agent_id:</B> Identifiziert den Eigentuemer des Gedankens.
+<LI><B>thought_type:</B> Klassifizierung (z.B. <CODE>observation</CODE>, <CODE>task</CODE>, <CODE>idea</CODE>).
+<LI><B>content_hash:</B> SHA256-Hash zur kryptografischen Deduplizierung.
+<LI><B>embedding:</B> Der semantische <CODE>VECTOR(4096)</CODE>.
 </UL>
+
+<H4>2. agent_workspace (Raw Data & Scrapes)</H4>
+<P>Ein isolierter Bereich fuer externe Datenimporte und temporaere Arbeits-Artefakte (z.B. X-Posts). Verhindert, dass das <CODE>open_brain</CODE> durch Massendaten-Importe "verrauscht".</P>
+
+<H4>3. nexus_chat (Communication Log)</H4>
+<P>Der Audit-Trail aller MQTT-Nachrichten. Jede Kommunikation zwischen Agenten wird hier als Roh-Payload und Text-Auszug gespeichert.</P>
 
 <H4>Deep-Dive: Dynamische JSONB-Iterierung (Code-Free Configuration)</H4>
 <P>Das Architekturziel von Open Brain ist es, dass sich Agenten ausschlie&szlig;lich durch ihre Text-Konfiguration (Prompts) unterscheiden d&uuml;rfen. Um dies zu gew&auml;hrleisten, ist die Code-Basis des MCP-Servers 100% dynamisch aufgebaut. Wenn ein Agent-Tool (z.B. <CODE>search_thoughts</CODE>) Resultate aus der Datenbank liest, iteriert es programmatisch &uuml;ber <B>alle</B> Keys im JSONB-Objekt, ohne dass bestimmte Felder wie <CODE>people</CODE> hartkodiert w&auml;ren:</P>
@@ -227,16 +232,8 @@ for (const [key, val] of Object.entries(m)) {
 
 <P><B>Die Konsequenz f&uuml;r Entwickler:</B> Da die Datenbank JSONB nicht limitiert und der Code dynamisch iteriert, hast du bei der Agenten-Erstellung v&ouml;llige Freiheit. Ein Koch-Bot kann in seinem Metadaten-Prompt anweisen, v&ouml;llig neue Arrays wie <CODE>"zutaten": ["Mehl", "Zucker"]</CODE> zu extrahieren. Diese werden sauber als JSONB gespeichert und bei einer sp&auml;teren LLM-Suche automatisch formatiert an den Bot zur&uuml;ckgeliefert. Keine einzige Zeile TypeScript-Code muss daf&uuml;r ver&auml;ndert werden.</P>
 
-<H3>2.3 Tabelle 'nexus_messages': Das Kommunikations-Audit-Log</H3>
-<P>Die Tabelle <CODE>nexus_messages</CODE> ist der persistente Audit-Trail aller Agenten-Kommunikation. Jede MQTT-Nachricht die durch den Nexus-Broker l&auml;uft wird hier gespeichert.</P>
-<UL>
-<LI><B>from_agent (TEXT):</B> ID des Absenders (aus <CODE>config.yaml</CODE>, nie hardkodiert).</LI>
-<LI><B>to_agent (TEXT):</B> ID des Empf&auml;ngers.</LI>
-<LI><B>msg_type (TEXT):</B> Nachrichtentyp: <CODE>chat</CODE>, <CODE>status</CODE>, <CODE>mcp_request</CODE>.</LI>
-<LI><B>unix_ts (BIGINT):</B> Unix-Timestamp f&uuml;r performante Zeitfilter.</LI>
-<LI><B>full_json (JSONB):</B> Das vollst&auml;ndige Nachrichtenobjekt inkl. Header und Content.</LI>
-<LI><B>created_at (TIMESTAMPTZ):</B> Monoton steigender DB-Timestamp.</LI></UL>
-<P>Die Persistenz ist der Schl&uuml;ssel zur <B>Historien-Persistenz</B>. Das Dashboard nutzt <CODE>/api/history?since=0</CODE> um beim Start alle Nachrichten zu laden. Der SSE-Stream liefert neue Nachrichten in Echtzeit.</P>
+<H3>2.2 Hybrid-Suche</H3>
+<P>Die Suche kombiniert Vektor-Aehnlichkeit (Ollama) mit klassischer SQL-Volltextsuche (<CODE>ILIKE</CODE>). Dies garantiert, dass sowohl abstrakte Konzepte als auch exakte Namen oder Ticker-Symbole gefunden werden.</P>
 
 <A NAME="postgrest"></A>
 <H2>3. Die API-Schicht: PostgREST & Automatisierung</H2>
@@ -451,8 +448,13 @@ sequenceDiagram
 <P>Sicherheit ist bei einem digitalen RAG-System Fundament, kein Add-on. Wir applizieren strikt das Principle of Least Privilege.</P>
 <H3>11.1 Netzwerk-Isolation</H3>
 <P>Die PostgreSQL-Daten liegen raw im Docker-Volume (<CODE>openbrain_pgdata</CODE>). Ein Host-Angreifer ohne DB-Credentials kann diese Files nicht ohne Weiteres parsen. Zugriff erfolgt exklusiv &uuml;ber das Nginx-Gateway.</P>
-<H3>11.2 Row Level Security (RLS)</H3>
-<P>Das <CODE>01-schema.sql</CODE> forciert RLS. Eine Kompromittierung des <CODE>anon</CODE>-Tokens erlaubt keine Destruktion, da RLS den Schreibzugriff verweigert. Writes sind exklusiv der <CODE>service_role</CODE> vorbehalten, deren Secret aus dem <CODE>.env</CODE> isoliert im MCP-Container verbleibt und nie an den Web-Client (Studio) leakt.</P>
+<H3>11.2 Explizite Filter-Logik (Code over Magic)</H3>
+<P>Das Open Brain verzichtet bewusst auf Datenbank-interne RLS-Policies. Stattdessen wird die Filterung hart im TypeScript-Code der MCP-Server implementiert.</P>
+<UL>
+<LI><B>Transparenz:</B> Die Abfragen enthalten explizite <CODE>.eq('agent_id', AGENT_ID)</CODE> Filter. Wer den Code liest, sieht die Sicherheitsschicht.
+<LI><B>EA God Mode:</B> Der EA-Agent hat globalen Zugriff (<CODE>p_agent_id = null</CODE>), waehrend alle anderen Agenten strikt auf ihre eigene ID limitiert sind.
+<LI><B>Simplizitaet:</B> Keine Komplexitaet durch JWT-Token-Verwaltung pro Agent oder kryptische SQL-Policies.
+</UL>
 
 <A NAME="wartung"></A>
 <H2>12. Wartung: Backup & Wiederherstellung</H2>

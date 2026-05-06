@@ -134,7 +134,7 @@ async function loadHistoryFromDb(otherAgentId: string, limit = 10) {
       limit: limit.toString(),
     });
 
-    const res = await fetch(`${POSTGREST_URL}/nexus_messages?${params.toString()}`);
+    const res = await fetch(`${POSTGREST_URL}/nexus_chat?${params.toString()}`);
     if (!res.ok) return [];
 
     const data: any[] = await res.json();
@@ -143,7 +143,7 @@ async function loadHistoryFromDb(otherAgentId: string, limit = 10) {
       .sort((a, b) => a.unix_ts - b.unix_ts)
       .map(r => {
         const isAssistant = r.from_agent === AGENT_ID;
-        const text = r.full_json?.content?.text || "";
+        const text = r.raw_payload?.content?.text || r.content || "";
         return { role: isAssistant ? "assistant" : "user", content: text };
       });
   } catch (err) {

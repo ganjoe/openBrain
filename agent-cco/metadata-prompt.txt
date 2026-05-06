@@ -4,7 +4,7 @@ The JSON must have exactly these keys:
 - "tickers": An array of stock ticker symbols (e.g. ["TSLA", "AAPL"])
 - "published_at": ISO date of the post
 - "topics": array of 1-3 short topic tags
-- "type": "news", "observation", "task", "idea", or "reference"
+- "thought_type": "observation", "task", "idea", or "reference"
 
 If the input is a financial post, ensure tickers are extracted correctly into the "tickers" array.
 Return ONLY JSON.

@@ -24,24 +24,27 @@ HEADERS = {
 
 async def log_message(parsed: dict) -> None:
     """
-    Persist a parsed Nexus message into nexus_messages.
-    `parsed` must contain the already-validated message dict.
+    Persist a parsed Nexus message into nexus_chat.
     """
     header = parsed.get("header", {})
+    content_obj = parsed.get("content", {})
+    
+    # Extract text content if available (for easy search/read in Supabase)
+    text_content = content_obj.get("text") if isinstance(content_obj, dict) else str(content_obj)
 
     row = {
-        "from_agent": header.get("from", "unknown"),
-        "to_agent":   header.get("to", "unknown"),
-        "msg_type":   header.get("msg_type", "chat"),
-        "unix_ts":    header.get("unix", 0),
-        "date_str":   header.get("date", None),
-        "full_json":  parsed,
+        "from_agent":   header.get("from", "unknown"),
+        "to_agent":     header.get("to", "unknown"),
+        "message_type": header.get("msg_type", "chat"),
+        "content":      text_content,
+        "unix_ts":      header.get("unix", 0),
+        "raw_payload":  parsed,
     }
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(
-                f"{GATEWAY_URL}/rest/v1/nexus_messages",
+                f"{GATEWAY_URL}/rest/v1/nexus_chat",
                 headers=HEADERS,
                 json=row,
             )

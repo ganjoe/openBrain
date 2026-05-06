@@ -60,7 +60,7 @@ async def get_all_messages(
 ):
     """Global stream — all messages ordered by unix_ts descending."""
     return await _db_get(
-        "nexus_messages",
+        "nexus_chat",
         {"order": "unix_ts.desc", "limit": limit, "offset": offset},
     )
 
@@ -81,15 +81,15 @@ async def get_vector(
         "order": "unix_ts.asc",
         "limit": limit,
     }
-    return await _db_get("nexus_messages", params)
+    return await _db_get("nexus_chat", params)
 
 
 @router.get("/api/status")
 async def get_status():
     """Status-Channel — LWT events only."""
     return await _db_get(
-        "nexus_messages",
-        {"msg_type": "eq.status", "order": "unix_ts.desc", "limit": 200},
+        "nexus_chat",
+        {"message_type": "eq.status", "order": "unix_ts.desc", "limit": 200},
     )
 
 
@@ -100,7 +100,7 @@ async def get_history(since: int = Query(0, description="Unix timestamp")):
     Used by the dashboard on load to rehydrate missed messages.
     """
     return await _db_get(
-        "nexus_messages",
+        "nexus_chat",
         {"unix_ts": f"gt.{since}", "order": "unix_ts.asc", "limit": 500},
     )
 
@@ -112,7 +112,7 @@ async def get_agents():
     The dashboard uses this to populate the checkboxes.
     """
     # Pull distinct from_agent and to_agent values
-    rows = await _db_get("nexus_messages", {"select": "from_agent,to_agent", "limit": 1000})
+    rows = await _db_get("nexus_chat", {"select": "from_agent,to_agent", "limit": 1000})
     seen: set[str] = set()
     for row in rows:
         seen.add(row["from_agent"])

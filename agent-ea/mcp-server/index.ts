@@ -103,25 +103,23 @@ server.registerTool(
   },
   async ({ query, limit, threshold, owner }: any) => {
     try {
-      const filter = GLOBAL_BRAIN_ACCESS && owner ? { owner } : (!GLOBAL_BRAIN_ACCESS ? { owner: AGENT_ID } : {});
+      // Logic for isolation: EA can see everything if owner is NULL. CCO is always filtered.
+      const p_agent_id = GLOBAL_BRAIN_ACCESS ? (owner || null) : AGENT_ID;
+      
       const qEmb = await getEmbedding(query);
-      const { data, error } = await supabase.rpc("hybrid_search_thoughts", {
+      const { data, error } = await supabase.rpc("hybrid_search_open_brain", {
         query_embedding: qEmb,
         query_text: query,
         match_threshold: threshold,
         match_count: limit,
-        filter: filter,
+        p_agent_id: p_agent_id,
       });
 
       if (error) throw error;
       if (!data || data.length === 0) return { content: [{ type: "text", text: "No results." }] };
 
       const results = data.map((t: any, i: number) => {
-          const m = t.metadata || {};
-          const parts = [`[${i + 1}] Author: ${m.author || "Unknown"} | Date: ${new Date(t.created_at).toLocaleDateString()}`];
-          if (m.tickers) parts.push(`Tickers: ${m.tickers.join(", ")}`);
-          parts.push(`Content: ${t.content}`);
-          return parts.join("\n");
+          return `[${i + 1}] Agent: ${t.agent_id} | Type: ${t.thought_type} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}`;
       });
 
       return { content: [{ type: "text", text: results.join("\n\n") }] };
@@ -142,25 +140,29 @@ server.registerTool(
   async ({ content }: any) => {
     try {
       const [embedding, metadata] = await Promise.all([getEmbedding(content), extractMetadata(content)]);
-      const { data: upsertResult, error: upsertError } = await supabase.rpc("upsert_thought", {
+      const { data: upsertResult, error: upsertError } = await supabase.rpc("upsert_open_brain", {
+        p_agent_id: AGENT_ID,
         p_content: content,
-        p_payload: { metadata: { ...metadata, source: "mcp", owner: AGENT_ID } },
+        p_thought_type: metadata.type || "observation"
       });
       if (upsertError) throw upsertError;
-      await supabase.from("thoughts").update({ embedding }).eq("id", upsertResult?.id);
-      return { content: [{ type: "text", text: `Captured as ${metadata.type || "thought"} (Owner: ${AGENT_ID})` }] };
+      
+      // Update with embedding
+      await supabase.from("open_brain").update({ embedding }).eq("id", upsertResult?.id);
+      
+      return { content: [{ type: "text", text: `Captured as ${metadata.type || "thought"} (Agent: ${AGENT_ID})` }] };
     } catch (err: any) {
       return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
     }
   }
 );
 
-// Tool: Sync Influencer News (NEW)
+// Tool: Sync Influencer News
 server.registerTool(
   "sync_influencer_news",
   {
     title: "Sync Influencer News",
-    description: "Fetch latest posts from an X influencer and store them in the Brain.",
+    description: "Fetch latest posts from an X influencer and store them in the Workspace.",
     inputSchema: {
       username: z.string().describe("The X username (e.g. @elonmusk)"),
       limit: z.number().optional().default(5).describe("Max tweets to fetch"),
@@ -175,11 +177,13 @@ server.registerTool(
       const userId = await getXUserId(username);
       const cleanName = username.startsWith("@") ? username : `@${username}`;
 
-      // 1. Find latest since_id in DB
+      // 1. Find latest external_id in agent_workspace
       const { data: latestRecord } = await supabase
-        .from("thoughts")
+        .from("agent_workspace")
         .select("metadata")
-        .contains("metadata", { author: cleanName, source: "x-api" })
+        .eq("agent_id", AGENT_ID)
+        .eq("artifact_type", "x_post")
+        .contains("metadata", { author: cleanName })
         .order("created_at", { ascending: false })
         .limit(1);
 
@@ -205,32 +209,34 @@ server.registerTool(
         const content = tweet.text;
         const tickers = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
         
-        // Use LLM to refine metadata but force key fields
         const baseMetadata = await extractMetadata(content);
         const finalMetadata = {
           ...baseMetadata,
-          type: "news",
           author: cleanName,
-          source: "x-api",
           external_id: tweet.id,
           published_at: tweet.created_at,
           tickers: Array.from(new Set([...tickers, ...(baseMetadata.tickers as string[] || [])])),
-          owner: AGENT_ID
         };
 
         const embedding = await getEmbedding(content);
-        const { data: upsertResult, error: upsertError } = await supabase.rpc("upsert_thought", {
-          p_content: content,
-          p_payload: { metadata: finalMetadata },
-        });
+        const { data: insertResult, error: insertError } = await supabase
+          .from("agent_workspace")
+          .insert({
+            agent_id: AGENT_ID,
+            artifact_type: "x_post",
+            content: content,
+            embedding: embedding,
+            metadata: finalMetadata
+          })
+          .select()
+          .single();
 
-        if (!upsertError && upsertResult) {
-          await supabase.from("thoughts").update({ embedding }).eq("id", upsertResult.id);
+        if (!insertError && insertResult) {
           count++;
         }
       }
 
-      return { content: [{ type: "text", text: `Successfully synced ${count} new post(s) from ${cleanName}.` }] };
+      return { content: [{ type: "text", text: `Successfully synced ${count} new post(s) from ${cleanName} to Workspace.` }] };
     } catch (err: any) {
       return { content: [{ type: "text", text: `Sync Error: ${err.message}` }], isError: true };
     }
