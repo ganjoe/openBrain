@@ -124,29 +124,30 @@ function callCrossAgentTool(
 }
 
 // ─────────────────────────────────────────────────────────────
-// 7. Database helpers (PostgREST — unchanged from old bot)
+// 7. Database history loader (PostgREST — via nexus_messages)
 // ─────────────────────────────────────────────────────────────
-async function saveMessageToDb(sender: string, role: string, content: string) {
+async function loadHistoryFromDb(otherAgentId: string, limit = 10) {
   try {
-    await fetch(`${POSTGREST_URL}/chat_messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ room_id: AGENT_ID, sender, role, content }),
+    const params = new URLSearchParams({
+      or: `(and(from_agent.eq.${AGENT_ID},to_agent.eq.${otherAgentId}),and(from_agent.eq.${otherAgentId},to_agent.eq.${AGENT_ID}))`,
+      order: "unix_ts.desc",
+      limit: limit.toString(),
     });
-  } catch (e) {
-    console.error("❌ DB save failed:", e);
-  }
-}
 
-async function loadHistoryFromDb(limit = 10) {
-  try {
-    const res = await fetch(
-      `${POSTGREST_URL}/chat_messages?room_id=eq.${AGENT_ID}&order=created_at.desc&limit=${limit}`
-    );
+    const res = await fetch(`${POSTGREST_URL}/nexus_messages?${params.toString()}`);
     if (!res.ok) return [];
+
     const data: any[] = await res.json();
-    return data.reverse().map(r => ({ role: r.role, content: r.content }));
-  } catch {
+    // Return in chronological order (asc) for LLM context
+    return data
+      .sort((a, b) => a.unix_ts - b.unix_ts)
+      .map(r => {
+        const isAssistant = r.from_agent === AGENT_ID;
+        const text = r.full_json?.content?.text || "";
+        return { role: isAssistant ? "assistant" : "user", content: text };
+      });
+  } catch (err) {
+    console.error("❌ History load failed:", err);
     return [];
   }
 }
@@ -211,10 +212,9 @@ async function handleIncoming(
   const isFromAgent = from !== "boss" && from !== AGENT_ID;
 
   console.log(`\n💬 [${AGENT_ID}] message from '${from}': ${text.slice(0, 80)}`);
-  saveMessageToDb(from, "user", text);
 
-  // Load history + tools in parallel
-  const historyPromise = loadHistoryFromDb(10);
+  // Load history + tools in parallel (fetch specific history with sender)
+  const historyPromise = loadHistoryFromDb(from, 10);
 
   const availableTools: any[] = [];
   const toolToClient = new Map<string, StatelessMcpClient>();
@@ -274,7 +274,7 @@ async function handleIncoming(
   const replyText = response.message?.content || "";
   if (!replyText) return;
 
-  saveMessageToDb(AGENT_ID, "assistant", replyText);
+  // Response is logged automatically by nexus-service when published to MQTT
 
   // Publish reply to the sender's inbox (or boss channel)
   const replyTopic   = `agents/${from}/inbox`;
