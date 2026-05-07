@@ -23,8 +23,22 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // Cache for User ID mapping (username -> id)
 const userIdCache = new Map<string, string>();
 
+// --- Telemetry Helper ---
+async function sendTelemetry(text: string) {
+  try {
+    await fetch("http://nexus-service:7734/api/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from_agent: "system", to: "all", text, message_type: "telemetry" }),
+    });
+  } catch (e) {
+    console.error("Telemetry failed:", e);
+  }
+}
+
 // --- Embedding via Ollama ---
 async function getEmbedding(text: string): Promise<number[]> {
+  const start = Date.now();
   const r = await fetch(`${OLLAMA_URL}/v1/embeddings`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -32,11 +46,14 @@ async function getEmbedding(text: string): Promise<number[]> {
   });
   if (!r.ok) throw new Error(`Ollama embeddings failed: ${r.status}`);
   const d = await r.json();
+  const duration = (Date.now() - start) / 1000;
+  await sendTelemetry(`[Ollama] Model: ${OLLAMA_EMBED_MODEL} | Zeit: ${duration.toFixed(2)}s | Aktion: Embedding`);
   return d.data[0].embedding;
 }
 
 // --- Metadata extraction (LLM based) ---
 async function extractMetadata(text: string): Promise<Record<string, unknown>> {
+  const start = Date.now();
   let systemPrompt = "Extract metadata from the user's captured thought. Return ONLY valid JSON.";
   try {
     systemPrompt = Deno.readTextFileSync("/app/metadata-prompt.txt");
@@ -56,6 +73,14 @@ async function extractMetadata(text: string): Promise<Record<string, unknown>> {
   });
   if (!r.ok) return { topics: ["uncategorized"], type: "observation" };
   const d = await r.json();
+
+  const duration = (Date.now() - start) / 1000;
+  const tokens = d.usage?.completion_tokens || 0;
+  const ts = duration > 0 ? (tokens / duration).toFixed(1) : "0.0";
+  const model = d.model || "local-model";
+  
+  await sendTelemetry(`[LM Studio] Model: ${model} | Zeit: ${duration.toFixed(2)}s | Speed: ${ts} t/s | Tokens: ${tokens}`);
+
   try {
     const content = d.choices[0].message.content;
     const jsonMatch = content.match(/\{[\s\S]*\}/);

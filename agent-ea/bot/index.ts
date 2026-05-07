@@ -59,26 +59,37 @@ class StatelessMcpClient {
   constructor(public url: string, private key: string) {}
 
   private async request(method: string, params: any) {
-    const res = await fetch(`${this.url}?key=${this.key}`, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream"
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", method, params, id: Date.now() }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout for syncs
 
-    const text = await res.text();
-    let jsonStr = text;
+    try {
+      const res = await fetch(`${this.url}?key=${this.key}`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json, text/event-stream"
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", method, params, id: Date.now() }),
+        signal: controller.signal,
+      });
 
-    if (text.includes("event: message")) {
-      const dataLine = text.split("\n").find(l => l.startsWith("data: "));
-      if (dataLine) jsonStr = dataLine.substring(6);
+      const text = await res.text();
+      clearTimeout(timeout);
+      
+      let jsonStr = text;
+
+      if (text.includes("event: message")) {
+        const dataLine = text.split("\n").find(l => l.startsWith("data: "));
+        if (dataLine) jsonStr = dataLine.substring(6);
+      }
+
+      const data = JSON.parse(jsonStr);
+      if (data.error) throw new Error(data.error.message);
+      return data.result;
+    } catch (err: any) {
+      clearTimeout(timeout);
+      throw err;
     }
-
-    const data = JSON.parse(jsonStr);
-    if (data.error) throw new Error(data.error.message);
-    return data.result;
   }
 
   async listTools()              { return this.request("tools/list", {}); }
@@ -237,8 +248,9 @@ async function handleIncoming(
   );
 
   const history = await historyPromise;
+  const currentDateTime = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
   const messages: any[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: `${SYSTEM_PROMPT}\n\nAktuelle Zeit: ${currentDateTime}` },
     ...history,
     { role: "user", content: text },
   ];

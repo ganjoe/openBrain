@@ -211,10 +211,10 @@ flowchart TD
 </UL>
 
 <H4>2. agent_workspace (Raw Data & Scrapes)</H4>
-<P>Ein isolierter Bereich fuer externe Datenimporte und temporaere Arbeits-Artefakte (z.B. X-Posts). Verhindert, dass das <CODE>open_brain</CODE> durch Massendaten-Importe "verrauscht".</P>
+<P>Ein isolierter Bereich f&uuml;r externe Datenimporte und tempor&auml;re Arbeits-Artefakte (z.B. X-Posts). Verhindert, dass das <CODE>open_brain</CODE> durch Massendaten-Importe "verrauscht". Diese Tabelle ist optimiert f&uuml;r Massendaten-Speicherung und bietet Platz f&uuml;r Rohdaten und deren semantische Vektoren.</P>
 
 <H4>3. nexus_chat (Communication Log)</H4>
-<P>Der Audit-Trail aller MQTT-Nachrichten. Jede Kommunikation zwischen Agenten wird hier als Roh-Payload und Text-Auszug gespeichert.</P>
+<P>Der zentrale Audit-Trail aller MQTT-Nachrichten und System-Events. Jede Kommunikation zwischen Agenten sowie System-Telemetrie (Modell-Performance, t/s) wird hier als Roh-Payload und Text-Auszug gespeichert. Diese Tabelle ersetzt die veraltete <CODE>nexus_messages</CODE> Struktur.</P>
 
 <H4>Deep-Dive: Dynamische JSONB-Iterierung (Code-Free Configuration)</H4>
 <P>Das Architekturziel von Open Brain ist es, dass sich Agenten ausschlie&szlig;lich durch ihre Text-Konfiguration (Prompts) unterscheiden d&uuml;rfen. Um dies zu gew&auml;hrleisten, ist die Code-Basis des MCP-Servers 100% dynamisch aufgebaut. Wenn ein Agent-Tool (z.B. <CODE>search_thoughts</CODE>) Resultate aus der Datenbank liest, iteriert es programmatisch &uuml;ber <B>alle</B> Keys im JSONB-Objekt, ohne dass bestimmte Felder wie <CODE>people</CODE> hartkodiert w&auml;ren:</P>
@@ -357,6 +357,21 @@ graph TD
 <LI><B>GLOBAL_BRAIN_ACCESS (true):</B> (Z.B. f&uuml;r den Executive Assistant). Der Filter-Zwang entf&auml;llt. Dem LLM wird in den Such-Tools stattdessen ein optionaler Parameter <CODE>owner</CODE> angeboten. Der Agent kann gezielt die Brains anderer Agenten durchsuchen oder globale Analysen &uuml;ber das gesamte Open Brain fahren.</LI>
 </UL>
 
+<H3>8.5 X-Integration: Power-Sync & Pagination</H3>
+<P>Der CCO (Chief Communications Officer) verf&uuml;gt &uuml;ber das spezialisierte Tool <CODE>sync_influencer_news</CODE>. Dieses Tool implementiert eine hochperformante Anbindung an die X-API (v2):</P>
+<UL>
+<LI><B>Auto-Pagination:</B> Das Tool unterst&uuml;tzt Abfragen von bis zu 500 Posts am Stück. Da die X-API pro Request auf 100 limitiert, implementiert der MCP-Server eine interne Loop, die via <CODE>pagination_token</CODE> (next_token) automatisch mehrere Seiten verkettet.</LI>
+<LI><B>Historische Abfrage:</B> &Uuml;ber den Parameter <CODE>start_time</CODE> kann der Agent gezielt Daten aus der Vergangenheit (z.B. die letzten 2 Wochen) abrufen, was die interne <CODE>since_id</CODE> Logik f&uuml;r diesen spezifischen Aufruf &uuml;berschreibt.</LI>
+<LI><B>Vektorisierung on-the-fly:</B> Jeder heruntergeladene Tweet wird sofort durch Ollama vektorisiert und in den <CODE>agent_workspace</CODE> geschrieben.</LI>
+</UL>
+
+<H3>8.6 System-Telemetrie & Performance-Tracking</H3>
+<P>Um die Auslastung der KI-Infrastruktur transparent zu machen, generiert jeder MCP-Server Telemetrie-Daten bei LLM- und Embedding-Aufrufen:</P>
+<UL>
+<LI><B>Metriken:</B> Es werden der exakte Modellname (z.B. <CODE>google/gemma-4-26b-a4b</CODE>), die Gesamtzeit der Generierung, die Anzahl der erzeugten Token und die Geschwindigkeit in <B>t/s (Tokens pro Sekunde)</B> gemessen.</LI>
+<LI><B>Echtzeit-Log:</B> Diese Daten werden als Nachricht vom Typ <CODE>telemetry</CODE> an den Nexus gesendet und erscheinen unmittelbar im Chat-Verlauf und im Dashboard.</LI>
+</UL>
+
 <A NAME="bot"></A>
 <H2>9. Der Executive Assistant: Bot-Logik, Historie & Agentik</H2>
 <P>Der <CODE>agent-ea-bot</CODE> ist das ausf&uuml;hrende Frontend der Intelligenz. Er subscribed seinen MQTT-Topic und steuert den ReAct-Loop.</P>
@@ -375,6 +390,13 @@ graph TD
 <UL>
 <LI><B>Das 'message_agent' MCP-Tool:</B> Anstatt auf fehleranf&auml;llige Text-Pr&auml;fixe ("cco, mach dies") zu setzen, verf&uuml;gen die Agenten &uuml;ber ein dediziertes MCP-Tool <CODE>message_agent</CODE>. Das LLM entscheidet durch Reasoning, ob eine Aufgabe delegiert werden muss, und ruft das Tool auf. Dieses Tool sendet die Nachricht &uuml;ber die Nexus REST-API transparent in den korrekten Topic.</LI>
 <LI><B>Private Inboxes ohne Mention-Filter:</B> Jeder Agent lauscht exklusiv auf seiner privaten <CODE>agents/{id}/inbox</CODE>. Er verarbeitet bedingungslos jede Nachricht, die dort ankommt, da sie explizit an ihn delegiert wurde. Ein Namens-Filter (Mention-Routing) im Text ist nicht mehr n&ouml;tig.</LI>
+</UL>
+
+<H3>9.4 Vermeidung von Endlosschleifen (Loop Prevention)</H3>
+<P>In einem Multi-Agenten-System besteht die Gefahr von Feedback-Loops (Agent A sagt Danke, Agent B sagt Bitte, Agent A sagt Gerne...). Open Brain implementiert hierf&uuml;r eine strikte <B>Anti-Endlosschleifen-Regel</B> direkt im System-Prompt:</P>
+<UL>
+<LI><B>Terminierung:</B> Sobald eine Aufgabe erledigt oder eine Information geliefert wurde, muss der Agent die Konversation aktiv beenden, indem er keine weitere Nachricht sendet.</LI>
+<LI><B>Floskel-Filter:</B> Agenten sind angewiesen, nicht auf reine Best&auml;tigungen, H&ouml;flichkeitsfloskeln oder "Erledigt"-Meldungen anderer Agenten zu reagieren.</LI>
 </UL>
 <P>Dieses Paradigma erlaubt es, komplexe Agenten-Ketten zu bilden (Bot A delegiert an Bot B, der delegiert an Bot C), w&auml;hrend der Nutzer jeden einzelnen Delegationsschritt transparent im Nexus-Dashboard (Port 7733) verfolgen und eingreifen kann.</P>
 

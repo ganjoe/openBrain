@@ -4,7 +4,8 @@
 -- 3. agent_workspace - Raw data, noisy imports, X-posts
 
 -- 1. Enable pgvector extension
-CREATE EXTENSION IF NOT EXISTS vector;
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS vector SCHEMA extensions;
 
 -- 2. Create roles for PostgREST
 DO $$
@@ -16,9 +17,22 @@ BEGIN
     CREATE ROLE authenticator NOLOGIN;
     GRANT anon TO authenticator;
   END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+    CREATE ROLE supabase_admin WITH SUPERUSER;
+  END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN
+    CREATE ROLE service_role NOLOGIN;
+    GRANT service_role TO authenticator;
+    GRANT ALL ON SCHEMA public TO service_role;
+    GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+    GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+    GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
+    GRANT USAGE ON SCHEMA extensions TO service_role;
+  END IF;
 END $$;
 
 GRANT USAGE ON SCHEMA public TO anon;
+GRANT USAGE ON SCHEMA extensions TO anon;
 
 -- ─────────────────────────────────────────────────────────────
 -- TABLE 1: nexus_chat (Communication Log)

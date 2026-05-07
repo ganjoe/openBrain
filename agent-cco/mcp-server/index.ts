@@ -23,8 +23,22 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // Cache for User ID mapping (username -> id)
 const userIdCache = new Map<string, string>();
 
+// --- Telemetry Helper ---
+async function sendTelemetry(text: string) {
+  try {
+    await fetch("http://nexus-service:7734/api/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from_agent: "system", to: "all", text, message_type: "telemetry" }),
+    });
+  } catch (e) {
+    console.error("Telemetry failed:", e);
+  }
+}
+
 // --- Embedding via Ollama ---
 async function getEmbedding(text: string): Promise<number[]> {
+  const start = Date.now();
   const r = await fetch(`${OLLAMA_URL}/v1/embeddings`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -32,11 +46,14 @@ async function getEmbedding(text: string): Promise<number[]> {
   });
   if (!r.ok) throw new Error(`Ollama embeddings failed: ${r.status}`);
   const d = await r.json();
+  const duration = (Date.now() - start) / 1000;
+  await sendTelemetry(`[Ollama] Model: ${OLLAMA_EMBED_MODEL} | Zeit: ${duration.toFixed(2)}s | Aktion: Embedding`);
   return d.data[0].embedding;
 }
 
 // --- Metadata extraction (LLM based) ---
 async function extractMetadata(text: string): Promise<Record<string, unknown>> {
+  const start = Date.now();
   let systemPrompt = "Extract metadata from the user's captured thought. Return ONLY valid JSON.";
   try {
     systemPrompt = Deno.readTextFileSync("/app/metadata-prompt.txt");
@@ -56,6 +73,14 @@ async function extractMetadata(text: string): Promise<Record<string, unknown>> {
   });
   if (!r.ok) return { topics: ["uncategorized"], type: "observation" };
   const d = await r.json();
+  
+  const duration = (Date.now() - start) / 1000;
+  const tokens = d.usage?.completion_tokens || 0;
+  const ts = duration > 0 ? (tokens / duration).toFixed(1) : "0.0";
+  const model = d.model || "local-model";
+  
+  await sendTelemetry(`[LM Studio] Model: ${model} | Zeit: ${duration.toFixed(2)}s | Speed: ${ts} t/s | Tokens: ${tokens}`);
+
   try {
     const content = d.choices[0].message.content;
     const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -165,10 +190,11 @@ server.registerTool(
     description: "Fetch latest posts from an X influencer and store them in the Workspace.",
     inputSchema: {
       username: z.string().describe("The X username (e.g. @elonmusk)"),
-      limit: z.number().optional().default(5).describe("Max tweets to fetch"),
+      limit: z.number().optional().default(100).describe("Max tweets to fetch (1-500)"),
+      start_time: z.string().optional().describe("ISO 8601 date string (e.g. '2024-01-01T00:00:00Z'). Used to fetch historical posts if no prior sync exists."),
     },
   },
-  async ({ username, limit }: any) => {
+  async ({ username, limit, start_time }: any) => {
     if (!X_BEARER_TOKEN || X_BEARER_TOKEN.includes("YOUR_X_BEARER_TOKEN")) {
       return { content: [{ type: "text", text: "Error: X_BEARER_TOKEN is not configured in .env" }], isError: true };
     }
@@ -192,51 +218,85 @@ server.registerTool(
         sinceId = (latestRecord[0].metadata as any).external_id;
       }
 
-      // 2. Fetch from X API
-      let url = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${limit}&tweet.fields=created_at,entities`;
-      if (sinceId) url += `&since_id=${sinceId}`;
+      // 2. Fetch from X API with pagination
+      let count = 0;
+      let lastError = null;
+      let nextToken = "";
+      let totalFetched = 0;
+      const targetLimit = Math.min(Math.max(1, limit), 500);
+      
+      while (totalFetched < targetLimit) {
+        const batchSize = Math.min(100, targetLimit - totalFetched);
+        let url = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${batchSize}&tweet.fields=created_at,entities`;
+        
+        if (start_time) {
+          url += `&start_time=${start_time}`;
+        } else if (sinceId) {
+          url += `&since_id=${sinceId}`;
+        }
+        if (nextToken) {
+          url += `&pagination_token=${nextToken}`;
+        }
 
-      const res = await fetch(url, { headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` } });
-      if (!res.ok) throw new Error(`X API fetch failed: ${res.status}`);
-      const data = await res.json();
+        const res = await fetch(url, { headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` } });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`X API fetch failed (${res.status}): ${errText}`);
+        }
+        const data = await res.json();
 
-      if (!data.data || data.data.length === 0) {
+        if (!data.data || data.data.length === 0) {
+          break;
+        }
+
+        for (const tweet of data.data) {
+          totalFetched++;
+          const content = tweet.text;
+          const tickers = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
+          
+          const baseMetadata = await extractMetadata(content);
+          const finalMetadata = {
+            ...baseMetadata,
+            author: cleanName,
+            external_id: tweet.id,
+            published_at: tweet.created_at,
+            tickers: Array.from(new Set([...tickers, ...(baseMetadata.tickers as string[] || [])])),
+          };
+
+          const embedding = await getEmbedding(content);
+          const { data: insertResult, error: insertError } = await supabase
+            .from("agent_workspace")
+            .insert({
+              agent_id: AGENT_ID,
+              artifact_type: "x_post",
+              content: content,
+              embedding: embedding,
+              metadata: finalMetadata
+            })
+            .select()
+            .single();
+
+          if (insertError) {
+            lastError = insertError;
+            console.error("DB Insert Error:", insertError);
+          } else if (insertResult) {
+            count++;
+          }
+        }
+        
+        nextToken = data.meta?.next_token;
+        if (!nextToken) break;
+      }
+
+      if (totalFetched === 0) {
         return { content: [{ type: "text", text: `No new tweets found for ${cleanName} since ID ${sinceId || "start"}.` }] };
       }
 
-      let count = 0;
-      for (const tweet of data.data) {
-        const content = tweet.text;
-        const tickers = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
-        
-        const baseMetadata = await extractMetadata(content);
-        const finalMetadata = {
-          ...baseMetadata,
-          author: cleanName,
-          external_id: tweet.id,
-          published_at: tweet.created_at,
-          tickers: Array.from(new Set([...tickers, ...(baseMetadata.tickers as string[] || [])])),
-        };
-
-        const embedding = await getEmbedding(content);
-        const { data: insertResult, error: insertError } = await supabase
-          .from("agent_workspace")
-          .insert({
-            agent_id: AGENT_ID,
-            artifact_type: "x_post",
-            content: content,
-            embedding: embedding,
-            metadata: finalMetadata
-          })
-          .select()
-          .single();
-
-        if (!insertError && insertResult) {
-          count++;
-        }
+      let returnText = `Successfully synced ${count} new post(s) from ${cleanName} to Workspace. (Fetched ${totalFetched} total from API)`;
+      if (lastError) {
+        returnText += ` (Last DB error: ${lastError.message})`;
       }
-
-      return { content: [{ type: "text", text: `Successfully synced ${count} new post(s) from ${cleanName} to Workspace.` }] };
+      return { content: [{ type: "text", text: returnText }] };
     } catch (err: any) {
       return { content: [{ type: "text", text: `Sync Error: ${err.message}` }], isError: true };
     }
