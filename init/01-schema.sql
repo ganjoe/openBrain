@@ -4,6 +4,7 @@
 -- 3. agent_workspace - Raw data, noisy imports, X-posts
 
 -- 1. Enable pgvector extension
+SET search_path = public, extensions;
 CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS vector SCHEMA extensions;
 

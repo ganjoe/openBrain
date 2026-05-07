@@ -16,7 +16,7 @@ const state = {
   activeFilter:  new Set(["boss"]), // checked agent IDs (boss default)
   statusMode:    false,       // status-channel checkbox
   messages:      [],          // all buffered messages (capped at 500)
-  lastSeenUnix:  parseInt(localStorage.getItem("nexus_last_seen") || "0"),
+  lastSeenUnix:  parseInt(localStorage.getItem("nexus_last_seen") || String(Math.floor(Date.now() / 1000))),
 };
 
 // ── DOM refs ──────────────────────────────────────────────────
@@ -96,14 +96,14 @@ function appendMessage(msg) {
   $messages.scrollTop = $messages.scrollHeight;
 
   // Update last-seen timestamp
-  const unix = h.unix || 0;
+  const unix = p.unix || 0;
   if (unix > state.lastSeenUnix) {
     state.lastSeenUnix = unix;
     localStorage.setItem("nexus_last_seen", unix);
   }
 
   // Auto-register new agents
-  [from, to].forEach(id => {
+  [p.from, p.to].forEach(id => {
     if (id && id !== "nexus" && id !== "?" && !state.agents.includes(id)) {
       state.agents.push(id);
       renderAgentCheckboxes();
@@ -115,11 +115,19 @@ function appendMessage(msg) {
 function isVisible(from, to, msgType) {
   // Status mode: only show status messages
   if (state.statusMode) return msgType === "status";
+  
+  // Normal mode: hide status messages
+  if (msgType === "status") return false;
 
   // No agent selected → global stream
   if (state.activeFilter.size === 0) return true;
+  
+  // Single agent selected → show all messages to or from this agent
+  if (state.activeFilter.size === 1) {
+    return state.activeFilter.has(from) || state.activeFilter.has(to);
+  }
 
-  // At least 2 agents selected → show messages between any of the selected agents
+  // Multiple agents selected → show messages only between the selected agents
   return state.activeFilter.has(from) && state.activeFilter.has(to);
 }
 
@@ -271,7 +279,7 @@ async function loadHistory(forceFull = false) {
       $messages.innerHTML = "";
     }
 
-    rows.forEach(row => {
+    rows.reverse().forEach(row => {
       // DB rows have the full MQTT envelope in raw_payload
       const msg = row.raw_payload || row;
       appendMessage(msg);

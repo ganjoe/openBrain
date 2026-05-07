@@ -32,6 +32,7 @@ async function getXUserId(username: string): Promise<string> {
 }
 
 async function runBackgroundSync(cleanName: string, username: string, limit: number, start_time?: string) {
+  console.log(`[X Sync] Background job started for ${cleanName}`);
   try {
     await sendTelemetry(`[System] Hintergrund-Sync für ${cleanName} startet...`);
     const userId = await getXUserId(username);
@@ -54,18 +55,15 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
       sinceId = (latestRecord[0].metadata as any).external_id;
     }
 
-    if (start_time && !sinceId) {
-       // Historical fetch only if we have no posts yet and start_time is provided
-       // Or if we specifically want to go back in time (Backfill)
-       // For simplicity, we use sinceId if available, otherwise start_time.
-       // But if we want backfill, we'd need untilId of the OLDEST post.
+    if (start_time) {
+       // Check if we need to backfill (get tweets older than our oldest post, but after start_time)
        const { data: oldestRecord } = await supabase
         .from("agent_workspace")
         .select("metadata")
         .eq("agent_id", AGENT_ID)
         .eq("artifact_type", "x_post")
         .contains("metadata", { author: cleanName })
-        .order("metadata->>external_id", { ascending: true })
+        .order("metadata->>external_id", { ascending: true }) // Order by Snowflake ID (asc = oldest first)
         .limit(1);
         
        if (oldestRecord && oldestRecord.length > 0) {
@@ -83,12 +81,14 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
     const isUpdateSync = !!sinceId;
 
     while (true) {
-      const batchSize = Math.min(100, isUpdateSync ? 100 : (targetLimit - totalFetched));
+      const batchSize = Math.min(10, isUpdateSync ? 10 : (targetLimit - totalFetched));
       if (batchSize <= 0 && !isUpdateSync) break;
 
       let url = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${batchSize}&tweet.fields=created_at,entities`;
       
-      if (sinceId) {
+      if (untilId && start_time) {
+        url += `&until_id=${untilId}&start_time=${start_time}`;
+      } else if (sinceId) {
         url += `&since_id=${sinceId}`;
       } else if (untilId) {
         url += `&until_id=${untilId}`;
@@ -98,17 +98,19 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
 
       if (nextToken) url += `&pagination_token=${nextToken}`;
 
+      await sendTelemetry(`[X API] Request: ${url.replace(X_BEARER_TOKEN, "***")}`);
       const res = await fetch(url, { headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` } });
       
       if (!res.ok) {
          if (res.status === 429) {
              const resetEpoch = Number(res.headers.get("x-rate-limit-reset"));
-             const sleepMs = (resetEpoch * 1000) - Date.now() + 1000;
+             const sleepMs = Math.max(1000, (resetEpoch * 1000) - Date.now() + 1000);
              await sendTelemetry(`[X API] Rate Limit (429). Pausiere für ${Math.round(sleepMs/1000)}s...`);
              await new Promise(r => setTimeout(r, sleepMs));
              continue; // Retry same request
          }
          const errText = await res.text();
+         console.error(`[X API] Error ${res.status}: ${errText}`);
          throw new Error(`X API fetch failed (${res.status}): ${errText}`);
       }
       
@@ -159,8 +161,8 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
         .upsert(batchToInsert, { onConflict: "x_external_id" });
 
       if (upsertError) {
-        console.error("Upsert error:", upsertError);
-        throw new Error(`Supabase Upsert failed: ${upsertError.message}`);
+        console.error("Upsert error details:", upsertError);
+        throw new Error(`Supabase Upsert failed: [${upsertError.code}] ${upsertError.message}`);
       }
 
       totalSaved += batchToInsert.length;
@@ -192,7 +194,7 @@ export function registerXTools(server: McpServer) {
       inputSchema: {
         username: z.string().describe("The X username (e.g. @elonmusk)"),
         limit: z.number().optional().default(100).describe("Max tweets to fetch (1-500)"),
-        start_time: z.string().optional().describe("ISO 8601 date string. Used for initial bootstrap if no prior sync exists."),
+        start_time: z.string().optional().describe("ISO 8601 date string (e.g. 2024-05-01T00:00:00Z). Use this to fetch historical posts (Backfill) or for the first-time sync of an influencer."),
       },
     },
     async ({ username, limit, start_time }: any) => {
@@ -214,6 +216,7 @@ export function registerXTools(server: McpServer) {
          return { content: [{ type: "text", text: `Fehler beim Setzen des Locks: ${lockError.message}` }], isError: true };
       }
 
+      console.log(`[X Sync] Starting background sync for ${cleanName}...`);
       // Start background job (do not await)
       runBackgroundSync(cleanName, username, limit, start_time);
 

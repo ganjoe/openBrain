@@ -18,6 +18,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // --- Telemetry Helper ---
 export async function sendTelemetry(text: string) {
+  console.log(`[Telemetry] ${text}`);
   try {
     await fetch("http://nexus-service:7734/api/send", {
       method: "POST",

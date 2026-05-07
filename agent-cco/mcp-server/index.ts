@@ -8,7 +8,7 @@ import { registerNexusTools } from "./tools/nexus.ts";
 
 // --- MCP Server Setup ---
 const server = new McpServer({
-  name: "open-brain",
+  name: "open-brain-cco",
   version: "1.0.0",
 });
 

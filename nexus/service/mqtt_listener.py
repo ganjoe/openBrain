@@ -102,8 +102,19 @@ def on_message(client, userdata, msg):
         except Exception:
             pass
 
-    # Persist to DB asynchronously
-    asyncio.run_coroutine_threadsafe(log_message(raw), loop)
+    # Persist to DB asynchronously (filter out automated/status messages)
+    msg_type = raw.get("header", {}).get("msg_type", "chat")
+    from_id  = raw.get("header", {}).get("from", "?")
+    
+    should_log = (
+        msg_type == "chat" and 
+        from_id != "system"
+    )
+    
+    if should_log:
+        asyncio.run_coroutine_threadsafe(log_message(raw), loop)
+    else:
+        logger.debug("Skipping DB log for msg_type=%s from=%s", msg_type, from_id)
 
 
 def start_mqtt_client(loop: asyncio.AbstractEventLoop) -> mqtt.Client:

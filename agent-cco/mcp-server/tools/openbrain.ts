@@ -44,6 +44,54 @@ export function registerOpenBrainTools(server: McpServer) {
     }
   );
 
+  // Tool: Search Workspace
+  server.registerTool(
+    "search_workspace",
+    {
+      title: "Search Workspace",
+      description: "Search raw artifacts (like X-Posts) in the agent workspace.",
+      inputSchema: {
+        query: z.string().describe("What to search for"),
+        limit: z.number().optional().default(10),
+        threshold: z.number().optional().default(0.0),
+        artifact_type: z.string().optional().describe("Filter by artifact type (e.g., 'x_post')"),
+        ...(GLOBAL_BRAIN_ACCESS ? { owner: z.string().optional().describe("Filter by agent ID.") } : {})
+      },
+    },
+    async ({ query, limit, threshold, artifact_type, owner }: any) => {
+      try {
+        console.log(`[search_workspace] query="${query}" type="${artifact_type}" limit=${limit} threshold=${threshold}`);
+        const p_agent_id = GLOBAL_BRAIN_ACCESS ? (owner || null) : AGENT_ID;
+        
+        const qEmb = await getEmbedding(query);
+        const { data, error } = await supabase.rpc("hybrid_search_workspace", {
+          query_embedding: qEmb,
+          query_text: query,
+          match_threshold: threshold,
+          match_count: limit,
+          p_agent_id: p_agent_id,
+          p_artifact_type: artifact_type || null
+        });
+
+        if (error) {
+           console.error("[search_workspace] DB error:", error);
+           throw error;
+        }
+        
+        console.log(`[search_workspace] Found ${data ? data.length : 0} results.`);
+        if (!data || data.length === 0) return { content: [{ type: "text", text: "No results found in workspace." }] };
+
+        const results = data.map((t: any, i: number) => {
+            return `[${i + 1}] Agent: ${t.agent_id} | Type: ${t.artifact_type} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`;
+        });
+
+        return { content: [{ type: "text", text: results.join("\n\n") }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
   // Tool: Capture
   server.registerTool(
     "capture_thought",

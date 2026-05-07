@@ -101,7 +101,7 @@ async def get_history(since: int = Query(0, description="Unix timestamp")):
     """
     return await _db_get(
         "nexus_chat",
-        {"unix_ts": f"gt.{since}", "order": "unix_ts.asc", "limit": 500},
+        {"unix_ts": f"gt.{since}", "order": "unix_ts.desc", "limit": 1000},
     )
 
 
