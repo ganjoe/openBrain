@@ -117,7 +117,8 @@ async def get_agents():
     for row in rows:
         seen.add(row["from_agent"])
         seen.add(row["to_agent"])
-    seen.discard("nexus")  # internal nexus system agent
+    seen.discard("nexus")  # internal nexus system agent (Redundant: has its own button)
+    seen.discard("all")    # discard broadcast address (Breaks hierarchy)
     return sorted(seen)
 
 

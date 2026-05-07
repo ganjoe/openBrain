@@ -135,6 +135,42 @@ BEGIN
 END;
 $$;
 
+-- Hybrid search for agent_workspace (X-Posts etc.)
+CREATE OR REPLACE FUNCTION hybrid_search_workspace(
+  query_embedding vector(4096),
+  query_text text,
+  match_threshold float DEFAULT 0.5,
+  match_count int DEFAULT 20,
+  p_agent_id text DEFAULT NULL,
+  p_artifact_type text DEFAULT NULL
+)
+RETURNS TABLE (
+  id uuid,
+  agent_id text,
+  artifact_type text,
+  content text,
+  metadata jsonb,
+  similarity float,
+  created_at timestamptz
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN QUERY
+  SELECT t.id, t.agent_id, t.artifact_type, t.content, t.metadata,
+    1 - (t.embedding <=> query_embedding)::float AS similarity,
+    t.created_at
+  FROM agent_workspace t
+  WHERE (p_agent_id IS NULL OR t.agent_id = p_agent_id)
+    AND (p_artifact_type IS NULL OR t.artifact_type = p_artifact_type)
+    AND (
+      1 - (t.embedding <=> query_embedding) > match_threshold
+      OR t.content ILIKE '%' || query_text || '%'
+    )
+  ORDER BY similarity DESC NULLS LAST, t.created_at DESC
+  LIMIT match_count;
+END;
+$$;
+
 -- Upsert for open_brain (Deduplication via Hash)
 CREATE OR REPLACE FUNCTION upsert_open_brain(
   p_agent_id TEXT,
@@ -167,4 +203,5 @@ GRANT ALL ON TABLE public.open_brain TO anon;
 GRANT ALL ON TABLE public.agent_workspace TO anon;
 GRANT ALL ON SEQUENCE nexus_chat_id_seq TO anon;
 GRANT EXECUTE ON FUNCTION hybrid_search_open_brain TO anon;
+GRANT EXECUTE ON FUNCTION hybrid_search_workspace TO anon;
 GRANT EXECUTE ON FUNCTION upsert_open_brain TO anon;

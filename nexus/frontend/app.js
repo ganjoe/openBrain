@@ -45,31 +45,40 @@ function renderMarkdown(text) {
   }
 }
 
-function buildMessageEl(msg) {
+/**
+ * Unified parser to handle both nested MQTT envelopes and flat DB rows.
+ */
+function parseMessage(msg) {
   const h = msg.header || {};
-  const from     = h.from || h.from_agent || "?";
-  const to       = h.to || "?";
-  const msgType  = h.msg_type || "chat";
-  const unix     = h.unix || 0;
-  const text     = msg.content?.text || msg.raw_status
-    ? (msg.content?.text || JSON.stringify(msg.raw_status))
-    : "";
+  return {
+    from:    h.from || h.from_agent || msg.from_agent || "?",
+    to:      h.to   || msg.to_agent || "?",
+    type:    h.msg_type || msg.message_type || "chat",
+    unix:    h.unix || msg.unix_ts || 0,
+    text:    msg.content?.text || msg.content || (msg.raw_status ? JSON.stringify(msg.raw_status) : ""),
+    raw:     msg
+  };
+}
+
+
+function buildMessageEl(msg) {
+  const p = parseMessage(msg);
 
   const el = document.createElement("div");
-  el.className = `msg ${msgType}`;
-  el.dataset.from = from;
-  el.dataset.to   = to;
-  el.dataset.type = msgType;
+  el.className = `msg ${p.type}`;
+  el.dataset.from = p.from;
+  el.dataset.to   = p.to;
+  el.dataset.type = p.type;
 
   el.innerHTML = `
     <div class="msg-header">
-      <span class="msg-from">${from}</span>
+      <span class="msg-from">${p.from}</span>
       <span class="msg-arrow">→</span>
-      <span class="msg-to">${to}</span>
-      <span class="msg-type">${msgType}</span>
-      <span class="msg-time">${formatTime(unix)}</span>
+      <span class="msg-to">${p.to}</span>
+      <span class="msg-type">${p.type}</span>
+      <span class="msg-time">${formatTime(p.unix)}</span>
     </div>
-    <div class="msg-body">${renderMarkdown(text)}</div>
+    <div class="msg-body">${renderMarkdown(p.text)}</div>
   `;
 
   return el;
@@ -79,12 +88,8 @@ function appendMessage(msg) {
   state.messages.push(msg);
   if (state.messages.length > 500) state.messages.shift();
 
-  const h = msg.header || {};
-  const from    = h.from || h.from_agent || "?";
-  const to      = h.to || "?";
-  const msgType = h.msg_type || "chat";
-
-  if (!isVisible(from, to, msgType)) return;
+  const p = parseMessage(msg);
+  if (!isVisible(p.from, p.to, p.type)) return;
 
   const el = buildMessageEl(msg);
   $messages.appendChild(el);
@@ -267,8 +272,8 @@ async function loadHistory(forceFull = false) {
     }
 
     rows.forEach(row => {
-      // DB rows have full_json as the envelope
-      const msg = row.full_json || row;
+      // DB rows have the full MQTT envelope in raw_payload
+      const msg = row.raw_payload || row;
       appendMessage(msg);
     });
   } catch (e) {

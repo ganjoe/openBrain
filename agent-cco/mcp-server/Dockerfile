@@ -8,6 +8,7 @@ RUN deno install
 
 # Copy application code
 COPY index.ts ./
+COPY tools/ ./tools/
 
 EXPOSE 8787
 
