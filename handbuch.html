@@ -357,12 +357,13 @@ graph TD
 <LI><B>GLOBAL_BRAIN_ACCESS (true):</B> (Z.B. f&uuml;r den Executive Assistant). Der Filter-Zwang entf&auml;llt. Dem LLM wird in den Such-Tools stattdessen ein optionaler Parameter <CODE>owner</CODE> angeboten. Der Agent kann gezielt die Brains anderer Agenten durchsuchen oder globale Analysen &uuml;ber das gesamte Open Brain fahren.</LI>
 </UL>
 
-<H3>8.5 X-Integration: Power-Sync & Pagination</H3>
-<P>Der CCO (Chief Communications Officer) verf&uuml;gt &uuml;ber das spezialisierte Tool <CODE>sync_influencer_news</CODE>. Dieses Tool implementiert eine hochperformante Anbindung an die X-API (v2):</P>
+<H3>8.5 X-Integration: Asynchroner Sync & Zero-Duplicate Fetching</H3>
+<P>Der CCO (Chief Communications Officer) verf&uuml;gt &uuml;ber das spezialisierte Tool <CODE>sync_influencer_news</CODE>, welches eine hochperformante Anbindung an die X-API (v2) implementiert. Da der Abruf und die lokale Vektorisierung von bis zu 500 Posts extrem ressourcen- und zeitaufw&auml;ndig (LM Studio Inferenz) sind, nutzt das System eine entkoppelte Architektur:</P>
 <UL>
-<LI><B>Auto-Pagination:</B> Das Tool unterst&uuml;tzt Abfragen von bis zu 500 Posts am Stück. Da die X-API pro Request auf 100 limitiert, implementiert der MCP-Server eine interne Loop, die via <CODE>pagination_token</CODE> (next_token) automatisch mehrere Seiten verkettet.</LI>
-<LI><B>Historische Abfrage:</B> &Uuml;ber den Parameter <CODE>start_time</CODE> kann der Agent gezielt Daten aus der Vergangenheit (z.B. die letzten 2 Wochen) abrufen, was die interne <CODE>since_id</CODE> Logik f&uuml;r diesen spezifischen Aufruf &uuml;berschreibt.</LI>
-<LI><B>Vektorisierung on-the-fly:</B> Jeder heruntergeladene Tweet wird sofort durch Ollama vektorisiert und in den <CODE>agent_workspace</CODE> geschrieben.</LI>
+<LI><B>Asynchroner Hintergrund-Job:</B> Das Tool best&auml;tigt dem Agenten sofort den Start des Syncs. Die tats&auml;chliche Paginierung, der Download und die Inferenz laufen entkoppelt im Hintergrund. Der Agent wird im Nexus Chat w&auml;hrenddessen nicht blockiert.</LI>
+<LI><B>In-Memory Locking:</B> Um zu verhindern, dass ein ungeduldiger Agent den Abruf f&uuml;r den selben Influencer parallel mehrfach startet, wird eine <CODE>activeSyncs</CODE>-Sperre im MCP-Server gehalten.</LI>
+<LI><B>Zero-Duplicate Fetching (`until_id` Trick):</B> Um X-API Kosten zu sparen, verf&uuml;gt der Sync &uuml;ber eine smarte L&uuml;ckenf&uuml;ller-Logik. Bei historischen Abfragen (via <CODE>start_time</CODE>) sucht das System zuerst den &auml;ltesten bereits gespeicherten Post in der Datenbank. Dieser wird als <CODE>until_id</CODE> an X gesendet, wodurch die X-API ausschlie&szlig;lich die fehlende L&uuml;cke zur&uuml;ckliefert. Duplikate werden zu 100% vor dem Download verhindert.</LI>
+<LI><B>Live-Telemetrie:</B> Der Hintergrund-Worker meldet via MQTT regelm&auml;&szlig;ig seinen Fortschritt (z.B. "20 Posts verarbeitet") in den Nexus Chat, bis der Sync abgeschlossen ist.</LI>
 </UL>
 
 <H3>8.6 System-Telemetrie & Performance-Tracking</H3>

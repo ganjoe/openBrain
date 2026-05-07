@@ -22,6 +22,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // Cache for User ID mapping (username -> id)
 const userIdCache = new Map<string, string>();
+const activeSyncs = new Set<string>();
 
 // --- Telemetry Helper ---
 async function sendTelemetry(text: string) {
@@ -182,6 +183,133 @@ server.registerTool(
   }
 );
 
+// Background Worker for Sync
+async function runBackgroundSync(cleanName: string, username: string, limit: number, start_time: string) {
+  try {
+    await sendTelemetry(`[System] Hintergrund-Sync für ${cleanName} startet...`);
+    const userId = await getXUserId(username);
+
+    // 1. Determine since_id or until_id
+    let sinceId = "";
+    let untilId = "";
+    
+    if (start_time) {
+       // Historical fetch: find the oldest post we have to use as until_id
+       const { data: oldestRecord } = await supabase
+        .from("agent_workspace")
+        .select("metadata")
+        .eq("agent_id", AGENT_ID)
+        .eq("artifact_type", "x_post")
+        .contains("metadata", { author: cleanName })
+        .order("created_at", { ascending: true })
+        .limit(1);
+        
+       if (oldestRecord && oldestRecord.length > 0) {
+          untilId = (oldestRecord[0].metadata as any).external_id;
+       }
+    } else {
+       // Normal fetch: find the newest post we have to use as since_id
+       const { data: latestRecord } = await supabase
+        .from("agent_workspace")
+        .select("metadata")
+        .eq("agent_id", AGENT_ID)
+        .eq("artifact_type", "x_post")
+        .contains("metadata", { author: cleanName })
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (latestRecord && latestRecord.length > 0) {
+        sinceId = (latestRecord[0].metadata as any).external_id;
+      }
+    }
+
+    // 2. Fetch from X API with pagination
+    let count = 0;
+    let nextToken = "";
+    let totalFetched = 0;
+    let skipped = 0;
+    const targetLimit = Math.min(Math.max(1, limit), 500);
+    
+    while (totalFetched < targetLimit) {
+      const batchSize = Math.min(100, targetLimit - totalFetched);
+      let url = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${batchSize}&tweet.fields=created_at,entities`;
+      
+      if (start_time) url += `&start_time=${start_time}`;
+      if (sinceId) url += `&since_id=${sinceId}`;
+      if (untilId) url += `&until_id=${untilId}`;
+      if (nextToken) url += `&pagination_token=${nextToken}`;
+
+      const res = await fetch(url, { headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` } });
+      if (!res.ok) {
+         if (res.status === 429) {
+             throw new Error("X-API Rate Limit erreicht (429).");
+         }
+         const errText = await res.text();
+         throw new Error(`X API fetch failed (${res.status}): ${errText}`);
+      }
+      const data = await res.json();
+
+      if (!data.data || data.data.length === 0) break;
+
+      for (const tweet of data.data) {
+        totalFetched++;
+        
+        // Deduplication Check
+        const { count: existCount } = await supabase
+          .from("agent_workspace")
+          .select("*", { count: 'exact', head: true })
+          .eq("agent_id", AGENT_ID)
+          .eq("artifact_type", "x_post")
+          .contains("metadata", { external_id: tweet.id });
+          
+        if (existCount && existCount > 0) {
+           skipped++;
+           continue;
+        }
+
+        const content = tweet.text;
+        const tickers = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
+        
+        const baseMetadata = await extractMetadata(content);
+        const finalMetadata = {
+          ...baseMetadata,
+          author: cleanName,
+          external_id: tweet.id,
+          published_at: tweet.created_at,
+          tickers: Array.from(new Set([...tickers, ...(baseMetadata.tickers as string[] || [])])),
+        };
+
+        const embedding = await getEmbedding(content);
+        const { error: insertError } = await supabase
+          .from("agent_workspace")
+          .insert({
+            agent_id: AGENT_ID,
+            artifact_type: "x_post",
+            content: content,
+            embedding: embedding,
+            metadata: finalMetadata
+          });
+
+        if (!insertError) count++;
+        
+        if (count > 0 && count % 20 === 0) {
+            await sendTelemetry(`[System] Sync ${cleanName}: ${count} neue Posts verarbeitet...`);
+        }
+      }
+      
+      nextToken = data.meta?.next_token;
+      if (!nextToken) break;
+    }
+
+    await sendTelemetry(`[System] Sync ${cleanName} abgeschlossen: ${count} neu gespeichert, ${skipped} Duplikate übersprungen. (Insgesamt ${totalFetched} von X geladen)`);
+  } catch (err: any) {
+    console.error(`Background sync failed for ${cleanName}:`, err);
+    await sendTelemetry(`[System] Sync ${cleanName} abgebrochen: ${err.message}`);
+  } finally {
+    activeSyncs.delete(cleanName);
+  }
+}
+
 // Tool: Sync Influencer News
 server.registerTool(
   "sync_influencer_news",
@@ -199,109 +327,21 @@ server.registerTool(
       return { content: [{ type: "text", text: "Error: X_BEARER_TOKEN is not configured in .env" }], isError: true };
     }
 
-    try {
-      const userId = await getXUserId(username);
-      const cleanName = username.startsWith("@") ? username : `@${username}`;
+    const cleanName = username.startsWith("@") ? username : `@${username}`;
 
-      // 1. Find latest external_id in agent_workspace
-      const { data: latestRecord } = await supabase
-        .from("agent_workspace")
-        .select("metadata")
-        .eq("agent_id", AGENT_ID)
-        .eq("artifact_type", "x_post")
-        .contains("metadata", { author: cleanName })
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      let sinceId = "";
-      if (latestRecord && latestRecord.length > 0) {
-        sinceId = (latestRecord[0].metadata as any).external_id;
-      }
-
-      // 2. Fetch from X API with pagination
-      let count = 0;
-      let lastError = null;
-      let nextToken = "";
-      let totalFetched = 0;
-      const targetLimit = Math.min(Math.max(1, limit), 500);
-      
-      while (totalFetched < targetLimit) {
-        const batchSize = Math.min(100, targetLimit - totalFetched);
-        let url = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${batchSize}&tweet.fields=created_at,entities`;
-        
-        if (start_time) {
-          url += `&start_time=${start_time}`;
-        } else if (sinceId) {
-          url += `&since_id=${sinceId}`;
-        }
-        if (nextToken) {
-          url += `&pagination_token=${nextToken}`;
-        }
-
-        const res = await fetch(url, { headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` } });
-        if (!res.ok) {
-          const errText = await res.text();
-          throw new Error(`X API fetch failed (${res.status}): ${errText}`);
-        }
-        const data = await res.json();
-
-        if (!data.data || data.data.length === 0) {
-          break;
-        }
-
-        for (const tweet of data.data) {
-          totalFetched++;
-          const content = tweet.text;
-          const tickers = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
-          
-          const baseMetadata = await extractMetadata(content);
-          const finalMetadata = {
-            ...baseMetadata,
-            author: cleanName,
-            external_id: tweet.id,
-            published_at: tweet.created_at,
-            tickers: Array.from(new Set([...tickers, ...(baseMetadata.tickers as string[] || [])])),
-          };
-
-          const embedding = await getEmbedding(content);
-          const { data: insertResult, error: insertError } = await supabase
-            .from("agent_workspace")
-            .insert({
-              agent_id: AGENT_ID,
-              artifact_type: "x_post",
-              content: content,
-              embedding: embedding,
-              metadata: finalMetadata
-            })
-            .select()
-            .single();
-
-          if (insertError) {
-            lastError = insertError;
-            console.error("DB Insert Error:", insertError);
-          } else if (insertResult) {
-            count++;
-          }
-        }
-        
-        nextToken = data.meta?.next_token;
-        if (!nextToken) break;
-      }
-
-      if (totalFetched === 0) {
-        return { content: [{ type: "text", text: `No new tweets found for ${cleanName} since ID ${sinceId || "start"}.` }] };
-      }
-
-      let returnText = `Successfully synced ${count} new post(s) from ${cleanName} to Workspace. (Fetched ${totalFetched} total from API)`;
-      if (lastError) {
-        returnText += ` (Last DB error: ${lastError.message})`;
-      }
-      return { content: [{ type: "text", text: returnText }] };
-    } catch (err: any) {
-      return { content: [{ type: "text", text: `Sync Error: ${err.message}` }], isError: true };
+    if (activeSyncs.has(cleanName)) {
+       return { content: [{ type: "text", text: `Ein Hintergrund-Sync für ${cleanName} läuft bereits. Bitte warten.` }] };
     }
+
+    activeSyncs.add(cleanName);
+
+    // Start background job (do not await)
+    runBackgroundSync(cleanName, username, limit, start_time);
+
+    return { content: [{ type: "text", text: `Hintergrund-Sync für ${cleanName} erfolgreich gestartet. Ich informiere dich via Chat über den Fortschritt.` }] };
   }
 );
+
 
 // Tool: Delegate
 server.registerTool(
