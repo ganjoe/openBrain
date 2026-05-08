@@ -51,7 +51,7 @@ export async function getEmbeddingsBatch(texts: string[]): Promise<number[][]> {
 }
 
 // --- Metadata extraction (LLM based) ---
-export async function extractMetadata(text: string): Promise<Record<string, unknown>> {
+export async function extractMetadata(text: string, sendTelemetryMessage: boolean = true): Promise<Record<string, unknown>> {
   const start = Date.now();
   let systemPrompt = "Extract metadata from the user's captured thought. Return ONLY valid JSON.";
   try {
@@ -78,13 +78,19 @@ export async function extractMetadata(text: string): Promise<Record<string, unkn
   const ts = duration > 0 ? (tokens / duration).toFixed(1) : "0.0";
   const model = d.model || "local-model";
   
-  await sendTelemetry(`[LM Studio] Model: ${model} | Zeit: ${duration.toFixed(2)}s | Speed: ${ts} t/s | Tokens: ${tokens}`);
+  const metricsStr = `[LM Studio] Model: ${model} | Zeit: ${duration.toFixed(2)}s | Speed: ${ts} t/s | Tokens: ${tokens}`;
+  if (sendTelemetryMessage) {
+    await sendTelemetry(metricsStr);
+  }
 
+  let parsed: any = { topics: ["uncategorized"], type: "observation" };
   try {
     const content = d.choices[0].message.content;
     const jsonMatch = content.match(/\{[\s\S]*\}/);
-    return JSON.parse(jsonMatch ? jsonMatch[0] : content);
+    parsed = JSON.parse(jsonMatch ? jsonMatch[0] : content);
   } catch {
-    return { topics: ["uncategorized"], type: "observation" };
+    // fallback
   }
+  
+  return { ...parsed, _metrics: metricsStr };
 }

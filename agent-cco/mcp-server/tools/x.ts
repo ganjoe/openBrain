@@ -2,6 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { supabase, getEmbeddingsBatch, extractMetadata, sendTelemetry, X_BEARER_TOKEN, AGENT_ID } from "./shared.ts";
 
+const activeSyncs = new Set<string>();
+
 // --- X API Helpers ---
 async function getXUserId(username: string): Promise<string> {
   const cleanName = username.startsWith("@") ? username.substring(1) : username;
@@ -138,7 +140,9 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
         // Metadata extraction (batched later if possible, but extractMetadata is LLM based)
         // For now, we still call extractMetadata individually as it's complex, 
         // but we batch embeddings.
-        const baseMetadata = await extractMetadata(content);
+        const baseMetadata = await extractMetadata(content, false);
+        const metricsStr = baseMetadata._metrics || "";
+        delete baseMetadata._metrics;
         const finalMetadata = {
           ...baseMetadata,
           author: cleanName,
@@ -169,6 +173,7 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
         }
 
         await sendTelemetry(
+          `${metricsStr}\n\n` +
           `[X-Post] 📅 ${dateStr}\n` +
           `📝 "${content.substring(0, 100).replace(/\n/g, ' ')}..."\n` +
           `🏷️ Topics: ${topics} | 🔑 Keywords: ${keywords}`
@@ -224,8 +229,8 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
     console.error(`Background sync failed for ${cleanName}:`, err);
     await sendTelemetry(`[System] Sync ${cleanName} abgebrochen: ${err.message}`);
   } finally {
-    // Release persistent lock
-    await supabase.from("x_sync_locks").delete().eq("username", cleanName);
+    // Release in-memory lock
+    activeSyncs.delete(cleanName);
   }
 }
 
@@ -248,17 +253,13 @@ export function registerXTools(server: McpServer) {
 
       const cleanName = (username.startsWith("@") ? username : `@${username}`).toLowerCase();
 
-      // Check persistent lock in Supabase
-      const { data: lock } = await supabase.from("x_sync_locks").select("*").eq("username", cleanName).single();
-      if (lock) {
-         return { content: [{ type: "text", text: `Ein Hintergrund-Sync für ${cleanName} läuft bereits (seit ${lock.locked_at}).` }] };
+      // In-Memory Lock Check (physically tied to process lifecycle)
+      if (activeSyncs.has(cleanName)) {
+         return { content: [{ type: "text", text: `Ein Hintergrund-Sync für ${cleanName} läuft bereits.` }] };
       }
 
-      // Set persistent lock
-      const { error: lockError } = await supabase.from("x_sync_locks").insert({ username: cleanName });
-      if (lockError) {
-         return { content: [{ type: "text", text: `Fehler beim Setzen des Locks: ${lockError.message}` }], isError: true };
-      }
+      // Set In-Memory Lock
+      activeSyncs.add(cleanName);
 
       console.log(`[X Sync] Starting background sync for ${cleanName}...`);
       // Start background job (do not await)
