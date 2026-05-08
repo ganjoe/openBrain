@@ -23,7 +23,7 @@ export async function sendTelemetry(text: string) {
     await fetch("http://nexus-service:7734/api/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from_agent: "system", to: "boss", text, message_type: "telemetry" }),
+      body: JSON.stringify({ from_agent: "system", to: "boss", text, msg_type: "telemetry" }),
     });
   } catch (e) {
     console.error("Telemetry failed:", e);

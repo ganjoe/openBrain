@@ -67,7 +67,14 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
         .limit(1);
         
        if (oldestRecord && oldestRecord.length > 0) {
-          untilId = (oldestRecord[0].metadata as any).external_id;
+          const oldestDateStr = (oldestRecord[0].metadata as any).published_at;
+          if (!oldestDateStr || new Date(start_time) < new Date(oldestDateStr)) {
+            untilId = (oldestRecord[0].metadata as any).external_id;
+          } else {
+            // start_time is newer than our oldest record. Ignore it to prevent an impossible time window
+            // and allow the script to naturally fall back to sinceId for a forward-sync.
+            start_time = undefined;
+          }
        }
     }
 
@@ -75,14 +82,15 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
     let nextToken = "";
     let totalSaved = 0;
     let totalFetched = 0;
-    const targetLimit = Math.min(Math.max(1, limit), 500);
+    const targetLimit = Math.min(Math.max(1, limit), 3200);
     
     // If we have a sinceId, we ignore the limit to close the gap
     const isUpdateSync = !!sinceId;
+    const isTimeWindow = !!start_time;
 
     while (true) {
-      const batchSize = Math.min(100, isUpdateSync ? 100 : (targetLimit - totalFetched));
-      if (batchSize <= 0 && !isUpdateSync) break;
+      const batchSize = Math.min(100, (isUpdateSync || isTimeWindow) ? 100 : (targetLimit - totalFetched));
+      if (batchSize <= 0 && !isUpdateSync && !isTimeWindow) break;
 
       let url = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${batchSize}&tweet.fields=created_at,entities`;
       
@@ -190,7 +198,7 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
       if (!nextToken) break;
       
       // If we are just filling up to a limit and not closing a gap
-      if (!isUpdateSync && totalFetched >= targetLimit) break;
+      if (!isUpdateSync && !isTimeWindow && totalFetched >= targetLimit) break;
     }
 
     await sendTelemetry(`[System] Sync ${cleanName} abgeschlossen: ${totalSaved} neu/aktualisiert gespeichert.`);
@@ -229,7 +237,7 @@ export function registerXTools(server: McpServer) {
       description: "Fetch latest posts from an X influencer and store them in the Workspace.",
       inputSchema: {
         username: z.string().describe("The X username (e.g. @elonmusk)"),
-        limit: z.number().optional().default(100).describe("Max tweets to fetch (1-500)"),
+        limit: z.number().optional().default(100).describe("Max tweets to fetch (1-3200)"),
         start_time: z.string().optional().describe("ISO 8601 date string (e.g. 2024-05-01T00:00:00Z). Use this to fetch historical posts (Backfill) or for the first-time sync of an influencer."),
       },
     },
@@ -238,7 +246,7 @@ export function registerXTools(server: McpServer) {
         return { content: [{ type: "text", text: "Error: X_BEARER_TOKEN is not configured in .env" }], isError: true };
       }
 
-      const cleanName = username.startsWith("@") ? username : `@${username}`;
+      const cleanName = (username.startsWith("@") ? username : `@${username}`).toLowerCase();
 
       // Check persistent lock in Supabase
       const { data: lock } = await supabase.from("x_sync_locks").select("*").eq("username", cleanName).single();
