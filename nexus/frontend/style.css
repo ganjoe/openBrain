@@ -1,18 +1,22 @@
 /* ── Design Tokens ─────────────────────────────────────────── */
 :root {
-  --bg:          #0b0d0f;
-  --surface:     #13161a;
-  --surface-low: #0f1115;
-  --border:      #22262d;
-  --accent:      #4d84f5;
-  --accent-glow: rgba(77, 132, 245, 0.2);
-  --text:        #e1e4eb;
-  --muted:       #6e7687;
-  --online:      #2ecc71;
-  --offline:     #e74c3c;
+  --bg:          #090214;
+  --surface:     #170b2a;
+  --surface-low: #10061e;
+  --border:      #3d1b63;
+  --accent:      #05d9e8;
+  --accent-glow: rgba(5, 217, 232, 0.5);
+  --pink:        #ff2a6d;
+  --pink-glow:   rgba(255, 42, 109, 0.6);
+  --text:        #e0e0e0;
+  --muted:       #8a70ba;
+  --online:      #01ffc3;
+  --offline:     #ff2a6d;
   --status:      #f1c40f;
   --font-ui:     'Outfit', sans-serif;
   --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
+  --font-stencil: 'Black Ops One', cursive;
+  --font-neon:   'Pacifico', cursive;
   --sidebar-w:   260px;
   --radius:      6px;
 }
@@ -48,13 +52,34 @@ aside#sidebar {
 }
 
 #logo {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: var(--accent);
+  font-size: 20px;
   padding: 16px;
   border-bottom: 1px solid var(--border);
-  text-shadow: 0 0 10px var(--accent-glow);
+  text-align: center;
+}
+
+.logo-qjm {
+  font-family: var(--font-stencil);
+  color: var(--accent);
+  text-shadow: 0 0 5px var(--accent-glow), 0 0 10px var(--accent-glow);
+  letter-spacing: 2px;
+}
+
+.logo-dash {
+  color: var(--muted);
+}
+
+.logo-propelli {
+  font-family: var(--font-neon);
+  color: #fff;
+  text-shadow: 
+    0 0 5px #fff,
+    0 0 10px #fff,
+    0 0 20px var(--pink),
+    0 0 40px var(--pink),
+    0 0 80px var(--pink);
+  font-size: 26px;
+  letter-spacing: 1px;
 }
 
 /* Panel & Details Styling */
@@ -140,9 +165,10 @@ input:focus, textarea:focus { border-color: var(--accent); }
 textarea { font-family: var(--font-mono); resize: vertical; min-height: 50px; }
 
 button#send-btn {
-  background: rgba(77, 132, 245, 0.1);
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--pink);
+  border: 1px solid var(--pink);
+  box-shadow: 0 0 5px var(--pink-glow), inset 0 0 5px var(--pink-glow);
   font-family: var(--font-ui);
   font-weight: 600;
   font-size: 11px;
@@ -152,7 +178,7 @@ button#send-btn {
   transition: all 0.2s;
   align-self: flex-end;
 }
-button#send-btn:hover { background: var(--accent); color: white; }
+button#send-btn:hover { background: var(--pink); color: white; box-shadow: 0 0 15px var(--pink-glow); text-shadow: 0 0 5px #fff; }
 
 /* ── Stream Pane (Chat Area) ───────────────────────────────── */
 main#stream-pane {
@@ -187,18 +213,19 @@ header#stream-header {
 
 /* ── Message Bubbles ───────────────────────────────────────── */
 .msg {
-  background: var(--surface);
+  background: rgba(23, 11, 42, 0.7);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 8px 12px;
   max-width: 90%;
   width: fit-content;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
 }
 
 .msg-header { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
-.msg-from { color: var(--accent); font-weight: 700; font-size: 11px; }
+.msg-from { color: var(--pink); font-weight: 700; font-size: 11px; text-shadow: 0 0 4px var(--pink-glow); }
 .msg-arrow { color: var(--muted); font-size: 10px; }
-.msg-to { color: var(--text); font-size: 11px; opacity: 0.8; }
+.msg-to { color: var(--accent); font-size: 11px; text-shadow: 0 0 4px var(--accent-glow); opacity: 0.9; }
 .msg-time { color: var(--muted); font-size: 9px; margin-left: auto; }
 
 .msg-body { color: var(--text); font-size: 12px; font-family: var(--font-mono); line-height: 1.5; }

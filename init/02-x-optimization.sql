@@ -13,10 +13,12 @@ CREATE TABLE IF NOT EXISTS x_sync_locks (
   locked_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Unique Index for Deduplication
--- Using (metadata->>'external_id') as requested.
--- Note: We filter for artifact_type = 'x_post' to keep it clean.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_external_id ON agent_workspace ((metadata->>'external_id')) WHERE (artifact_type = 'x_post');
+-- 3. Generated Column & Unique Index for Deduplication
+-- Add the generated column to allow explicit targeting for sorting and upsert conflicts
+ALTER TABLE agent_workspace ADD COLUMN IF NOT EXISTS x_external_id text GENERATED ALWAYS AS (metadata->>'external_id') STORED;
+
+-- Create the unique index on the actual column
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_x_id ON agent_workspace (x_external_id);
 
 -- 4. Grants
 GRANT ALL ON TABLE public.x_users TO anon;

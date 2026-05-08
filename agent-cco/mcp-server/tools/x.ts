@@ -48,7 +48,7 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
       .eq("agent_id", AGENT_ID)
       .eq("artifact_type", "x_post")
       .contains("metadata", { author: cleanName })
-      .order("metadata->>external_id", { ascending: false }) // Order by Snowflake ID
+      .order("x_external_id", { ascending: false }) // Order by Snowflake ID
       .limit(1);
 
     if (latestRecord && latestRecord.length > 0) {
@@ -63,7 +63,7 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
         .eq("agent_id", AGENT_ID)
         .eq("artifact_type", "x_post")
         .contains("metadata", { author: cleanName })
-        .order("metadata->>external_id", { ascending: true }) // Order by Snowflake ID (asc = oldest first)
+        .order("x_external_id", { ascending: true }) // Order by Snowflake ID (asc = oldest first)
         .limit(1);
         
        if (oldestRecord && oldestRecord.length > 0) {
@@ -81,7 +81,7 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
     const isUpdateSync = !!sinceId;
 
     while (true) {
-      const batchSize = Math.min(10, isUpdateSync ? 10 : (targetLimit - totalFetched));
+      const batchSize = Math.min(100, isUpdateSync ? 100 : (targetLimit - totalFetched));
       if (batchSize <= 0 && !isUpdateSync) break;
 
       let url = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${batchSize}&tweet.fields=created_at,entities`;
@@ -147,6 +147,24 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
           metadata: finalMetadata,
           // embedding will be added after batch call
         });
+
+        // Inform user via system channel (human readable)
+        const dateStr = tweet.created_at ? new Date(tweet.created_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
+        const topics = Array.isArray(baseMetadata.topics) ? baseMetadata.topics.join(', ') : 'Keine';
+        
+        // Extract keywords or fallback to tickers if keywords don't exist
+        let keywords = 'Keine';
+        if (Array.isArray(baseMetadata.keywords)) {
+          keywords = baseMetadata.keywords.join(', ');
+        } else if (tickers && tickers.length > 0) {
+          keywords = tickers.join(', ');
+        }
+
+        await sendTelemetry(
+          `[X-Post] 📅 ${dateStr}\n` +
+          `📝 "${content.substring(0, 100).replace(/\n/g, ' ')}..."\n` +
+          `🏷️ Topics: ${topics} | 🔑 Keywords: ${keywords}`
+        );
       }
 
       // Batch Embeddings
@@ -176,6 +194,24 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
     }
 
     await sendTelemetry(`[System] Sync ${cleanName} abgeschlossen: ${totalSaved} neu/aktualisiert gespeichert.`);
+    
+    // Trigger CCO to generate the promised summary
+    if (totalSaved > 0) {
+      try {
+        await fetch("http://nexus-service:7734/api/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from_agent: "system",
+            to: "cco",
+            text: `Der Hintergrund-Sync für ${cleanName} ist soeben mit ${totalSaved} verarbeiteten Posts abgeschlossen worden. Bitte erstelle jetzt die versprochene Zusammenfassung für den Boss. Nutze deine Such-Tools um die neuesten ${cleanName} Posts abzurufen, analysiere sie und schreibe die Zusammenfassung an 'boss'.`,
+            message_type: "chat"
+          }),
+        });
+      } catch (e) {
+        console.error("Failed to trigger CCO summary:", e);
+      }
+    }
   } catch (err: any) {
     console.error(`Background sync failed for ${cleanName}:`, err);
     await sendTelemetry(`[System] Sync ${cleanName} abgebrochen: ${err.message}`);
