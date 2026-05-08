@@ -17,6 +17,7 @@ const state = {
   statusMode:    false,       // status-channel checkbox
   messages:      [],          // all buffered messages (capped at 500)
   lastSeenUnix:  parseInt(localStorage.getItem("nexus_last_seen") || String(Math.floor(Date.now() / 1000))),
+  providerConfig: {},         // per-agent LLM provider mapping
 };
 
 // ── DOM refs ──────────────────────────────────────────────────
@@ -30,6 +31,7 @@ const $sendFrom      = document.getElementById("send-from");
 const $sendTo        = document.getElementById("send-to");
 const $sendText      = document.getElementById("send-text");
 const $filterHistory = document.getElementById("filter-history");
+const $providerList  = document.getElementById("provider-list");
 
 // ── Helpers ───────────────────────────────────────────────────
 function formatTime(unix) {
@@ -133,15 +135,13 @@ function isVisible(from, to, msgType) {
 
 function rerender() {
   $messages.innerHTML = "";
-  state.messages
-    .filter(m => {
-      const h = m.header || {};
-      return isVisible(h.from || h.from_agent || "?", h.to || "?", h.msg_type || "chat");
-    })
-    .forEach(m => {
+  state.messages.forEach(m => {
+    const p = parseMessage(m);
+    if (isVisible(p.from, p.to, p.type)) {
       const el = buildMessageEl(m);
       $messages.appendChild(el);
-    });
+    }
+  });
   $messages.scrollTop = $messages.scrollHeight;
   updateRoomLabel();
 }
@@ -202,6 +202,67 @@ function renderAgentCheckboxes() {
 
   if (state.agents.length === 0) {
     $agentList.innerHTML = '<p class="hint">Warte auf Agenten…</p>';
+  }
+}
+
+// ── Provider Logic ────────────────────────────────────────────
+async function loadProviderConfig() {
+  try {
+    const r = await fetch(`${API}/api/settings/provider`);
+    state.providerConfig = await r.json();
+  } catch (e) {
+    console.error("Failed to load provider config:", e);
+  }
+}
+
+async function updateProvider(agentId, provider) {
+  try {
+    await fetch(`${API}/api/settings/provider`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agent_id: agentId, provider }),
+    });
+    state.providerConfig[agentId] = provider;
+  } catch (e) {
+    console.error("Failed to update provider:", e);
+  }
+}
+
+function renderProviders() {
+  if (!$providerList) return;
+  $providerList.innerHTML = "";
+  
+  const relevantAgents = state.agents.filter(id => id !== "boss" && id !== "nexus");
+  
+  relevantAgents.sort().forEach(id => {
+    const currentProvider = state.providerConfig[id] || "local";
+    
+    const row = document.createElement("div");
+    row.className = "provider-row";
+    
+    row.innerHTML = `
+      <div class="provider-agent">
+        <span class="dot dot-agent"></span>
+        <span>${id}</span>
+      </div>
+      <select class="provider-select" data-agent="${id}">
+        <option value="local" ${currentProvider === 'local' ? 'selected' : ''}>Local</option>
+        <option value="gemini" ${currentProvider === 'gemini' ? 'selected' : ''}>Gemini 3 Flash</option>
+      </select>
+    `;
+    
+    $providerList.appendChild(row);
+  });
+  
+  // Attach event listeners
+  $providerList.querySelectorAll("select").forEach(select => {
+    select.addEventListener("change", (e) => {
+      updateProvider(e.target.dataset.agent, e.target.value);
+    });
+  });
+  
+  if (relevantAgents.length === 0) {
+    $providerList.innerHTML = '<p class="hint">Warte auf Agenten…</p>';
   }
 }
 
@@ -307,14 +368,17 @@ async function loadAgents() {
     const r = await fetch(`${API}/api/agents`);
     state.agents = await r.json();
     renderAgentCheckboxes();
+    renderProviders();
   } catch {
     renderAgentCheckboxes();
+    renderProviders();
   }
 }
 
 // ── Boot ──────────────────────────────────────────────────────
 (async () => {
   $sendFrom.value = "boss"; // Initial value
+  await loadProviderConfig();
   await loadAgents();
   await loadHistory();
   connectSSE();

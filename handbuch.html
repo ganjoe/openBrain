@@ -26,6 +26,9 @@
 <LI><A HREF="#ollama">Die Embedding-Schicht: Ollama & Vektorisierung</A>
 <LI><A HREF="#gateway">Die Proxy-Schicht: Nginx - Der Dirigent des Netzwerkverkehrs</A>
 <LI><A HREF="#nexus">The Nexus: MQTT-basierter Agenten-Kommunikations-Hub</A>
+    <UL>
+        <LI><A HREF="#nexus-provider">Multi-Provider Management: Dynamische LLM-Orchestrierung</A></LI>
+    </UL>
 <LI><A HREF="#mcp">Der Tool-Server: Deep Dive in die Deno MCP Implementierung</A>
 <LI><A HREF="#bot">Der Executive Assistant: Bot-Logik, Historie & Agentik</A>
 <LI><A HREF="#fluss">Detaillierte Szenarien des Informationsflusses</A>
@@ -325,6 +328,24 @@ graph TD
 <P>MQTT (ISO/IEC 20922) ist ein leichtgewichtiges Pub/Sub-Protokoll mit persistenter TCP-Verbindung und &lt;5ms Latenz. Im Gegensatz zu Matrix-Rooms sind Topics dynamisch und ohne vorherige Konfiguration nutzbar. Jeder Agent subscribt beim Start seine eigene <CODE>agents/{id}/inbox</CODE> &mdash; keine Room-IDs, keine Registrierung.</P>
 <H3>7.2 Cross-Agent MCP via MQTT</H3>
 <P>Will Agent A ein Tool von Agent B nutzen, publiziert er auf <CODE>agents/B/mcp/request</CODE>. Agent B f&uuml;hrt das Tool aus und antwortet auf <CODE>agents/A/mcp/response/{req_id}</CODE>. Kein Agent kennt die HTTP-URL eines anderen. Der Nexus-Service loggt jeden Cross-Agent-MCP-Call mit <CODE>msg_type: mcp_request</CODE>.</P>
+
+<A NAME="nexus-provider"></A>
+<H3>7.3 Multi-Provider Management: Dynamische LLM-Orchestrierung</H3>
+<P>Open Brain verfolgt einen hybriden Ansatz bei der Modell-Inferenz. W&auml;hrend die lokale Ausf&uuml;hrung (LM Studio) das Standard-Szenario ist, erlaubt das System die nahtlose Zuschaltung von Cloud-Modellen wie <B>Google Gemini</B> für ressourcenintensive Aufgaben. Dieses "Brain-Swapping" erfolgt ohne System-Neustart.</P>
+
+<H4>7.3.1 Zentrale Zustandsverwaltung (system_settings)</H4>
+<P>Die Konfiguration der LLM-Provider wird in der dedizierten Datenbank-Tabelle <CODE>system_settings</CODE> persistiert. Das System speichert hier ein JSON-Objekt (<CODE>provider_config</CODE>), welches jedem Agenten (ID) seinen aktuellen Provider zuweist (z.B. <CODE>{"ea": "local", "cco": "gemini"}</CODE>). Dies garantiert, dass die gew&auml;hlte Konfiguration auch nach einem Container-Neustart erhalten bleibt.</P>
+
+<H4>7.3.2 Real-Time Switching via MQTT</H4>
+<P>Die Umschaltung der Intelligenz erfolgt asynchron und in Echtzeit &uuml;ber den Nexus-Bus:</P>
+<OL>
+<LI><B>Dashboard-Trigger:</B> Der Nutzer w&auml;hlt im Nexus-Frontend einen neuen Provider f&uuml;r einen Agenten aus.</LI>
+<LI><B>API-Broadcast:</B> Der <CODE>nexus-service</CODE> aktualisiert den Wert in der Datenbank und publiziert simultan eine Nachricht auf dem Topic <CODE>system/config/provider</CODE>.</LI>
+<LI><B>Agenten-Hot-Swap:</B> Der betroffene Agent (EA oder CCO) empf&auml;ngt die Nachricht, erkennt seine <CODE>AGENT_ID</CODE> und wechselt intern sofort den API-Adapter. Die n&auml;chste Inferenz-Anfrage wird bereits &uuml;ber das neue Backend geleitet.</LI>
+</OL>
+
+<H4>7.3.3 Provider-Isolation</H4>
+<P>Das System unterst&uuml;tzt unterschiedliche Provider pro Agent. So kann beispielsweise der EA-Agent zur Kostenersparnis auf einem kleinen lokalen Modell laufen, w&auml;hrend der CCO-Agent f&uuml;r komplexe Marktanalysen tempor&auml;r auf Gemini 1.5 Pro hochgestuft wird. Dies bietet maximale Flexibilit&auml;t bei optimaler Ressourcenausnutzung.</P>
 
 <A NAME="mcp"></A>
 <H2>8. Der Tool-Server: Deep Dive in die Deno MCP Implementierung</H2>

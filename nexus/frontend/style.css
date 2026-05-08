@@ -142,6 +142,48 @@ details[open] summary::after { transform: rotate(180deg); }
 .dot-history { background: #a29bfe; }
 .dot-agent   { background: var(--accent); }
 
+/* ── Provider Rows ─────────────────────────────────────────── */
+.provider-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  border-radius: var(--radius);
+}
+
+.provider-agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+select.provider-select {
+  background: rgba(23, 11, 42, 0.9);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(5, 217, 232, 0.2);
+  transition: all 0.2s ease;
+}
+
+select.provider-select:hover, select.provider-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(5, 217, 232, 0.5);
+}
+
+select.provider-select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+
 /* ── Send Panel (Prioritized Layout) ────────────────────────── */
 .send-meta {
   display: grid;

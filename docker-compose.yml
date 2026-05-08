@@ -184,6 +184,7 @@ services:
     environment:
       SUPABASE_URL: http://gateway:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
       OLLAMA_URL: http://ollama:11434
       OLLAMA_EMBED_MODEL: qwen3-embedding:8b
@@ -214,6 +215,7 @@ services:
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
       LM_STUDIO_URL: http://host.docker.internal:1234
       POSTGREST_URL: http://postgrest:3000
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -244,6 +246,7 @@ services:
       AGENT_ID: "cco"
       GLOBAL_BRAIN_ACCESS: "false"
       X_BEARER_TOKEN: ${X_BEARER_TOKEN}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
     ports:
       - "8788:8788"
     extra_hosts:
@@ -267,6 +270,7 @@ services:
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
       LM_STUDIO_URL: http://host.docker.internal:1234
       POSTGREST_URL: http://postgrest:3000
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

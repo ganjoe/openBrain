@@ -11,7 +11,7 @@ export function registerOpenBrainTools(server: McpServer) {
       description: "Search captured thoughts using hybrid search.",
       inputSchema: {
         query: z.string().describe("What to search for"),
-        limit: z.number().optional().default(10),
+        limit: z.number().optional().default(1000),
         threshold: z.number().optional().default(0.5),
         ...(GLOBAL_BRAIN_ACCESS ? { owner: z.string().optional().describe("Filter by agent ID.") } : {})
       },

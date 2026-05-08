@@ -34,6 +34,9 @@ const MCP_RESP_TOPIC = `agents/${AGENT_ID}/mcp/response/+`;
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL || "http://localhost:1234";
 const MCP_ACCESS_KEY = process.env.MCP_ACCESS_KEY || "";
 const POSTGREST_URL  = process.env.POSTGREST_URL || "http://postgrest:3000";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+
+let activeProvider = "local"; // Dynamically updated via Nexus
 
 // ─────────────────────────────────────────────────────────────
 // 3. System prompt (mounted via Docker volume)
@@ -184,6 +187,43 @@ async function callLMStudio(messages: any[], tools: any[]) {
   return { message, tool_calls: message.tool_calls || null };
 }
 
+async function callGemini(messages: any[], tools: any[]) {
+  if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
+    throw new Error("GEMINI_API_KEY not configured in .env");
+  }
+  
+  const payload: any = { 
+    model: "gemini-3-flash-preview", 
+    messages, 
+    temperature: 0.2 
+  };
+  if (tools.length > 0) payload.tools = tools;
+
+  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${GEMINI_API_KEY}`
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) throw new Error(`Gemini error: ${res.status} — ${await res.text()}`);
+
+  const data: any = await res.json();
+  if (!data.choices?.length) throw new Error("Gemini returned empty response");
+
+  const message = data.choices[0].message;
+  return { message, tool_calls: message.tool_calls || null };
+}
+
+async function callLLM(messages: any[], tools: any[]) {
+  if (activeProvider === "gemini") {
+    return callGemini(messages, tools);
+  }
+  return callLMStudio(messages, tools);
+}
+
 // ─────────────────────────────────────────────────────────────
 // 9. Nexus message envelope builder
 // ─────────────────────────────────────────────────────────────
@@ -254,8 +294,8 @@ async function handleIncoming(
     { role: "user", content: text },
   ];
 
-  console.log("🧠 Calling LM Studio...");
-  let response = await callLMStudio(messages, availableTools);
+  console.log(`🧠 Calling LLM (${activeProvider})...`);
+  let response = await callLLM(messages, availableTools);
 
   while (response.tool_calls?.length > 0) {
     messages.push(response.message);
@@ -279,7 +319,7 @@ async function handleIncoming(
       }
     }
 
-    response = await callLMStudio(messages, availableTools);
+    response = await callLLM(messages, availableTools);
   }
 
   const replyText = response.message?.content || "";
@@ -337,6 +377,21 @@ async function main() {
   );
   console.log(`🔌 Local MCP servers: ${config.mcp.local_servers.map(s => s.label).join(", ")}`);
 
+  // Fetch initial provider config
+  try {
+    const res = await fetch(`${POSTGREST_URL}/system_settings?key=eq.provider_config`);
+    if (res.ok) {
+      const data: any = await res.json();
+      if (data && data.length > 0) {
+        const configMap = data[0].value || {};
+        if (configMap[AGENT_ID]) activeProvider = configMap[AGENT_ID];
+      }
+    }
+  } catch (err) {
+    console.warn("⚠️ Could not fetch initial provider config, defaulting to local.");
+  }
+  console.log(`🧠 Active LLM Provider: ${activeProvider}`);
+
   // MQTT connect with LWT
   const lwt = JSON.parse(config.mqtt.lwt_payload);
   lwt.unix  = Math.floor(Date.now() / 1000);
@@ -358,7 +413,8 @@ async function main() {
   await mqttClient.subscribeAsync(INBOX_TOPIC,    { qos: 1 });
   await mqttClient.subscribeAsync(MCP_REQ_TOPIC,  { qos: 1 });
   await mqttClient.subscribeAsync(MCP_RESP_TOPIC, { qos: 1 });
-  console.log(`📡 Subscribed: ${INBOX_TOPIC} | ${MCP_REQ_TOPIC} | ${MCP_RESP_TOPIC}`);
+  await mqttClient.subscribeAsync("system/config/provider", { qos: 1 });
+  console.log(`📡 Subscribed: ${INBOX_TOPIC} | ${MCP_REQ_TOPIC} | ${MCP_RESP_TOPIC} | system/config/provider`);
 
   // Publish online status
   const onlinePayload = JSON.stringify({ agent: AGENT_ID, status: "online", unix: Math.floor(Date.now() / 1000) });
@@ -375,6 +431,14 @@ async function main() {
     }
 
     try {
+      if (topic === "system/config/provider") {
+        if (envelope.agent_id === AGENT_ID) {
+          activeProvider = envelope.provider;
+          console.log(`🔄 Provider switched to: ${activeProvider}`);
+        }
+        return;
+      }
+      
       if (topic.endsWith("/mcp/request") && topic.includes(`agents/${AGENT_ID}/`)) {
         await handleMcpRequest(mqttClient, localMcpClients, envelope);
       } else if (topic.match(/\/mcp\/response\//)) {

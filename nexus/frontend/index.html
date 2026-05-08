@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Pacifico&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=8" />
   <!-- marked.js for Markdown rendering -->
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 </head>
@@ -56,6 +56,15 @@
           <button id="send-btn">Senden ↑</button>
         </div>
       </details>
+
+      <!-- Provider Section -->
+      <details class="panel panel-provider" open>
+        <summary><h2>Provider</h2></summary>
+        <div class="panel-content" id="provider-list">
+          <!-- Populated dynamically via JS -->
+          <p class="hint">Lade Provider…</p>
+        </div>
+      </details>
     </aside>
 
     <!-- ── Main stream ──────────────────────────────────────── -->
@@ -70,7 +79,7 @@
 
   </div>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=8"></script>
   <script>
     // Auto-collapse filters on mobile
     if (window.innerWidth <= 768) {

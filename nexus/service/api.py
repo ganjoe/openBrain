@@ -165,6 +165,56 @@ async def send_message(req: SendRequest):
     return {"status": "sent", "unix": now}
 
 
+# ─── System Settings ────────────────────────────────────────────────────────────
+
+class ProviderUpdateRequest(BaseModel):
+    agent_id: str
+    provider: str
+
+@router.get("/api/settings/provider")
+async def get_provider():
+    """Fetch the current provider config from the DB."""
+    rows = await _db_get("system_settings", {"key": "eq.provider_config"})
+    if rows:
+        return rows[0].get("value", {})
+    return {}
+
+@router.post("/api/settings/provider")
+async def update_provider(req: ProviderUpdateRequest):
+    """Update an agent's provider and broadcast via MQTT."""
+    # 1. Fetch current config
+    rows = await _db_get("system_settings", {"key": "eq.provider_config"})
+    current_config = rows[0].get("value", {}) if rows else {}
+    
+    # 2. Update config
+    current_config[req.agent_id] = req.provider
+    
+    # 3. Save to DB
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        r = await client.patch(
+            f"{GATEWAY_URL}/rest/v1/system_settings?key=eq.provider_config",
+            headers={**DB_HEADERS, "Content-Type": "application/json"},
+            json={"value": current_config}
+        )
+        if r.status_code not in (200, 204):
+            # Try POST if not exists
+            r2 = await client.post(
+                f"{GATEWAY_URL}/rest/v1/system_settings",
+                headers={**DB_HEADERS, "Content-Type": "application/json"},
+                json={"key": "provider_config", "value": current_config}
+            )
+            if r2.status_code not in (200, 201, 204):
+                raise HTTPException(status_code=502, detail=f"DB error: {r2.text}")
+                
+    # 4. Broadcast via MQTT
+    mqtt_client = get_mqtt_client()
+    if mqtt_client:
+        payload = json.dumps({"agent_id": req.agent_id, "provider": req.provider})
+        mqtt_client.publish("system/config/provider", payload, qos=1, retain=True)
+        
+    return {"status": "updated", "config": current_config}
+
+
 # ─── Server-Sent Events ───────────────────────────────────────────────────────
 
 @router.get("/api/stream")
