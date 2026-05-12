@@ -281,80 +281,18 @@ export function registerXTools(server: McpServer) {
     },
     async ({ authors, limit }: { authors?: string[], limit: number }) => {
       try {
-        let allPosts: any[] = [];
-        let page = 0;
-        const pageSize = 1000;
-        
-        // 1. Fetch all x_posts to accurately find first mentions
-        while (true) {
-          const { data, error } = await supabase
-            .from("agent_workspace")
-            .select("metadata, content")
-            .eq("artifact_type", "x_post")
-            .range(page * pageSize, (page + 1) * pageSize - 1);
-            
-          if (error) throw new Error(`Supabase error: ${error.message}`);
-          if (!data || data.length === 0) break;
-          
-          allPosts.push(...data);
-          if (data.length < pageSize) break;
-          page++;
-        }
-
-        // 2. In-Memory Grouping for first mentions
-        interface FirstMention {
-          ticker: string;
-          first_mentioned_at: Date;
-          author: string;
-          post_content: string;
-        }
-
-        const firstMentions = new Map<string, FirstMention>();
         const targetAuthors = authors && authors.length > 0 ? authors.map(a => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`) : null;
+        
+        const { data, error } = await supabase.rpc("get_new_ticker_mentions", {
+           p_authors: targetAuthors,
+           p_limit: limit
+        });
+        
+        if (error) throw new Error(`Supabase error: ${error.message}`);
 
-        for (const post of allPosts) {
-          const metadata = post.metadata as any;
-          if (!metadata) continue;
-          
-          const author = metadata.author?.toLowerCase();
-          
-          // Optional: Author filter
-          if (targetAuthors && author && !targetAuthors.includes(author)) {
-            continue;
-          }
-          
-          const tickers = metadata.tickers as string[] || [];
-          if (!tickers || tickers.length === 0) continue;
-          
-          // Try to parse published_at, fallback to a distant future date if invalid to avoid false positives
-          const dateStr = metadata.published_at;
-          if (!dateStr) continue;
-          const publishedAt = new Date(dateStr);
-          if (isNaN(publishedAt.getTime())) continue;
-
-          for (const ticker of tickers) {
-            const normalizedTicker = ticker.toUpperCase();
-            const existing = firstMentions.get(normalizedTicker);
-            
-            if (!existing || publishedAt < existing.first_mentioned_at) {
-                firstMentions.set(normalizedTicker, {
-                   ticker: normalizedTicker,
-                   first_mentioned_at: publishedAt,
-                   author: metadata.author,
-                   post_content: post.content
-                });
-            }
-          }
-        }
-
-        // 3. Sort by date descending to get the newest "first mentions"
-        const sortedMentions = Array.from(firstMentions.values())
-          .sort((a, b) => b.first_mentioned_at.getTime() - a.first_mentioned_at.getTime());
-
-        // 4. Take top N
-        const results = sortedMentions.slice(0, limit).map(r => ({
+        const results = data.map((r: any) => ({
           ticker: r.ticker,
-          first_mentioned_at: r.first_mentioned_at.toISOString(),
+          first_mentioned_at: r.first_mentioned_at,
           author: r.author,
           post_content: r.post_content
         }));

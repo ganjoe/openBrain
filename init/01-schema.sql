@@ -197,6 +197,54 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Get new ticker mentions (optimized)
+CREATE OR REPLACE FUNCTION get_new_ticker_mentions(
+  p_authors text[] DEFAULT NULL,
+  p_limit int DEFAULT 3
+)
+RETURNS TABLE (
+  ticker text,
+  first_mentioned_at timestamptz,
+  author text,
+  post_content text
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN QUERY
+  WITH expanded AS (
+    SELECT
+      t.content,
+      t.metadata->>'author' AS author,
+      (t.metadata->>'published_at')::timestamptz AS published_at,
+      UPPER(ticker_text) AS ticker
+    FROM
+      agent_workspace t,
+      jsonb_array_elements_text(t.metadata->'tickers') AS ticker_text
+    WHERE
+      t.artifact_type = 'x_post'
+      AND t.metadata->>'published_at' IS NOT NULL
+      AND (p_authors IS NULL OR array_length(p_authors, 1) IS NULL OR LOWER(t.metadata->>'author') = ANY(p_authors))
+  ),
+  first_mentions AS (
+    SELECT DISTINCT ON (e.ticker)
+      e.ticker,
+      e.published_at,
+      e.author,
+      e.content
+    FROM expanded e
+    ORDER BY e.ticker, e.published_at ASC
+  )
+  SELECT
+    fm.ticker,
+    fm.published_at,
+    fm.author,
+    fm.content
+  FROM first_mentions fm
+  ORDER BY fm.published_at DESC
+  LIMIT p_limit;
+END;
+$$;
+
 -- ─────────────────────────────────────────────────────────────
 -- GRANTS
 -- ─────────────────────────────────────────────────────────────
@@ -207,3 +255,5 @@ GRANT ALL ON SEQUENCE nexus_chat_id_seq TO anon;
 GRANT EXECUTE ON FUNCTION hybrid_search_open_brain TO anon;
 GRANT EXECUTE ON FUNCTION hybrid_search_workspace TO anon;
 GRANT EXECUTE ON FUNCTION upsert_open_brain TO anon;
+GRANT EXECUTE ON FUNCTION get_new_ticker_mentions TO anon;
+
