@@ -49,7 +49,7 @@ export function registerOpenBrainTools(server: McpServer) {
     "search_workspace",
     {
       title: "Search Workspace",
-      description: "Search raw artifacts (like X-Posts) in the agent workspace.",
+      description: "Search raw artifacts (like X-Posts) and their metadata (e.g. tickers, authors, topics) in the agent workspace. Use this tool when asked to find or analyze posts matching specific tickers or keywords.",
       inputSchema: {
         query: z.string().describe("What to search for"),
         limit: z.number().optional().default(1000),

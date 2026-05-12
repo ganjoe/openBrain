@@ -166,6 +166,7 @@ BEGIN
     AND (
       1 - (t.embedding <=> query_embedding) > match_threshold
       OR t.content ILIKE '%' || query_text || '%'
+      OR t.metadata::text ILIKE '%' || query_text || '%'
     )
   ORDER BY similarity DESC NULLS LAST, t.created_at DESC
   LIMIT match_count;
