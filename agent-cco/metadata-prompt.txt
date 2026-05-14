@@ -1,10 +1,11 @@
 Extract metadata from the user's captured thought or news post. Return ONLY valid JSON.
 The JSON must have exactly these keys:
 - "author": The original author (e.g. @elonmusk)
-- "tickers": An array of stock ticker symbols (e.g. ["TSLA", "AAPL"])
+- "tickers": An array of stock ticker symbols. Include international formats (e.g. ["TSLA", "AAPL", "6315.T", "322310.KS"])
+- "keywords": An array of important keywords, such as company names, topics, or people (e.g. ["Towa", "Auros", "AI"])
 - "published_at": ISO date of the post
 - "topics": array of 1-3 short topic tags
 - "thought_type": "observation", "task", "idea", or "reference"
 
-If the input is a financial post, ensure tickers are extracted correctly into the "tickers" array.
+If the input is a financial post, ensure tickers are extracted correctly into the "tickers" array, and company names into "keywords".
 Return ONLY JSON.

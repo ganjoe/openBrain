@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { supabase, getEmbedding, extractMetadata, AGENT_ID, GLOBAL_BRAIN_ACCESS } from "./shared.ts";
+import { supabase, getEmbedding, extractMetadata, AGENT_ID, GLOBAL_BRAIN_ACCESS, sendTelemetry } from "./shared.ts";
 
 export function registerOpenBrainTools(server: McpServer) {
   // Tool: Search
@@ -11,8 +11,8 @@ export function registerOpenBrainTools(server: McpServer) {
       description: "Search captured thoughts using hybrid search.",
       inputSchema: {
         query: z.string().describe("What to search for"),
-        limit: z.number().optional().default(1000),
-        threshold: z.number().optional().default(0.5),
+        limit: z.number().optional().default(200).describe("Max results (default: 200). Keep it small to avoid context overload."),
+        threshold: z.number().optional().default(0.5).describe("Similarity threshold (0.0 to 1.0, default: 0.5). Use higher values for stricter semantic matches."),
         ...(GLOBAL_BRAIN_ACCESS ? { owner: z.string().optional().describe("Filter by agent ID.") } : {})
       },
     },
@@ -31,7 +31,11 @@ export function registerOpenBrainTools(server: McpServer) {
         });
 
         if (error) throw error;
-        if (!data || data.length === 0) return { content: [{ type: "text", text: "No results." }] };
+        if (!data || data.length === 0) {
+          await sendTelemetry(`[Suche] Gedanken-Suche nach "${query}" ergab 0 Treffer.`);
+          return { content: [{ type: "text", text: "No results." }] };
+        }
+        await sendTelemetry(`[Suche] Gedanken-Suche nach "${query}" ergab ${data.length} Treffer.`);
 
         const results = data.map((t: any, i: number) => {
             return `[${i + 1}] Agent: ${t.agent_id} | Type: ${t.thought_type} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}`;
@@ -52,8 +56,8 @@ export function registerOpenBrainTools(server: McpServer) {
       description: "Search raw artifacts (like X-Posts) and their metadata (e.g. tickers, authors, topics) in the agent workspace. Use this tool when asked to find or analyze posts matching specific tickers or keywords.",
       inputSchema: {
         query: z.string().describe("What to search for"),
-        limit: z.number().optional().default(1000),
-        threshold: z.number().optional().default(0.0),
+        limit: z.number().optional().default(200).describe("Max results (default: 200). Keep it small to avoid context overload."),
+        threshold: z.number().optional().default(0.5).describe("Similarity threshold (0.0 to 1.0, default: 0.5). Use higher values for stricter semantic matches."),
         artifact_type: z.string().optional().describe("Filter by artifact type (e.g., 'x_post')"),
         ...(GLOBAL_BRAIN_ACCESS ? { owner: z.string().optional().describe("Filter by agent ID.") } : {})
       },
@@ -79,7 +83,11 @@ export function registerOpenBrainTools(server: McpServer) {
         }
         
         console.log(`[search_workspace] Found ${data ? data.length : 0} results.`);
-        if (!data || data.length === 0) return { content: [{ type: "text", text: "No results found in workspace." }] };
+        if (!data || data.length === 0) {
+            await sendTelemetry(`[Suche] Workspace-Suche nach "${query}" ergab 0 Treffer.`);
+            return { content: [{ type: "text", text: "No results found in workspace." }] };
+        }
+        await sendTelemetry(`[Suche] Workspace-Suche nach "${query}" ergab ${data.length} Treffer.`);
 
         const results = data.map((t: any, i: number) => {
             return `[${i + 1}] Agent: ${t.agent_id} | Type: ${t.artifact_type} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`;
