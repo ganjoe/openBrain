@@ -137,10 +137,12 @@ details[open] summary::after { transform: rotate(180deg); }
 .checkbox-row:hover { background: var(--border); }
 .checkbox-row input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px; }
 
-.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; transition: all 0.3s ease; }
 .dot-status  { background: var(--status); }
 .dot-history { background: #a29bfe; }
 .dot-agent   { background: var(--accent); }
+.dot.online  { background: var(--online); box-shadow: 0 0 5px var(--online); }
+.dot.offline { background: var(--offline); opacity: 0.6; }
 
 /* ── Provider Rows ─────────────────────────────────────────── */
 .provider-row {
@@ -271,6 +273,102 @@ header#stream-header {
 .msg-time { color: var(--muted); font-size: 9px; margin-left: auto; }
 
 .msg-body { color: var(--text); font-size: 12px; font-family: var(--font-mono); line-height: 1.5; }
+
+/* ── LM Studio Panel ─────────────────────────────────────────── */
+.panel-lmstudio summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  transition: color 0.2s, transform 0.2s;
+  padding: 0 4px;
+}
+.icon-btn:hover { color: var(--accent); transform: rotate(180deg); }
+
+.lm-status-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.2);
+}
+
+.lm-offline { color: var(--offline); border-left: 2px solid var(--offline); }
+.lm-empty { color: var(--status); border-left: 2px solid var(--status); }
+.lm-online { color: var(--online); border-left: 2px solid var(--online); }
+
+.lm-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lm-model-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(23, 11, 42, 0.9);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.lm-model-name {
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+
+.lm-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.lm-btn:hover {
+  background: var(--surface-low);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.lm-btn.unload:hover {
+  border-color: var(--offline);
+  color: var(--offline);
+}
+
+.lm-select-wrapper {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.lm-select-wrapper select {
+  flex: 1;
+  background: var(--surface-low);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  padding: 2px;
+  border-radius: 3px;
+  outline: none;
+}
 
 /* ── Mobile Overrides ──────────────────────────────────────── */
 @media (max-width: 768px) {

@@ -187,13 +187,14 @@ async function callLMStudio(messages: any[], tools: any[]) {
   return { message, tool_calls: message.tool_calls || null };
 }
 
-async function callGemini(messages: any[], tools: any[]) {
+async function callGemini(messages: any[], tools: any[], provider: string) {
   if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
     throw new Error("GEMINI_API_KEY not configured in .env");
   }
   
+  const modelName = provider === "gemini-pro" ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview";
   const payload: any = { 
-    model: "gemini-3-flash-preview", 
+    model: modelName, 
     messages, 
     temperature: 0.2 
   };
@@ -218,8 +219,8 @@ async function callGemini(messages: any[], tools: any[]) {
 }
 
 async function callLLM(messages: any[], tools: any[]) {
-  if (activeProvider === "gemini") {
-    return callGemini(messages, tools);
+  if (activeProvider === "gemini" || activeProvider === "gemini-pro") {
+    return callGemini(messages, tools, activeProvider);
   }
   return callLMStudio(messages, tools);
 }

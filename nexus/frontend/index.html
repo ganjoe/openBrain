@@ -25,11 +25,7 @@
       <details class="panel panel-filter" open>
         <summary><h2>Filter</h2></summary>
         <div class="panel-content">
-          <label class="checkbox-row" id="label-status">
-            <input type="checkbox" id="filter-status" />
-            <span class="dot dot-status"></span>
-            Status Channel
-          </label>
+
 
           <label class="checkbox-row" id="label-history">
             <input type="checkbox" id="filter-history" />
@@ -63,6 +59,21 @@
         <div class="panel-content" id="provider-list">
           <!-- Populated dynamically via JS -->
           <p class="hint">Lade Provider…</p>
+        </div>
+      </details>
+
+      <!-- LM Studio Section -->
+      <details class="panel panel-lmstudio" open>
+        <summary>
+          <h2>Local LM Studio</h2>
+          <div style="display: flex; gap: 4px;">
+            <button id="lm-load-btn" class="icon-btn" title="Load Selected Model" style="display: none;">🚀</button>
+            <button id="lm-refresh-btn" class="icon-btn" title="Refresh LM Studio Status">↻</button>
+          </div>
+        </summary>
+        <div class="panel-content" id="lmstudio-content">
+          <!-- Populated dynamically via JS -->
+          <p class="hint">Prüfe Status…</p>
         </div>
       </details>
     </aside>

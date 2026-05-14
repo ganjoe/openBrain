@@ -70,7 +70,7 @@ export async function getActiveProvider(): Promise<string> {
 }
 
 // --- Metadata extraction (LLM based) ---
-export async function extractMetadata(text: string, sendTelemetryMessage: boolean = true): Promise<Record<string, unknown>> {
+export async function extractMetadata(text: string, sendTelemetryMessage: boolean = true, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const provider = await getActiveProvider();
   const start = Date.now();
   
@@ -87,21 +87,44 @@ export async function extractMetadata(text: string, sendTelemetryMessage: boolea
   let modelName = "unknown";
 
   if (provider === "gemini" && GEMINI_API_KEY) {
-    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${GEMINI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gemini-3-flash-preview",
-        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: text }],
-        temperature: 0.1
-      }),
-    });
-    if (!res.ok) throw new Error(`Gemini failed: ${res.status} - ${await res.text()}`);
-    d = await res.json();
-    modelName = "gemini-3-flash";
+    let retries = 0;
+    while (true) {
+      if (signal?.aborted) throw new Error("Sync abgebrochen.");
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${GEMINI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gemini-3-flash-preview",
+          messages: [{ role: "system", content: systemPrompt }, { role: "user", content: text }],
+          temperature: 0.1
+        }),
+        signal: signal
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        if (res.status === 503) {
+          retries++;
+          await sendTelemetry(`[Gemini] 503 Error. Warte 5 Sekunden (Versuch ${retries})...`);
+          await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(resolve, 5000);
+            if (signal) {
+              signal.addEventListener('abort', () => {
+                clearTimeout(timeout);
+                reject(new Error("Sync abgebrochen."));
+              }, { once: true });
+            }
+          });
+          continue;
+        }
+        throw new Error(`Gemini failed: ${res.status} - ${errText}`);
+      }
+      d = await res.json();
+      modelName = "gemini-3-flash";
+      break;
+    }
   } else {
     const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
       method: "POST",
@@ -110,6 +133,7 @@ export async function extractMetadata(text: string, sendTelemetryMessage: boolea
         model: "local-model",
         messages: [{ role: "system", content: systemPrompt }, { role: "user", content: text }],
       }),
+      signal: signal
     });
     if (!res.ok) return { topics: ["uncategorized"], type: "observation" };
     d = await res.json();

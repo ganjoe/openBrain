@@ -152,6 +152,10 @@ services:
       MQTT_BROKER_PORT: "1883"
     ports:
       - "7734:7734"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /home/daniel/.lmstudio:/lmstudio:ro
 
   # --- The Nexus: Web Dashboard ---
   nexus-frontend:

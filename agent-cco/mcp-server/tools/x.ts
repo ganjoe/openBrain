@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { supabase, getEmbeddingsBatch, extractMetadata, sendTelemetry, X_BEARER_TOKEN, AGENT_ID } from "./shared.ts";
 
-const activeSyncs = new Set<string>();
+export const activeSyncControllers = new Map<string, AbortController>();
 
 // --- X API Helpers ---
 async function getXUserId(username: string): Promise<string> {
@@ -33,7 +33,7 @@ async function getXUserId(username: string): Promise<string> {
   return userId;
 }
 
-async function runBackgroundSync(cleanName: string, username: string, limit: number, start_time?: string) {
+async function runBackgroundSync(cleanName: string, username: string, limit: number, start_time?: string, signal?: AbortSignal) {
   console.log(`[X Sync] Background job started for ${cleanName}`);
   try {
     await sendTelemetry(`[System] Hintergrund-Sync für ${cleanName} startet...`);
@@ -134,13 +134,14 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
       const textsForEmbedding: string[] = [];
       
       for (const tweet of data.data) {
+        if (signal?.aborted) throw new Error("Sync wurde vom Benutzer abgebrochen.");
         const content = tweet.text;
         const tickers = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
         
         // Metadata extraction (batched later if possible, but extractMetadata is LLM based)
         // For now, we still call extractMetadata individually as it's complex, 
         // but we batch embeddings.
-        const baseMetadata = await extractMetadata(content, false);
+        const baseMetadata = await extractMetadata(content, false, signal);
         const metricsStr = baseMetadata._metrics || "";
         delete baseMetadata._metrics;
         const finalMetadata = {
@@ -226,11 +227,15 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
       }
     }
   } catch (err: any) {
-    console.error(`Background sync failed for ${cleanName}:`, err);
-    await sendTelemetry(`[System] Sync ${cleanName} abgebrochen: ${err.message}`);
+    if (err.name === 'AbortError' || err.message.includes('abgebrochen')) {
+      await sendTelemetry(`[System] Sync ${cleanName} wurde vom Benutzer abgebrochen.`);
+    } else {
+      console.error(`Background sync failed for ${cleanName}:`, err);
+      await sendTelemetry(`[System] Sync ${cleanName} abgebrochen: ${err.message}`);
+    }
   } finally {
     // Release in-memory lock
-    activeSyncs.delete(cleanName);
+    activeSyncControllers.delete(cleanName);
   }
 }
 
@@ -254,18 +259,41 @@ export function registerXTools(server: McpServer) {
       const cleanName = (username.startsWith("@") ? username : `@${username}`).toLowerCase();
 
       // In-Memory Lock Check (physically tied to process lifecycle)
-      if (activeSyncs.has(cleanName)) {
+      if (activeSyncControllers.has(cleanName)) {
          return { content: [{ type: "text", text: `Ein Hintergrund-Sync für ${cleanName} läuft bereits.` }] };
       }
 
       // Set In-Memory Lock
-      activeSyncs.add(cleanName);
+      const controller = new AbortController();
+      activeSyncControllers.set(cleanName, controller);
 
       console.log(`[X Sync] Starting background sync for ${cleanName}...`);
       // Start background job (do not await)
-      runBackgroundSync(cleanName, username, limit, start_time);
+      runBackgroundSync(cleanName, username, limit, start_time, controller.signal);
 
       return { content: [{ type: "text", text: `Hintergrund-Sync für ${cleanName} erfolgreich gestartet. Ich informiere dich via Chat über den Fortschritt.` }] };
+    }
+  );
+
+  server.registerTool(
+    "cancel_influencer_sync",
+    {
+      title: "Cancel Influencer Sync",
+      description: "Cancel an active background sync for an influencer. Use this if the sync is stuck or the user wants to abort it.",
+      inputSchema: {
+        username: z.string().describe("The X username (e.g. @elonmusk) of the sync to cancel"),
+      },
+    },
+    async ({ username }: any) => {
+      const cleanName = (username.startsWith("@") ? username : `@${username}`).toLowerCase();
+      
+      const controller = activeSyncControllers.get(cleanName);
+      if (!controller) {
+        return { content: [{ type: "text", text: `Es läuft aktuell kein Sync für ${cleanName}.` }] };
+      }
+      
+      controller.abort();
+      return { content: [{ type: "text", text: `Abbruch-Signal für den Sync von ${cleanName} wurde gesendet.` }] };
     }
   );
 

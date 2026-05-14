@@ -17,7 +17,8 @@ import os
 import time
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+import glob
+from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -213,6 +214,86 @@ async def update_provider(req: ProviderUpdateRequest):
         mqtt_client.publish("system/config/provider", payload, qos=1, retain=True)
         
     return {"status": "updated", "config": current_config}
+
+
+# ─── LM Studio Settings ───────────────────────────────────────────────────────
+
+LM_STUDIO_URL = "http://host.docker.internal:1234/v1"
+
+@router.get("/api/lmstudio/status")
+async def get_lmstudio_status():
+    """Check LM Studio availability and loaded models."""
+    
+    # Check loaded and available models via LM Studio v0 API
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        try:
+            r = await client.get(f"{LM_STUDIO_URL.replace('/v1', '/api/v0')}/models")
+            if r.status_code == 200:
+                data = r.json().get("data", [])
+                loaded_models = []
+                available_models = []
+                
+                for m in data:
+                    model_id = m.get("id")
+                    if model_id:
+                        available_models.append(model_id)
+                        if m.get("state") == "loaded":
+                            loaded_models.append(model_id)
+                
+                state = "online"
+                if not loaded_models:
+                    state = "empty"
+                    
+                return {
+                    "state": state,
+                    "loaded_models": loaded_models,
+                    "available_models": available_models
+                }
+            else:
+                return {"state": "offline", "loaded_models": [], "available_models": available_models, "error": f"Status {r.status_code}"}
+        except Exception as e:
+            logger.error(f"LM Studio status check failed: {e}")
+            return {"state": "offline", "loaded_models": [], "available_models": available_models, "error": str(e)}
+
+class LoadModelRequest(BaseModel):
+    model_id: str
+
+async def _jit_load_model(model_id: str):
+    """Background task to trigger JIT loading by sending a dummy chat completion."""
+    logger.info(f"Triggering JIT load for model: {model_id}")
+    # LM Studio supports very long timeouts for loading huge models
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        try:
+            payload = {
+                "model": model_id,
+                "messages": [{"role": "system", "content": "Model Request"}],
+                "max_tokens": 1
+            }
+            # This will force LM Studio to load the model and process the ping
+            r = await client.post(f"{LM_STUDIO_URL}/chat/completions", json=payload)
+            logger.info(f"JIT load completed for {model_id} with status {r.status_code}")
+        except Exception as e:
+            logger.error(f"JIT load failed for {model_id}: {e}")
+
+@router.post("/api/lmstudio/load")
+async def load_lmstudio_model(req: LoadModelRequest, background_tasks: BackgroundTasks):
+    """Load a specific model in LM Studio using the JIT exploit."""
+    background_tasks.add_task(_jit_load_model, req.model_id)
+    return {"status": "loading_initiated", "model_id": req.model_id}
+
+@router.post("/api/lmstudio/unload")
+async def unload_lmstudio_model():
+    """Unload the current model in LM Studio."""
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            r = await client.post(f"{LM_STUDIO_URL}/plugins/llama-cpp/unload-model")
+            if r.status_code == 200:
+                return {"status": "success"}
+            else:
+                return {"status": "error", "detail": r.text}
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
 
 
 # ─── Server-Sent Events ───────────────────────────────────────────────────────

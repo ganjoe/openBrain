@@ -12,9 +12,8 @@ const API = window.location.origin.replace("7733", "7734");
 
 // ── State ─────────────────────────────────────────────────────
 const state = {
-  agents:        [],          // list of known agent IDs
+  agents:        {},          // mapping: agent_id -> { online: boolean }
   activeFilter:  new Set(["boss"]), // checked agent IDs (boss default)
-  statusMode:    false,       // status-channel checkbox
   messages:      [],          // all buffered messages (capped at 500)
   lastSeenUnix:  parseInt(localStorage.getItem("nexus_last_seen") || String(Math.floor(Date.now() / 1000))),
   providerConfig: {},         // per-agent LLM provider mapping
@@ -25,7 +24,6 @@ const $messages    = document.getElementById("messages");
 const $agentList   = document.getElementById("agent-list");
 const $roomLabel   = document.getElementById("room-label");
 const $connIndicator = document.getElementById("conn-indicator");
-const $filterStatus  = document.getElementById("filter-status");
 const $sendBtn       = document.getElementById("send-btn");
 const $sendFrom      = document.getElementById("send-from");
 const $sendTo        = document.getElementById("send-to");
@@ -91,6 +89,19 @@ function appendMessage(msg) {
   if (state.messages.length > 500) state.messages.shift();
 
   const p = parseMessage(msg);
+  
+  // Handle status messages
+  if (p.type === "status") {
+    const agentId = p.from;
+    const isOnline = msg.raw_status?.status === "online";
+    if (agentId && agentId !== "nexus" && agentId !== "?") {
+      state.agents[agentId] = { online: isOnline };
+      renderAgentCheckboxes();
+      renderProviders();
+    }
+    return;
+  }
+
   if (!isVisible(p.from, p.to, p.type)) return;
 
   const el = buildMessageEl(msg);
@@ -104,21 +115,19 @@ function appendMessage(msg) {
     localStorage.setItem("nexus_last_seen", unix);
   }
 
-  // Auto-register new agents
+  // Auto-register new agents from chat headers
   [p.from, p.to].forEach(id => {
-    if (id && id !== "nexus" && id !== "?" && !state.agents.includes(id)) {
-      state.agents.push(id);
+    if (id && id !== "nexus" && id !== "?" && !state.agents[id]) {
+      state.agents[id] = { online: true }; // Assume online if chatting
       renderAgentCheckboxes();
+      renderProviders();
     }
   });
 }
 
 // ── Filter Logic ──────────────────────────────────────────────
 function isVisible(from, to, msgType) {
-  // Status mode: only show status messages
-  if (state.statusMode) return msgType === "status";
-  
-  // Normal mode: hide status messages
+  // Hide status messages in chat
   if (msgType === "status") return false;
 
   // No agent selected → global stream
@@ -147,10 +156,6 @@ function rerender() {
 }
 
 function updateRoomLabel() {
-  if (state.statusMode) {
-    $roomLabel.textContent = "📡 Status Channel";
-    return;
-  }
   if (state.activeFilter.size === 0) {
     $roomLabel.textContent = "🌐 Global Stream";
     return;
@@ -162,7 +167,8 @@ function updateRoomLabel() {
 // ── Agent Checkboxes ──────────────────────────────────────────
 function renderAgentCheckboxes() {
   $agentList.innerHTML = "";
-  state.agents.sort().forEach(id => {
+  Object.keys(state.agents).sort().forEach(id => {
+    const info = state.agents[id];
     const label = document.createElement("label");
     label.className = "checkbox-row";
 
@@ -181,26 +187,21 @@ function renderAgentCheckboxes() {
       } else if (activeArray.length === 2) {
         $sendTo.value = activeArray[1];
       }
-
-      // Disable status mode when agent selected
-      if (state.activeFilter.size > 0) {
-        state.statusMode = false;
-        $filterStatus.checked = false;
-      }
       rerender();
     });
 
     const dot  = document.createElement("span");
-    dot.className = "dot dot-agent";
+    dot.className = `dot dot-agent ${info.online ? 'online' : 'offline'}`;
 
     const name = document.createElement("span");
     name.textContent = id;
+    if (!info.online) name.style.opacity = "0.5";
 
     label.append(cb, dot, name);
     $agentList.appendChild(label);
   });
 
-  if (state.agents.length === 0) {
+  if (Object.keys(state.agents).length === 0) {
     $agentList.innerHTML = '<p class="hint">Warte auf Agenten…</p>';
   }
 }
@@ -232,7 +233,7 @@ function renderProviders() {
   if (!$providerList) return;
   $providerList.innerHTML = "";
   
-  const relevantAgents = state.agents.filter(id => id !== "boss" && id !== "nexus");
+  const relevantAgents = Object.keys(state.agents).filter(id => id !== "boss" && id !== "nexus");
   
   relevantAgents.sort().forEach(id => {
     const currentProvider = state.providerConfig[id] || "local";
@@ -248,6 +249,7 @@ function renderProviders() {
       <select class="provider-select" data-agent="${id}">
         <option value="local" ${currentProvider === 'local' ? 'selected' : ''}>Local</option>
         <option value="gemini" ${currentProvider === 'gemini' ? 'selected' : ''}>Gemini 3 Flash</option>
+        <option value="gemini-pro" ${currentProvider === 'gemini-pro' ? 'selected' : ''}>Gemini 3.1 Pro (High)</option>
       </select>
     `;
     
@@ -266,16 +268,122 @@ function renderProviders() {
   }
 }
 
-// ── Status checkbox ───────────────────────────────────────────
-$filterStatus.addEventListener("change", () => {
-  state.statusMode = $filterStatus.checked;
-  if (state.statusMode) {
-    state.activeFilter.clear();
-    // Uncheck all agent boxes
-    document.querySelectorAll("#agent-list input[type=checkbox]").forEach(cb => cb.checked = false);
+// ── LM Studio Logic ───────────────────────────────────────────
+const $lmContent = document.getElementById("lmstudio-content");
+const $lmRefreshBtn = document.getElementById("lm-refresh-btn");
+const $lmLoadBtn = document.getElementById("lm-load-btn");
+
+if ($lmRefreshBtn) {
+  $lmRefreshBtn.addEventListener("click", () => {
+    fetchLMStudioStatus();
+  });
+}
+
+if ($lmLoadBtn) {
+  $lmLoadBtn.addEventListener("click", async () => {
+    const select = document.getElementById("lmstudio-select");
+    if (!select || !select.value) return;
+    
+    $lmLoadBtn.disabled = true;
+    select.disabled = true;
+    
+    try {
+      await fetch(`${API}/api/lmstudio/load`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model_id: select.value })
+      });
+      // Visually indicate loading
+      $lmLoadBtn.style.opacity = "0.5";
+    } catch (e) {
+      console.error(e);
+      $lmLoadBtn.disabled = false;
+      select.disabled = false;
+    }
+  });
+}
+
+async function fetchLMStudioStatus() {
+  if (!$lmContent) return;
+  
+  $lmContent.innerHTML = '<p class="hint">Prüfe Status…</p>';
+  
+  try {
+    const r = await fetch(`${API}/api/lmstudio/status`);
+    const data = await r.json();
+    renderLMStudioStatus(data);
+  } catch (e) {
+    console.error("Failed to fetch LM Studio status:", e);
+    renderLMStudioStatus({ state: "offline", loaded_models: [], available_models: [] });
   }
-  rerender();
-});
+}
+
+function renderLMStudioStatus(data) {
+  if (!$lmContent) return;
+  $lmContent.innerHTML = "";
+  
+  // Render Status Badge
+  const statusEl = document.createElement("div");
+  statusEl.className = `lm-status-text lm-${data.state}`;
+  if (data.state === "offline") statusEl.textContent = "❌ Offline";
+  else if (data.state === "empty") statusEl.textContent = "⚠️ Leer";
+  else if (data.state === "online") statusEl.textContent = "🟢 Online";
+  $lmContent.appendChild(statusEl);
+
+  const listEl = document.createElement("div");
+  listEl.className = "lm-model-list";
+  $lmContent.appendChild(listEl);
+
+  // Render Loaded Models
+  if (data.loaded_models && data.loaded_models.length > 0) {
+    data.loaded_models.forEach(modelId => {
+      const item = document.createElement("div");
+      item.className = "lm-model-item";
+      item.innerHTML = `
+        <span class="lm-model-name" title="${modelId}">${modelId}</span>
+        <button class="lm-btn unload" data-action="unload">Unload</button>
+      `;
+      listEl.appendChild(item);
+      
+      item.querySelector("button").addEventListener("click", async () => {
+        await fetch(`${API}/api/lmstudio/unload`, { method: "POST" });
+        fetchLMStudioStatus();
+      });
+    });
+  }
+
+  // Render Available Models (to load)
+  if (data.state !== "offline" && data.available_models) {
+    const unloaded = data.available_models.filter(m => !data.loaded_models.includes(m));
+    if (unloaded.length > 0) {
+      if ($lmLoadBtn) {
+        $lmLoadBtn.style.display = "inline-block";
+        $lmLoadBtn.disabled = false;
+        $lmLoadBtn.style.opacity = "1";
+      }
+      
+      const wrapper = document.createElement("div");
+      wrapper.className = "lm-select-wrapper";
+      
+      const select = document.createElement("select");
+      select.id = "lmstudio-select";
+      unloaded.forEach(m => {
+        const opt = document.createElement("option");
+        opt.value = m;
+        opt.textContent = m.replace('lmstudio-community/', '');
+        select.appendChild(opt);
+      });
+      
+      wrapper.appendChild(select);
+      listEl.appendChild(wrapper);
+    } else {
+      if ($lmLoadBtn) $lmLoadBtn.style.display = "none";
+    }
+  } else {
+    if ($lmLoadBtn) $lmLoadBtn.style.display = "none";
+  }
+}
+
 
 // ── Send ──────────────────────────────────────────────────────
 $sendBtn.addEventListener("click", async () => {
@@ -366,7 +474,10 @@ $filterHistory.addEventListener("change", () => {
 async function loadAgents() {
   try {
     const r = await fetch(`${API}/api/agents`);
-    state.agents = await r.json();
+    const list = await r.json();
+    list.forEach(id => {
+      if (!state.agents[id]) state.agents[id] = { online: true };
+    });
     renderAgentCheckboxes();
     renderProviders();
   } catch {
@@ -381,6 +492,7 @@ async function loadAgents() {
   await loadProviderConfig();
   await loadAgents();
   await loadHistory();
+  fetchLMStudioStatus();
   connectSSE();
   updateRoomLabel();
 })();
