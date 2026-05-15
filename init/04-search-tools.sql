@@ -36,7 +36,7 @@ $$;
 
 -- Exact Keyword Search (JSONB Native)
 CREATE OR REPLACE FUNCTION exact_search_workspace(
-  p_exact_keyword text,
+  p_exact_keyword text DEFAULT NULL,
   match_count int DEFAULT 200,
   p_agent_id text DEFAULT NULL,
   p_artifact_type text DEFAULT NULL,
@@ -59,7 +59,9 @@ BEGIN
     AND (p_artifact_type IS NULL OR t.artifact_type = p_artifact_type)
     AND (p_days_back IS NULL OR t.created_at >= NOW() - (p_days_back || ' days')::interval)
     AND (
-      t.metadata->'tickers' @> to_jsonb(p_exact_keyword)
+      p_exact_keyword IS NULL 
+      OR p_exact_keyword = '' 
+      OR t.metadata->'tickers' @> to_jsonb(p_exact_keyword)
       OR t.metadata->'keywords' @> to_jsonb(p_exact_keyword)
       OR t.metadata->'topics' @> to_jsonb(p_exact_keyword)
       OR UPPER(t.metadata->>'author') = UPPER(p_exact_keyword)

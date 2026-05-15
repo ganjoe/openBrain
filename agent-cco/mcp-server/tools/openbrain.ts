@@ -5,11 +5,18 @@ import { supabase, getEmbedding, extractMetadata, AGENT_ID, GLOBAL_BRAIN_ACCESS,
 async function dumpToChat(title: string, data: any[]) {
   const chatResults = data.map((t: any) => {
     const author = t.metadata?.author || "Unknown";
-    const tickers = t.metadata?.tickers?.join(", ") || "None";
-    const keywords = t.metadata?.keywords?.join(", ") || "None";
-    return `**📅 ${new Date(t.created_at).toLocaleDateString()} | 👤 ${author} | 🏷️ Type: ${t.artifact_type || 'N/A'}**\n${t.content}\n*Keywords: ${keywords}* | *Tickers: ${tickers}*\n---`;
+    const tickers = t.metadata?.tickers?.length ? t.metadata.tickers.join(", ") : "None";
+    // Escape markdown headers (hashtags at the start of a line) to prevent massive font sizes
+    const safeContent = t.content.replace(/^(#+)/gm, '\\$1');
+    // Format date and time
+    const dateStr = new Date(t.created_at).toLocaleString('de-DE', { 
+      day: '2-digit', month: '2-digit', year: 'numeric', 
+      hour: '2-digit', minute: '2-digit' 
+    });
+    // Add two newlines before '---' to prevent the previous line from becoming an H2 header!
+    return `**[${dateStr}] @${author}** *(Tickers: ${tickers})*\n${safeContent}\n\n---`;
   });
-  const fullText = `### Ergebnisse für: ${title}\n\n` + chatResults.join("\n\n");
+  const fullText = `*Ergebnisse für: ${title}*\n\n` + chatResults.join("\n\n");
   
   await fetch("http://nexus-service:7734/api/send", {
     method: "POST",
@@ -128,9 +135,9 @@ export function registerOpenBrainTools(server: McpServer) {
     "exact_keyword_search",
     {
       title: "Exact Keyword Search",
-      description: "Search for EXACT text matches, tickers, authors, or specific acronyms (e.g. 'SIVE', 'Auros', '@aleabitoreddit'). This checks structured metadata for the exact word.",
+      description: "Search for EXACT text matches, tickers, authors, or specific acronyms (e.g. 'SIVE', 'Auros', '@aleabitoreddit'). This checks structured metadata for the exact word. If you just want to see the latest posts without a filter, leave the keyword empty.",
       inputSchema: {
-        keyword: z.string().describe("The exact keyword, ticker, or author to find"),
+        keyword: z.string().optional().describe("The exact keyword, ticker, or author to find. Leave empty to just list recent posts."),
         limit: z.number().optional().default(200).describe("Max results (default: 200)."),
         artifact_type: z.string().optional().describe("Filter by artifact type (e.g., 'x_post')"),
         days_back: z.number().optional().describe("Filter posts from the last X days."),
@@ -142,9 +149,10 @@ export function registerOpenBrainTools(server: McpServer) {
       try {
         console.log(`[exact_keyword_search] keyword="${keyword}" type="${artifact_type}" limit=${limit} days_back=${days_back} dump=${dump_to_chat}`);
         const p_agent_id = GLOBAL_BRAIN_ACCESS ? (owner || null) : AGENT_ID;
+        const actual_keyword = keyword || "";
         
         const { data, error } = await supabase.rpc("exact_search_workspace", {
-          p_exact_keyword: keyword,
+          p_exact_keyword: actual_keyword === "" ? null : actual_keyword,
           match_count: limit,
           p_agent_id: p_agent_id,
           p_artifact_type: artifact_type || null,
@@ -164,7 +172,8 @@ export function registerOpenBrainTools(server: McpServer) {
         await sendTelemetry(`[Suche] Exakte Workspace-Suche nach "${keyword}" ergab ${data.length} Treffer.`);
 
         if (dump_to_chat) {
-          await dumpToChat(keyword, data);
+          const title = actual_keyword === "" ? "Letzte Posts" : actual_keyword;
+          await dumpToChat(title, data);
           return { content: [{ type: "text", text: `Success. ${data.length} posts have been published directly to the chat. Do not summarize them. Just output [STOP].` }] };
         }
 
