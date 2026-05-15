@@ -346,7 +346,11 @@ function renderLMStudioStatus(data) {
       listEl.appendChild(item);
       
       item.querySelector("button").addEventListener("click", async () => {
-        await fetch(`${API}/api/lmstudio/unload`, { method: "POST" });
+        await fetch(`${API}/api/lmstudio/unload`, { 
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model_id: modelId })
+        });
         fetchLMStudioStatus();
       });
     });

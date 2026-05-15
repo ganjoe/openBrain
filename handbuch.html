@@ -351,6 +351,9 @@ graph TD
 <H4>7.3.3 Provider-Isolation</H4>
 <P>Das System unterst&uuml;tzt unterschiedliche Provider pro Agent. So kann beispielsweise der EA-Agent zur Kostenersparnis auf einem kleinen lokalen Modell laufen, w&auml;hrend der CCO-Agent f&uuml;r komplexe Marktanalysen tempor&auml;r auf Gemini 1.5 Pro hochgestuft wird. Dies bietet maximale Flexibilit&auml;t bei optimaler Ressourcenausnutzung.</P>
 
+<H4>7.3.4 LM Studio JIT Loading & Unloading</H4>
+<P>Das Nexus Dashboard erm&ouml;glicht das direkte Laden und Entladen lokaler LLM-Modelle (via LM Studio v1 API). Das "Just-in-Time" (JIT) Loading erfolgt &uuml;ber einen Dummy-Inferenz-Aufruf, der LM Studio zwingt, das Modell in den VRAM zu laden. Ein Klick auf "Unload" nutzt den <CODE>POST /api/v1/models/unload</CODE> Endpoint inkl. der Instanz-ID, um Ressourcen im VRAM explizit wieder freizugeben. Dies erm&ouml;glicht h&auml;ndisches Speichermanagement, ohne das Dashboard verlassen zu m&uuml;ssen.</P>
+
 <A NAME="mcp"></A>
 <H2>8. Der Tool-Server: Deep Dive in die Deno MCP Implementierung</H2>
 <P>Der MCP-Server ist das technologische Bindeglied zwischen Bot und Datenbank. Er exponiert LLM-lesbare Werkzeuge und orchestriert die Vektorisierung. Wir nutzen hierf&uuml;r <B>Deno</B> anstelle von Node.js.</P>
@@ -397,6 +400,9 @@ graph TD
 <LI><B>Metriken:</B> Es werden der exakte Modellname (z.B. <CODE>google/gemma-4-26b-a4b</CODE>), die Gesamtzeit der Generierung, die Anzahl der erzeugten Token und die Geschwindigkeit in <B>t/s (Tokens pro Sekunde)</B> gemessen.</LI>
 <LI><B>Echtzeit-Log:</B> Diese Daten werden als Nachricht vom Typ <CODE>telemetry</CODE> an den Nexus gesendet und erscheinen unmittelbar im Chat-Verlauf und im Dashboard.</LI>
 </UL>
+
+<H3>8.7 Direct-Dump: Umgehung der Inferenz bei List-Tasks</H3>
+<P>Ein wesentliches Architektur-Feature f&uuml;r eine effiziente UI/UX ist der <B>Direct-Dump Mechanismus</B>. Erkennt das System durch strenge Prompt-Direktiven (z.B. durch das Keyword "liste auf"), dass der Benutzer lediglich chronologische Rohdaten sehen will, triggert der MCP Server eine exakte Keyword-Suche (die bei leerem Suchbegriff rein chronologisch absteigend sortiert). Die formatierten Ergebnisse (inkl. Markdown-Escaping) leitet der MCP Server mittels <CODE>dumpToChat</CODE> <I>direkt</I> an den Nexus-Chat-Bus weiter. Das LLM erh&auml;lt daraufhin den systemseitigen <CODE>[STOP]</CODE>-Befehl und wird von der Aufgabe entbunden, die Daten selbst zu formatieren. Dies verhindert Halluzinationen und entlastet die Inferenz-Engine.</P>
 
 <A NAME="bot"></A>
 <H2>9. Der Executive Assistant: Bot-Logik, Historie & Agentik</H2>
@@ -587,7 +593,10 @@ cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 <LI><B>Starten:</B> <CODE>docker compose up -d --build agent-xyz-bot</CODE>. Der neue Agent verbindet sich via MQTT und erscheint sofort als Checkbox im Dashboard.</LI>
 </OL>
 
-<H3>13.4 Agenten-Instanziierung und Lifecycle</H3>
+<H3>13.4 Hot-Reloading via rebuild-agents.sh</H3>
+<P>Bei &Auml;nderungen an TypeScript-Dateien der MCP-Server oder Bots muss der Code neu kompiliert und die Container neugestartet werden. Daf&uuml;r existiert das Skript <CODE>rebuild-agents.sh</CODE> (auch per bash_alias <CODE>rebuild_agents</CODE> verf&uuml;gbar) im Root-Verzeichnis. Es baut die Deno-Images via Docker-Bake im Cache, startet die MCP-Server neu, l&auml;dt die Bot-Container neu und flushed den SQL-Schema-Cache von PostgREST. Dies erm&ouml;glicht einen Hot-Reload des Systems innerhalb weniger Sekunden, ohne Docker komplett herunterzufahren.</P>
+
+<H3>13.5 Agenten-Instanziierung und Lifecycle</H3>
 <P>Dieses Kapitel dokumentiert den exakten, atomaren Prozess zur Instanziierung eines neuen Agenten am Beispiel von <CODE>agent-cco</CODE>. Jeder Befehl ist zwingend in dieser Reihenfolge auszuf&uuml;hren.</P>
 
 <H4>Schritt 1: Das Fork-Paradigma (Dateisystem)</H4>

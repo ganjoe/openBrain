@@ -281,12 +281,18 @@ async def load_lmstudio_model(req: LoadModelRequest, background_tasks: Backgroun
     background_tasks.add_task(_jit_load_model, req.model_id)
     return {"status": "loading_initiated", "model_id": req.model_id}
 
+class UnloadModelRequest(BaseModel):
+    model_id: str
+
 @router.post("/api/lmstudio/unload")
-async def unload_lmstudio_model():
-    """Unload the current model in LM Studio."""
+async def unload_lmstudio_model(req: UnloadModelRequest):
+    """Unload a specific model in LM Studio."""
     async with httpx.AsyncClient(timeout=5.0) as client:
         try:
-            r = await client.post(f"{LM_STUDIO_URL}/plugins/llama-cpp/unload-model")
+            r = await client.post(
+                "http://host.docker.internal:1234/api/v1/models/unload",
+                json={"instance_id": req.model_id}
+            )
             if r.status_code == 200:
                 return {"status": "success"}
             else:
