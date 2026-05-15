@@ -217,7 +217,7 @@ flowchart TD
 <P>Ein isolierter Bereich f&uuml;r externe Datenimporte und tempor&auml;re Arbeits-Artefakte (z.B. X-Posts). Verhindert, dass das <CODE>open_brain</CODE> durch Massendaten-Importe "verrauscht". Diese Tabelle ist optimiert f&uuml;r Massendaten-Speicherung und bietet Platz f&uuml;r Rohdaten und deren semantische Vektoren.</P>
 
 <H4>3. nexus_chat (Communication Log)</H4>
-<P>Der zentrale Audit-Trail aller MQTT-Nachrichten und System-Events. Jede Kommunikation zwischen Agenten sowie System-Telemetrie (Modell-Performance, t/s) wird hier als Roh-Payload und Text-Auszug gespeichert. Diese Tabelle ersetzt die veraltete <CODE>nexus_messages</CODE> Struktur.</P>
+<P>Der zentrale Audit-Trail aller MQTT-Nachrichten und System-Events. Jede Kommunikation zwischen Agenten sowie System-Telemetrie (Modell-Performance, t/s) wird hier als Roh-Payload und Text-Auszug gespeichert.</P>
 
 <H4>Deep-Dive: Dynamische JSONB-Iterierung (Code-Free Configuration)</H4>
 <P>Das Architekturziel von Open Brain ist es, dass sich Agenten ausschlie&szlig;lich durch ihre Text-Konfiguration (Prompts) unterscheiden d&uuml;rfen. Um dies zu gew&auml;hrleisten, ist die Code-Basis des MCP-Servers 100% dynamisch aufgebaut. Wenn ein Agent-Tool (z.B. <CODE>search_thoughts</CODE>) Resultate aus der Datenbank liest, iteriert es programmatisch &uuml;ber <B>alle</B> Keys im JSONB-Objekt, ohne dass bestimmte Felder wie <CODE>people</CODE> hartkodiert w&auml;ren:</P>
@@ -235,8 +235,12 @@ for (const [key, val] of Object.entries(m)) {
 
 <P><B>Die Konsequenz f&uuml;r Entwickler:</B> Da die Datenbank JSONB nicht limitiert und der Code dynamisch iteriert, hast du bei der Agenten-Erstellung v&ouml;llige Freiheit. Ein Koch-Bot kann in seinem Metadaten-Prompt anweisen, v&ouml;llig neue Arrays wie <CODE>"zutaten": ["Mehl", "Zucker"]</CODE> zu extrahieren. Diese werden sauber als JSONB gespeichert und bei einer sp&auml;teren LLM-Suche automatisch formatiert an den Bot zur&uuml;ckgeliefert. Keine einzige Zeile TypeScript-Code muss daf&uuml;r ver&auml;ndert werden.</P>
 
-<H3>2.2 Hybrid-Suche</H3>
-<P>Die Suche kombiniert Vektor-Aehnlichkeit (Ollama) mit klassischer SQL-Volltextsuche (<CODE>ILIKE</CODE>). Dies garantiert, dass sowohl abstrakte Konzepte als auch exakte Namen oder Ticker-Symbole gefunden werden.</P>
+<H3>2.2 Spezialisierte Such-Architektur (Semantik vs. Exakt)</H3>
+<P>Die Architektur trennt die Suche strikt in zwei hochspezialisierte Werkzeuge, um "False Positives" (z.B. "sievers" bei der Suche nach dem Ticker "SIVE") zu eliminieren:</P>
+<UL>
+<LI><B>Semantische Suche (<CODE>semantic_search_workspace</CODE>):</B> F&uuml;hrt reinen Vektorvergleich (<CODE><=></CODE>) durch. Nutzt Ollama-Embeddings, um inhaltlich verwandte Themen (z.B. "Laser" bei der Suche nach "Photonics") zu finden, ignoriert aber harte Text&uuml;bereinstimmungen.</LI>
+<LI><B>Exakte Keyword-Suche (<CODE>exact_search_workspace</CODE>):</B> Umgeht die ressourcenintensive LLM/Ollama-Vektorisierung komplett. Nutzt stattdessen extrem performante, native PostgreSQL-JSONB-Operatoren (<CODE>@></CODE>). Anstatt den Flie&szlig;text unscharf zu durchsuchen, fragt das System direkt die strukturierten Felder ab, die das LLM beim Sync anlegt (z.B. <CODE>t.metadata->'tickers' @> '"SIVE"'</CODE>). Dies liefert Resultate in Millisekunden und erzwingt exakte Wortgrenzen.</LI>
+</UL>
 
 <A NAME="postgrest"></A>
 <H2>3. Die API-Schicht: PostgREST & Automatisierung</H2>
@@ -259,16 +263,16 @@ for (const [key, val] of Object.entries(m)) {
 <H3>4.1 Das Dashboard (Port 3000)</H3>
 <P>Das Supabase Studio ist im Grunde ein modernes, webbasiertes <CODE>pgAdmin</CODE> oder <CODE>DBeaver</CODE>, geschrieben in Next.js. Da die Agenten ihre Metadaten als komplexe <CODE>JSONB</CODE>-Objekte speichern, ist eine reine Terminal-Ansicht (<CODE>psql</CODE>) oft ineffizient. &Uuml;ber Port 3000 erh&auml;ltst du eine grafische Tabellenansicht. Generiert das LLM ein fehlerhaftes JSON, l&auml;sst sich der State hier direkt auf Datenbank-Ebene patchen und debuggen. Zudem liefert es Werkzeuge zur Analyse von SQL-Logs und Query-Performance.</P>
 
-<H3>4.2 Der meta-Service (Warum ein extra Container?)</H3>
-<P>Eine h&auml;ufige Frage zur Architektur ist, warum das Frontend einen zus&auml;tzlichen Meta-Container ben&ouml;tigt. Das Problem: Das Next.js Frontend (Studio) verbindet sich nicht direkt &uuml;ber ein rohes TCP/SQL-Protokoll mit PostgreSQL, um das Schema zu lesen. Es erwartet eine HTTP-REST-API, die ihm die Tabellenstruktur erkl&auml;rt.</P>
-<P>Genau hier greift der <CODE>openbrain-meta</CODE> Container: Er ist die Abstraktionsschicht. Er greift nativ auf das <CODE>information_schema</CODE> von Postgres zu (die System-Tabellen, in denen steht: "Tabelle X hat Spalte Y vom Typ Z") und &uuml;bersetzt dieses interne SQL-Schema on-the-fly in eine JSON-API. Das Studio fragt Meta per HTTP, Meta fragt Postgres. Meta fungiert also als zwingend notwendiger "Introspektions-Bibliothekar", damit die UI wei&szlig;, welche Tabellen und Spalten gerendert werden m&uuml;ssen.</P>
+<H3>4.2 Der meta-Service (Introspektions-Abstraktion)</H3>
+<P>Der Meta-Container ist eine notwendige Abstraktionsschicht f&uuml;r das Supabase Studio. Da das Next.js Frontend nicht direkt &uuml;ber ein SQL-Protokoll mit PostgreSQL kommuniziert, stellt der Meta-Service die erforderliche HTTP-REST-Schnittstelle f&uuml;r die Schema-Analyse bereit.</P>
+<P>Der Service greift auf das <CODE>information_schema</CODE> von Postgres zu und &uuml;bersetzt die interne SQL-Struktur in eine JSON-API. Dies erm&ouml;glicht dem Studio, Tabellen und Spalten dynamisch zu rendern, ohne die Datenbank direkt abfragen zu m&uuml;ssen.</P>
 
 <A NAME="ollama"></A>
 <H2>5. Die Embedding-Schicht: Ollama & Vektorisierung</H2>
 <P>W&auml;hrend klassische SQL-Suchen (<CODE>ILIKE</CODE>) bei semantischen Verkn&uuml;pfungen versagen, l&ouml;st Ollama das NLP-Problem (Natural Language Processing) durch lokale Tensor-Berechnungen in Echtzeit.</P>
 
-<H3>5.1 Warum Ollama f&uuml;r Embeddings?</H3>
-<P>Ollama kapselt llama.cpp. Wir nutzen es isoliert f&uuml;r Embedding-Modelle (z.B. <B>Qwen3-Embedding-8B</B>). Dieses Modell transformiert deutsch- und englischsprachige Text-Chunks extrem ressourceneffizient in dichte Vektor-R&auml;ume, w&auml;hrend die GPU-Cores f&uuml;r die schwere LLM-Inferenz (via LM Studio) freigehalten werden.</P>
+<H3>5.1 Semantische Transformation mit Ollama</H3>
+<P>Ollama wird isoliert f&uuml;r spezialisierte Embedding-Modelle (z.B. <B>Qwen3-Embedding-8B</B>) eingesetzt. Diese Modelle transformieren Texte extrem ressourceneffizient in dichte Vektor-R&auml;ume, wodurch die GPU-Kapazit&auml;t f&uuml;r die prim&auml;re LLM-Inferenz (via LM Studio) optimiert wird.</P>
 
 <H3>5.2 Der Prozess der Vektorisierung</H3>
 <P>Der MCP-Server piped den Text via REST an Ollama. Ollama tokenisiert den String, f&uuml;hrt einen Forward-Pass durch das neuronale Netz aus und liefert ein 4096-dimensionales Float-Array zur&uuml;ck. Dieser Vektor ist die mathematische Signatur der Bedeutung. Ollama h&auml;lt dabei keinen State und speichert keine Nutzerdaten.</P>
@@ -323,9 +327,9 @@ graph TD
 
 <A NAME="nexus"></A>
 <H2>7. The Nexus: MQTT-basierter Agenten-Kommunikations-Hub</H2>
-<P>The Nexus ersetzt die fr&uuml;here Matrix/Conduit/Element-Infrastruktur vollst&auml;ndig. Der zentrale Kommunikations-Mechanismus ist ein <B>MQTT Message Broker (Mosquitto)</B>.</P>
-<H3>7.1 Warum MQTT statt Matrix?</H3>
-<P>MQTT (ISO/IEC 20922) ist ein leichtgewichtiges Pub/Sub-Protokoll mit persistenter TCP-Verbindung und &lt;5ms Latenz. Im Gegensatz zu Matrix-Rooms sind Topics dynamisch und ohne vorherige Konfiguration nutzbar. Jeder Agent subscribt beim Start seine eigene <CODE>agents/{id}/inbox</CODE> &mdash; keine Room-IDs, keine Registrierung.</P>
+<P>The Nexus fungiert als asynchrones Kommunikations-R&uuml;ckgrat des Systems. Der zentrale Mechanismus ist ein <B>MQTT Message Broker (Mosquitto)</B>.</P>
+<H3>7.1 MQTT als Kommunikations-R&uuml;ckgrat</H3>
+<P>Der zentrale Kommunikations-Mechanismus basiert auf dem asynchronen MQTT-Protokoll (ISO/IEC 20922). Dies erm&ouml;glicht eine leichtgewichtige Pub/Sub-Kommunikation mit minimaler Latenz (&lt;5ms) und persistenter TCP-Verbindung.</P>
 <H3>7.2 Cross-Agent MCP via MQTT</H3>
 <P>Will Agent A ein Tool von Agent B nutzen, publiziert er auf <CODE>agents/B/mcp/request</CODE>. Agent B f&uuml;hrt das Tool aus und antwortet auf <CODE>agents/A/mcp/response/{req_id}</CODE>. Kein Agent kennt die HTTP-URL eines anderen. Der Nexus-Service loggt jeden Cross-Agent-MCP-Call mit <CODE>msg_type: mcp_request</CODE>.</P>
 
@@ -351,9 +355,8 @@ graph TD
 <H2>8. Der Tool-Server: Deep Dive in die Deno MCP Implementierung</H2>
 <P>Der MCP-Server ist das technologische Bindeglied zwischen Bot und Datenbank. Er exponiert LLM-lesbare Werkzeuge und orchestriert die Vektorisierung. Wir nutzen hierf&uuml;r <B>Deno</B> anstelle von Node.js.</P>
 
-<H3>8.1 Das Fork-Paradigma: Ein MCP-Server pro Bot</H3>
-<P>Open Brain verfolgt bei der Agenten-Erstellung ein konsequentes <B>Template- und Fork-Paradigma</B>. Ein vollst&auml;ndiger Agent besteht aus einem <B>eigenen MCP-Server</B> und einem <B>MQTT-Bot</B>. Kein Matrix-Konto, keine Room-IDs.</P>
-<P>Da jeder Bot seinen eigenen MCP-Server besitzt, l&auml;dt dieser auch eine eigene <CODE>metadata-prompt.txt</CODE>. Dies eliminiert System-weites Schema-Lock-in: Jeder Agent etabliert durch seinen gekoppelten MCP-Server seine v&ouml;llig eigene JSONB-Struktur in der Datenbank, ohne Kern-Komponenten oder andere Agenten jemals zu tangieren.</P>
+<P>Open Brain nutzt ein <B>Template- und Fork-Paradigma</B>. Jeder Agent operiert mit einem dedizierten MCP-Server und einem MQTT-Bot, was eine vollst&auml;ndige Isolation der Identit&auml;ten und Toolsets gew&auml;hrleistet.</P>
+<P>Durch die Koppelung eines eigenen MCP-Servers l&auml;dt jeder Bot eine individuelle <CODE>metadata-prompt.txt</CODE>. Dies verhindert ein globales Schema-Lock-in: Jeder Agent definiert &uuml;ber seinen MCP-Server eine eigene JSONB-Struktur in der Datenbank, ohne Kern-Komponenten oder andere Agenten zu beeinflussen.</P>
 
 <H3>8.2 Deep Dive: Die exakte Mechanik von 'capture_thought'</H3>
 <P>Um die Komplexit&auml;t hinter einem simplen "Notier dir das" zu entmystifizieren, hier die exakte Code-Mechanik, wenn das <CODE>capture_thought</CODE> Tool aufgerufen wird:</P>
@@ -364,7 +367,7 @@ graph TD
 <LI><B>Tensor-Berechnung:</B> Parallel oder sequenziell geht ein Request an Ollama (<CODE>/api/embeddings</CODE>) um den 4096-Float Vektor zu generieren.
 <LI><B>PostgreSQL UPSERT:</B> Ein finaler Request geht an das PostgREST Gateway (<CODE>/rest/v1/rpc/upsert_thought</CODE>), der den Text, das generierte JSON-Objekt und das Float-Array transaktionssicher in die DB schreibt.</OL>
 
-<H3>8.3 Warum Deno?</H3>
+<H3>8.3 Laufzeitumgebung: Deno</H3>
 <UL>
 <LI><B>Security First:</B> Deno l&auml;uft standardm&auml;&szlig;ig in einer Sandbox. Netzwerkzugriffe erfordern explizit <CODE>--allow-net</CODE>.
 <LI><B>Native TypeScript:</B> Kein Webpack, kein Babel. Zero-Config TypeScript-Ausf&uuml;hrung.
@@ -400,18 +403,17 @@ graph TD
 <P>Der <CODE>agent-ea-bot</CODE> ist das ausf&uuml;hrende Frontend der Intelligenz. Er subscribed seinen MQTT-Topic und steuert den ReAct-Loop.</P>
 
 <H3>9.1 Die Zwei-Prompt Strategie</H3>
-<P>Ein oft missverstandenes Konzept: <I>Welcher Prompt steuert eigentlich was?</I></P>
+<P>Die Steuerung der Agenten basiert auf einer funktionalen Trennung der Prompts:</P>
 <UL>
 <LI><B>1. Der Agenten-Prompt (Das "Wann"):</B> Die <CODE>prompt.txt</CODE> im Bot-Container definiert die Pers&ouml;nlichkeit und den Trigger. Sie entscheidet, <B>ob</B> das Werkzeug <CODE>capture_thought</CODE> &uuml;berhaupt gerufen wird.
 <LI><B>2. Der Metadaten-Prompt (Das "Wie"):</B> Wie im MCP-Kapitel erkl&auml;rt, greift erst nach dem Tool-Aufruf die <CODE>metadata-prompt.txt</CODE> des MCP-Servers, um den Text strukturiert in JSONB zu formen.</UL>
 
-<H3>9.2 Der ReAct-Loop & Historien-Management</H3>
-<P>Der Bot antwortet nicht auf direktem Weg. Er operiert in einem strengen autonomen Zyklus: <B>Thought</B> (Welches Tool?) &rarr; <B>Action</B> (Tool-Call via HTTP) &rarr; <B>Observation</B> (Auswertung des JSON-Responses). Historien-Management: Der Bot l&auml;dt beim Start die letzten 10 Nachrichten aus der <CODE>nexus_messages</CODE>-Tabelle (gefiltert auf seinen eigenen Agenten-Vektor). Dies ist effektiv RAG f&uuml;r den Chat-State.</P>
+<P>Der Bot operiert in einem autonomen Zyklus: <B>Thought</B> (Tool-Auswahl) &rarr; <B>Action</B> (Tool-Aufruf) &rarr; <B>Observation</B> (Ergebnis-Analyse). Das System l&auml;dt beim Start die letzten 10 Nachrichten aus der <CODE>nexus_chat</CODE>-Tabelle, was einen RAG-Mechanismus f&uuml;r den Chat-Status realisiert.</P>
 
 <H3>9.3 Multi-Agenten Kommunikation: Tool-Based Delegation</H3>
 <P>Wenn mehrere Bots (z.B. EA und CCO) auf dem Nexus aktiv sind, muss die Delegation logisch und steuerbar sein. Open Brain nutzt <B>Tool-Based Delegation</B> &uuml;ber den MQTT-Bus:</P>
 <UL>
-<LI><B>Das 'message_agent' MCP-Tool:</B> Anstatt auf fehleranf&auml;llige Text-Pr&auml;fixe ("cco, mach dies") zu setzen, verf&uuml;gen die Agenten &uuml;ber ein dediziertes MCP-Tool <CODE>message_agent</CODE>. Das LLM entscheidet durch Reasoning, ob eine Aufgabe delegiert werden muss, und ruft das Tool auf. Dieses Tool sendet die Nachricht &uuml;ber die Nexus REST-API transparent in den korrekten Topic.</LI>
+<LI><B>Das 'message_agent' MCP-Tool:</B> Die Delegation erfolgt &uuml;ber das dedizierte MCP-Tool <CODE>message_agent</CODE>. Das LLM entscheidet durch Reasoning, ob eine Aufgabe delegiert werden muss. Das Tool &uuml;bermittelt die Nachricht &uuml;ber die Nexus REST-API in das korrekte Topic.</LI>
 <LI><B>Private Inboxes ohne Mention-Filter:</B> Jeder Agent lauscht exklusiv auf seiner privaten <CODE>agents/{id}/inbox</CODE>. Er verarbeitet bedingungslos jede Nachricht, die dort ankommt, da sie explizit an ihn delegiert wurde. Ein Namens-Filter (Mention-Routing) im Text ist nicht mehr n&ouml;tig.</LI>
 </UL>
 
@@ -422,6 +424,28 @@ graph TD
 <LI><B>Floskel-Filter:</B> Agenten sind angewiesen, nicht auf reine Best&auml;tigungen, H&ouml;flichkeitsfloskeln oder "Erledigt"-Meldungen anderer Agenten zu reagieren.</LI>
 </UL>
 <P>Dieses Paradigma erlaubt es, komplexe Agenten-Ketten zu bilden (Bot A delegiert an Bot B, der delegiert an Bot C), w&auml;hrend der Nutzer jeden einzelnen Delegationsschritt transparent im Nexus-Dashboard (Port 7733) verfolgen und eingreifen kann.</P>
+
+<H3>9.5 Intercompany Communication (Agent-to-Agent Prompts)</H3>
+<P>Die Kommunikation zwischen den Agenten (z.B. zwischen CCO und EA) funktioniert nicht auf Basis von Magie, sondern durch pr&auml;zise Prompt-Architektur. Es ist essenziell, dass Agenten ein klares Konzept haben, <B>an wen</B> sie berichten und <B>wann</B> sie schweigen m&uuml;ssen. Folgende Prompts steuern dieses Verhalten vollst&auml;ndig:</P>
+
+<H4>1. Die dynamische Delegations-Regel (Das "An wen")</H4>
+<P>Die Kommunikation zwischen Agenten erfolgt dynamisch basierend auf dem Absender der urspr&uuml;nglichen Nachricht. Dies wird durch eine instruktionsbasierte Logik im <CODE>prompt.txt</CODE> des Agenten sichergestellt:</P>
+<PRE><CODE class="language-text">
+**Teamwork & Delegation (IMPORTANT):**
+You are part of an agent team. If the 'boss' or the Executive Assistant ('ea') assigns you a task, answer professionally and precisely to the one who asked. 
+You MUST use the `message_agent` tool. Make sure to set `target_agent` to the correct agent who requested the task (e.g. "ea" or "boss").
+</CODE></PRE>
+<P><B>Zweck:</B> Dies lehrt das LLM, den Absender der urpr&uuml;nglichen Nachricht aus der RAG-Chat-Historie zu extrahieren und das Argument <CODE>target_agent</CODE> im Tool <CODE>message_agent</CODE> entsprechend auf <CODE>ea</CODE> oder <CODE>boss</CODE> zu setzen.</P>
+
+<H4>2. Die absolute Terminierungs-Regel (Das "Wann schweigen")</H4>
+<P>LLMs sind auf "Hilfsbereitschaft" trainiert. Sie m&ouml;chten das letzte Wort haben ("Gerne geschehen!", "Aufgabe erledigt!"). In einem MQTT-Bussystem f&uuml;hrt das zwingend zu Endlosschleifen, da jede ausgehende MQTT-Nachricht den Trigger f&uuml;r den RAG-Loop des anderen Agenten darstellt. Dies wird durch die <CODE>[STOP]</CODE>-Regel hart auf TypeScript-Ebene unterbunden:</P>
+<PRE><CODE class="language-text">
+**ANTI-INFINITE-LOOP RULE (EXTREMELY IMPORTANT):**
+When a task is done, a question is conclusively answered, or a process cannot be completed, actively end the conversation by sending NO further messages.
+To do this, you MUST output EXACTLY the word `[STOP]` and absolutely nothing else.
+Never reply to pure confirmations or pleasantries (like "Thanks", "Done", or "Task completed") from the other agents.
+</CODE></PRE>
+<P><B>Zweck:</B> Das LLM wird gezwungen, das explizite Token <CODE>[STOP]</CODE> auszugeben, anstatt sich H&ouml;flichkeiten auszudenken. Die <CODE>bot/index.ts</CODE> f&auml;ngt diesen String hart ab (<CODE>if (replyText.trim() === "[STOP]") return;</CODE>) und bricht die Ausf&uuml;hrung ab. Dadurch wird absolut nichts &uuml;ber MQTT publiziert, der Ping-Pong-Effekt stirbt ab und der Nexus-Bus wird wieder ruhig.</P>
 
 <A NAME="fluss"></A>
 <H2>10. Detaillierte Szenarien des Informationsflusses</H2>
@@ -555,7 +579,7 @@ cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 <H3>13.3 Neuen Agenten deployen (Das Fork-Paradigma)</H3>
 <P>Die Instanziierung eines neuen Agenten (z.B. "Trading-Broker") erfordert exakt diesen pragmatischen Workflow:</P>
 <OL>
-<LI><B>Agent-Ordner forken:</B> <CODE>cp -r agent-ea agent-xyz</CODE>. Kein Matrix-Account n&ouml;tig &mdash; die Identit&auml;t kommt aus <CODE>config.yaml</CODE>.</LI>
+<LI><B>Agent-Ordner forken:</B> <CODE>cp -r agent-ea agent-xyz</CODE>. Die Identit&auml;t wird ausschlie&szlig;lich &uuml;ber die <CODE>config.yaml</CODE> definiert.</LI>
 <LI><B>Den MCP-Server forken:</B> Kopiere den Ordner <CODE>agent-ea/mcp-server</CODE> zu <CODE>agent-broker/mcp-server</CODE>. F&uuml;ge dort deine dedizierte API-Logik f&uuml;r Drittsysteme (z.B. IB-Broker API) als neue Hono-Endpunkte hinzu. Dieser Server l&auml;uft netzwerkisoliert und enth&auml;lt keinerlei Chat-Logik.</LI>
 <LI><B>Prompt-Konfiguration als Volume mounten (KRITISCH):</B> Prompts geh&ouml;ren niemals hart in den Code oder als Environment Variables in die <CODE>docker-compose.yml</CODE>! Erstelle <CODE>prompt.txt</CODE> und <CODE>metadata-prompt.txt</CODE> und mounte sie via Docker Volumes als read-only (<CODE>:ro</CODE>) in die Bot- und MCP-Container. Das erm&ouml;glicht dir, die Prompts jederzeit on-the-fly im Host-Editor anzupassen, ohne Container neu bauen zu m&uuml;ssen.</LI>
 <LI><B>Container deklarieren:</B> Dupliziere in der <CODE>docker-compose.yml</CODE> die Bot- und MCP-Bl&ouml;cke. Mounte <CODE>config.yaml</CODE> als read-only Volume. Der Bot liest MCP-URLs, MQTT-Broker und Agenten-ID automatisch daraus.</LI>
@@ -563,7 +587,7 @@ cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 <LI><B>Starten:</B> <CODE>docker compose up -d --build agent-xyz-bot</CODE>. Der neue Agent verbindet sich via MQTT und erscheint sofort als Checkbox im Dashboard.</LI>
 </OL>
 
-<H3>13.4 Ultimative Schritt-f&uuml;r-Schritt Anleitung: Agenten-Deployment (Edition: Qualle mit Neuralink)</H3>
+<H3>13.4 Agenten-Instanziierung und Lifecycle</H3>
 <P>Dieses Kapitel dokumentiert den exakten, atomaren Prozess zur Instanziierung eines neuen Agenten am Beispiel von <CODE>agent-cco</CODE>. Jeder Befehl ist zwingend in dieser Reihenfolge auszuf&uuml;hren.</P>
 
 <H4>Schritt 1: Das Fork-Paradigma (Dateisystem)</H4>
@@ -576,9 +600,9 @@ cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 <P>Passe die Textdateien im neuen Ordner an. Die <CODE>prompt.txt</CODE> definiert das Verhalten im Chat, die <CODE>metadata-prompt.txt</CODE> die Struktur in der Datenbank.</P>
 
 <H4>Schritt 3: Identit&auml;t in config.yaml deklarieren</H4>
-<P>&Ouml;ffne die <CODE>.env</CODE> im Root-Verzeichnis und f&uuml;ge die neuen Zugangsdaten am Ende hinzu:</P>
-<PRE><CODE class="language-bash">
-# CCO Agent (Chief Creative Officer)
+<P>Passe die <CODE>config.yaml</CODE> im Agenten-Verzeichnis an, um die Identit&auml;t und den MQTT-Broker zu definieren:</P>
+<PRE><CODE class="language-yaml">
+# agent-cco/config.yaml
 agent:
   id: "cco"
   name: "Chief Communications Officer"
@@ -587,9 +611,9 @@ mqtt:
 </CODE></PRE>
 
 <H4>Schritt 4: Docker-Compose erweitern</H4>
-<P>F&uuml;ge Bot- und MCP-Bl&ouml;cke in die <CODE>docker-compose.yml</CODE> ein und mounte beide Konfigurations-Volumes:</P>
+<P>F&uuml;ge Bot- und MCP-Bl&ouml;cke in die <CODE>docker-compose.yml</CODE> ein und starte die neuen Services:</P>
 <PRE><CODE class="language-bash">
-# 1. Registrierungs-Session generieren und User anlegen
+# 1. Container bauen und im Hintergrund starten
 docker compose up -d --build agent-cco-bot mcp-cco
 </CODE></PRE>
 

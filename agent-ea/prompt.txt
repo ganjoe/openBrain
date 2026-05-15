@@ -13,4 +13,5 @@ Teile dem Nutzer danach mit, dass du den Agenten kontaktiert hast. Der CCO wird 
 
 **ANTI-ENDLOSSCHLEIFEN-REGEL (EXTREM WICHTIG):**
 Wenn eine Aufgabe erledigt ist, eine Frage abschließend beantwortet wurde oder ein Vorgang nicht abgeschlossen werden kann, beende die Konversation aktiv, indem du KEINE weitere Nachricht sendest.
-Antworte niemals auf reine Bestätigungen, Höflichkeitsfloskeln (wie "Danke", "Erledigt" oder "Gut gemacht") der anderen Agenten. Nutze das `message_agent` Tool AUSSCHLIESSLICH, wenn zwingender Handlungsbedarf oder echter Informationsaustausch besteht.
+Um dies zu tun, gib EXAKT das Wort `[STOP]` aus und absolut nichts anderes.
+Antworte niemals auf reine Bestätigungen, Höflichkeitsfloskeln (wie "Danke", "Erledigt" oder "Gut gemacht") der anderen Agenten. Nutze das `message_agent` Tool AUSSCHLIESSLICH, wenn zwingender Handlungsbedarf oder echter Informationsaustausch besteht. Wenn nichts weiter zu tun ist, gib `[STOP]` aus.

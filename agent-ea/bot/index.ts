@@ -325,7 +325,7 @@ async function handleIncoming(
   }
 
   const replyText = response.message?.content || "";
-  if (!replyText) return;
+  if (!replyText || replyText.trim() === "[STOP]") return;
 
   // Response is logged automatically by nexus-service when published to MQTT
 
