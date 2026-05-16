@@ -394,6 +394,15 @@ graph TD
 <LI><B>Agenten-Aufweck-Trigger (Asynchrones Feedback):</B> Wenn der langlaufende Hintergrundprozess abschlie&szlig;t, steuert der MCP-Server das LLM nicht direkt auf API-Ebene. Stattdessen nutzt er die interne Nexus-REST-API, um eine gew&ouml;hnliche Chat-Nachricht (Absender: "system") auf das private MQTT-Topic des Agenten (z.B. <CODE>agents/cco/inbox</CODE>) zu publizieren. Der Agent konsumiert diese Systemnachricht (z.B. "Hintergrund-Sync abgeschlossen. Bitte erstelle die Zusammenfassung.") exakt so, als h&auml;tte der menschliche Admin sie im Chat geschrieben. Dies weckt den Agenten auf, f&uuml;gt den Trigger in seine RAG-Historie ein und startet einen autonomen ReAct-Zyklus zur Erf&uuml;llung der Aufgabe. Diese lose Kopplung ist ein massives Architektur-Pattern f&uuml;r lang laufende Agenten-Tasks.</LI>
 </UL>
 
+<H4>8.5.1 Influencer Management & Mass Sync</H4>
+<P>Die Verwaltung der X-Accounts erfolgt nicht &uuml;ber statische Listen, sondern &uuml;ber eine intelligente <CODE>x_influencers</CODE> Datenbank-Tabelle:</P>
+<UL>
+<LI><B>Dynamisches Hinzuf&uuml;gen:</B> &Uuml;ber das Tool <CODE>add_influencer</CODE> fragt der CCO die X-API nach der User-ID und dem Screen Name ab, vektorisiert die Metadaten und speichert den Account dauerhaft in der Datenbank.</LI>
+<LI><B>Fuzzy Search Sync:</B> Der Befehl <CODE>sync_influencer_news</CODE> nutzt die PL/pgSQL-Funktion <CODE>search_influencers</CODE>. Wenn ein Agent den Namen "sereni" &uuml;bergibt, durchsucht PostgreSQL per Vektor-&Auml;hnlichkeit und ILIKE die Datenbank, identifiziert <CODE>@aleabitoreddit</CODE> (Screen Name: "serenity") und startet den Sync vollautomatisch.</LI>
+<LI><B>Sequential Mass Sync:</B> Wird <CODE>sync_influencer_news</CODE> mit dem Parameter <CODE>username: "all"</CODE> aufgerufen, l&auml;dt der MCP-Server alle aktiven Accounts aus der Datenbank und arbeitet die Hintergrund-Syncs ressourcenschonend sequenziell (als Batch) ab.</LI>
+<LI><B>Entfernen ohne Datenverlust:</B> &Uuml;ber <CODE>remove_influencer</CODE> k&ouml;nnen Accounts aus der Beobachtungsliste gel&ouml;scht werden. Bereits abgerufene Posts im <CODE>agent_workspace</CODE> bleiben davon physisch unangetastet, da sie &uuml;ber eigene Metadaten-Zuordnungen persistiert sind.</LI>
+</UL>
+
 <H3>8.6 System-Telemetrie & Performance-Tracking</H3>
 <P>Um die Auslastung der KI-Infrastruktur transparent zu machen, generiert jeder MCP-Server Telemetrie-Daten bei LLM- und Embedding-Aufrufen:</P>
 <UL>

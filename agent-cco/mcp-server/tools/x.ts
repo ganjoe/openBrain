@@ -434,6 +434,29 @@ export function registerXTools(server: McpServer) {
   );
 
   server.registerTool(
+    "remove_influencer",
+    {
+      title: "Remove Influencer",
+      description: "Remove an influencer from the database. This stops them from being monitored, but does not delete their existing posts.",
+      inputSchema: {
+        username: z.string().describe("The X username to remove (e.g. @joecarlsonshow)"),
+      },
+    },
+    async ({ username }: any) => {
+      try {
+        const cleanName = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
+        
+        const { error } = await supabase.from("x_users").delete().eq("username", cleanName);
+        if (error) throw error;
+
+        return { content: [{ type: "text", text: `Influencer @${cleanName} wurde erfolgreich aus der Datenbank entfernt.` }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler beim Entfernen des Influencers: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
     "list_influencers",
     {
       title: "List Influencers",
