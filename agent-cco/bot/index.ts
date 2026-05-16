@@ -218,11 +218,16 @@ async function callGemini(messages: any[], tools: any[], provider: string) {
   return { message, tool_calls: message.tool_calls || null };
 }
 
-async function callLLM(messages: any[], tools: any[]) {
+async function callLLM(messages: any[], tools: any[], onFallback?: (err: Error) => void) {
   if (activeProvider === "gemini" || activeProvider === "gemini-pro") {
-    return callGemini(messages, tools, activeProvider);
+    try {
+      return await callGemini(messages, tools, activeProvider);
+    } catch (err: any) {
+      if (onFallback) onFallback(err);
+      return await callLMStudio(messages, tools);
+    }
   }
-  return callLMStudio(messages, tools);
+  return await callLMStudio(messages, tools);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -295,8 +300,18 @@ async function handleIncoming(
     { role: "user", content: text },
   ];
 
+  let hasWarnedFallback = false;
+  const onFallback = (err: Error) => {
+    console.error(`❌ Gemini failed: ${err.message}. Falling back to LM Studio.`);
+    if (!hasWarnedFallback) {
+      hasWarnedFallback = true;
+      const warningPayload = buildEnvelope(from, `⚠️ **System-Warnung**: Gemini-Verbindung fehlgeschlagen (${err.message}). Wechsle zu LM Studio (lokal) für diese Anfrage.`);
+      mqttClient.publish(`agents/${from}/inbox`, warningPayload, { qos: 1 });
+    }
+  };
+
   console.log(`🧠 Calling LLM (${activeProvider})...`);
-  let response = await callLLM(messages, availableTools);
+  let response = await callLLM(messages, availableTools, onFallback);
 
   while (response.tool_calls?.length > 0) {
     messages.push(response.message);
@@ -320,7 +335,7 @@ async function handleIncoming(
       }
     }
 
-    response = await callLLM(messages, availableTools);
+    response = await callLLM(messages, availableTools, onFallback);
   }
 
   const replyText = response.message?.content || "";
@@ -433,9 +448,9 @@ async function main() {
 
     try {
       if (topic === "system/config/provider") {
-        if (envelope.agent_id === AGENT_ID) {
-          activeProvider = envelope.provider;
-          console.log(`🔄 Provider switched to: ${activeProvider}`);
+        if (envelope[AGENT_ID]) {
+          activeProvider = envelope[AGENT_ID];
+          console.log(`🔄 Provider synchronized: ${activeProvider}`);
         }
         return;
       }

@@ -210,7 +210,7 @@ async def update_provider(req: ProviderUpdateRequest):
     # 4. Broadcast via MQTT
     mqtt_client = get_mqtt_client()
     if mqtt_client:
-        payload = json.dumps({"agent_id": req.agent_id, "provider": req.provider})
+        payload = json.dumps(current_config)
         mqtt_client.publish("system/config/provider", payload, qos=1, retain=True)
         
     return {"status": "updated", "config": current_config}

@@ -14,3 +14,9 @@ sync-log.json
 
 # Build artifacts
 deno.lock
+
+# Scratch and Test scripts
+test-*.ts
+test-*.js
+scratch/
+
