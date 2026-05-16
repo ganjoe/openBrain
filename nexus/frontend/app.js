@@ -106,7 +106,11 @@ function appendMessage(msg) {
 
   const el = buildMessageEl(msg);
   $messages.appendChild(el);
-  $messages.scrollTop = $messages.scrollHeight;
+  
+  const $autoscrollToggle = document.getElementById("autoscroll-toggle");
+  if ($autoscrollToggle && $autoscrollToggle.checked) {
+    $messages.scrollTop = $messages.scrollHeight;
+  }
 
   // Update last-seen timestamp
   const unix = p.unix || 0;
@@ -151,7 +155,10 @@ function rerender() {
       $messages.appendChild(el);
     }
   });
-  $messages.scrollTop = $messages.scrollHeight;
+  const $autoscrollToggle = document.getElementById("autoscroll-toggle");
+  if ($autoscrollToggle && $autoscrollToggle.checked) {
+    $messages.scrollTop = $messages.scrollHeight;
+  }
   updateRoomLabel();
 }
 

@@ -217,7 +217,7 @@ flowchart TD
 <P>Ein isolierter Bereich f&uuml;r externe Datenimporte und tempor&auml;re Arbeits-Artefakte (z.B. X-Posts). Verhindert, dass das <CODE>open_brain</CODE> durch Massendaten-Importe "verrauscht". Diese Tabelle ist optimiert f&uuml;r Massendaten-Speicherung und bietet Platz f&uuml;r Rohdaten und deren semantische Vektoren.</P>
 
 <H4>3. nexus_chat (Communication Log)</H4>
-<P>Der zentrale Audit-Trail aller MQTT-Nachrichten und System-Events. Jede Kommunikation zwischen Agenten sowie System-Telemetrie (Modell-Performance, t/s) wird hier als Roh-Payload und Text-Auszug gespeichert.</P>
+<P>Der zentrale Audit-Trail aller MQTT-Nachrichten und System-Events. Jede Kommunikation zwischen Agenten sowie alle System-Benachrichtigungen (Absender <CODE>system</CODE>) werden hier dauerhaft persistiert. Dies garantiert, dass auch automatisierte Statusmeldungen (z.B. Sync-Abschluss) nach einem Neuladen des Dashboards in der Historie erhalten bleiben.</P>
 
 <H4>Deep-Dive: Dynamische JSONB-Iterierung (Code-Free Configuration)</H4>
 <P>Das Architekturziel von Open Brain ist es, dass sich Agenten ausschlie&szlig;lich durch ihre Text-Konfiguration (Prompts) unterscheiden d&uuml;rfen. Um dies zu gew&auml;hrleisten, ist die Code-Basis des MCP-Servers 100% dynamisch aufgebaut. Wenn ein Agent-Tool (z.B. <CODE>search_thoughts</CODE>) Resultate aus der Datenbank liest, iteriert es programmatisch &uuml;ber <B>alle</B> Keys im JSONB-Objekt, ohne dass bestimmte Felder wie <CODE>people</CODE> hartkodiert w&auml;ren:</P>
@@ -353,6 +353,16 @@ graph TD
 
 <H4>7.3.4 LM Studio JIT Loading & Unloading</H4>
 <P>Das Nexus Dashboard erm&ouml;glicht das direkte Laden und Entladen lokaler LLM-Modelle (via LM Studio v1 API). Das "Just-in-Time" (JIT) Loading erfolgt &uuml;ber einen Dummy-Inferenz-Aufruf, der LM Studio zwingt, das Modell in den VRAM zu laden. Ein Klick auf "Unload" nutzt den <CODE>POST /api/v1/models/unload</CODE> Endpoint inkl. der Instanz-ID, um Ressourcen im VRAM explizit wieder freizugeben. Dies erm&ouml;glicht h&auml;ndisches Speichermanagement, ohne das Dashboard verlassen zu m&uuml;ssen.</P>
+
+<H3>7.4 UI-Features & Live-Interaktion</H3>
+<P>Das Nexus-Frontend bietet spezialisierte Funktionen zur Steuerung des Live-Streams, um die Benutzererfahrung bei hoher Nachrichten-Frequenz zu optimieren.</P>
+
+<H4>7.4.1 Auto-Scroll Management</H4>
+<P>In einem System, in dem mehrere Agenten parallel arbeiten, kann die Scroll-Position im Chat-Fenster unvorhersehbar springen. Um dies zu verhindern, verf&uuml;gt das Dashboard &uuml;ber einen <B>Auto-Scroll Toggle</B> im Header des Stream-Panes.</P>
+<UL>
+<LI><B>Active (Standard):</B> Der Chat fokussiert automatisch auf die neueste Nachricht. Ideal f&uuml;r die Live-&Uuml;berwachung.</LI>
+<LI><B>Inactive (Lesemodus):</B> Der Chat friert die aktuelle Scroll-Position ein. Dies erlaubt es dem Nutzer, in Ruhe &auml;ltere Analysen zu lesen, w&auml;hrend neue Nachrichten im Hintergrund lautlos angeh&auml;ngt werden.</LI>
+</UL>
 
 <A NAME="mcp"></A>
 <H2>8. Der Tool-Server: Deep Dive in die Deno MCP Implementierung</H2>

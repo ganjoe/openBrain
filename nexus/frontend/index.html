@@ -81,8 +81,17 @@
     <!-- ── Main stream ──────────────────────────────────────── -->
     <main id="stream-pane">
       <header id="stream-header">
-        <span id="room-label">Global Stream</span>
-        <span id="conn-indicator" class="indicator offline">●</span>
+        <div class="header-left">
+          <span id="room-label">Global Stream</span>
+        </div>
+        <div class="header-right">
+          <label class="switch" title="Auto-Scroll aktivieren/deaktivieren">
+            <input type="checkbox" id="autoscroll-toggle" checked>
+            <span class="slider round"></span>
+          </label>
+          <span class="autoscroll-label" title="Auto-Scroll">Auto-Scroll</span>
+          <span id="conn-indicator" class="indicator offline">●</span>
+        </div>
       </header>
 
       <div id="messages"></div>
