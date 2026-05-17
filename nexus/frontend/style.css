@@ -246,6 +246,40 @@ header#stream-header {
 .header-right { display: flex; align-items: center; gap: 10px; }
 .autoscroll-label { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 
+/* Context Slider & Input */
+.context-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 15px;
+}
+.context-input {
+  width: 45px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  border-radius: var(--radius);
+  padding: 1px 4px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  text-align: center;
+  outline: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 5px rgba(5, 217, 232, 0.1);
+}
+.context-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(5, 217, 232, 0.4);
+}
+.context-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+}
+
 /* Toggle Switch */
 .switch { position: relative; display: inline-block; width: 32px; height: 18px; }
 .switch input { opacity: 0; width: 0; height: 0; }

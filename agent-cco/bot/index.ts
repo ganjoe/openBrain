@@ -37,6 +37,7 @@ const POSTGREST_URL  = process.env.POSTGREST_URL || "http://postgrest:3000";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 let activeProvider = "local"; // Dynamically updated via Nexus
+let contextLimit = 10; // Dynamically updated via Nexus
 
 // ─────────────────────────────────────────────────────────────
 // 3. System prompt (mounted via Docker volume)
@@ -270,7 +271,7 @@ async function handleIncoming(
   console.log(`\n💬 [${AGENT_ID}] message from '${from}': ${text.slice(0, 80)}`);
 
   // Load history + tools in parallel (fetch specific history with sender)
-  const historyPromise = loadHistoryFromDb(from, 10);
+  const historyPromise = loadHistoryFromDb(from, contextLimit);
 
   const availableTools: any[] = [];
   const toolToClient = new Map<string, StatelessMcpClient>();
@@ -408,6 +409,24 @@ async function main() {
   }
   console.log(`🧠 Active LLM Provider: ${activeProvider}`);
 
+  // Fetch initial context limit config
+  try {
+    const res = await fetch(`${POSTGREST_URL}/system_settings?key=eq.chat_context_limit`);
+    if (res.ok) {
+      const data: any = await res.json();
+      if (data && data.length > 0) {
+        const configMap = data[0].value || {};
+        if (configMap.enabled) {
+          contextLimit = configMap.limit || 10;
+        } else {
+          contextLimit = 10;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("⚠️ Could not fetch initial context limit config, defaulting to 10.");
+  }
+
   // MQTT connect with LWT
   const lwt = JSON.parse(config.mqtt.lwt_payload);
   lwt.unix  = Math.floor(Date.now() / 1000);
@@ -430,7 +449,8 @@ async function main() {
   await mqttClient.subscribeAsync(MCP_REQ_TOPIC,  { qos: 1 });
   await mqttClient.subscribeAsync(MCP_RESP_TOPIC, { qos: 1 });
   await mqttClient.subscribeAsync("system/config/provider", { qos: 1 });
-  console.log(`📡 Subscribed: ${INBOX_TOPIC} | ${MCP_REQ_TOPIC} | ${MCP_RESP_TOPIC} | system/config/provider`);
+  await mqttClient.subscribeAsync("system/config/context_limit", { qos: 1 });
+  console.log(`📡 Subscribed: ${INBOX_TOPIC} | ${MCP_REQ_TOPIC} | ${MCP_RESP_TOPIC} | system/config/provider | system/config/context_limit`);
 
   // Publish online status
   const onlinePayload = JSON.stringify({ agent: AGENT_ID, status: "online", unix: Math.floor(Date.now() / 1000) });
@@ -452,6 +472,16 @@ async function main() {
           activeProvider = envelope[AGENT_ID];
           console.log(`🔄 Provider synchronized: ${activeProvider}`);
         }
+        return;
+      }
+
+      if (topic === "system/config/context_limit") {
+        if (envelope.enabled) {
+          contextLimit = envelope.limit || 10;
+        } else {
+          contextLimit = 10;
+        }
+        console.log(`🔄 Context limit synchronized: ${contextLimit}`);
         return;
       }
       

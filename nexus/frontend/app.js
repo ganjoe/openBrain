@@ -20,9 +20,9 @@ const state = {
 };
 
 // ── DOM refs ──────────────────────────────────────────────────
-const $messages    = document.getElementById("messages");
-const $agentList   = document.getElementById("agent-list");
-const $roomLabel   = document.getElementById("room-label");
+const $messages      = document.getElementById("messages");
+const $agentList     = document.getElementById("agent-list");
+const $roomLabel     = document.getElementById("room-label");
 const $connIndicator = document.getElementById("conn-indicator");
 const $sendBtn       = document.getElementById("send-btn");
 const $sendFrom      = document.getElementById("send-from");
@@ -30,6 +30,8 @@ const $sendTo        = document.getElementById("send-to");
 const $sendText      = document.getElementById("send-text");
 const $filterHistory = document.getElementById("filter-history");
 const $providerList  = document.getElementById("provider-list");
+const $contextToggle = document.getElementById("context-toggle");
+const $contextInput  = document.getElementById("context-limit-input");
 
 // ── Helpers ───────────────────────────────────────────────────
 function formatTime(unix) {
@@ -211,6 +213,39 @@ function renderAgentCheckboxes() {
   if (Object.keys(state.agents).length === 0) {
     $agentList.innerHTML = '<p class="hint">Warte auf Agenten…</p>';
   }
+}
+
+// ── Context Logic ──────────────────────────────────────────────
+async function loadContextConfig() {
+  try {
+    const r = await fetch(`${API}/api/settings/context_limit`);
+    const config = await r.json();
+    $contextToggle.checked = config.enabled;
+    $contextInput.value = config.limit;
+    $contextInput.disabled = !config.enabled;
+  } catch (e) {
+    console.error("Failed to load context config:", e);
+  }
+}
+
+async function updateContextConfig() {
+  const enabled = $contextToggle.checked;
+  const limit = parseInt($contextInput.value) || 10;
+  $contextInput.disabled = !enabled;
+  try {
+    await fetch(`${API}/api/settings/context_limit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled, limit }),
+    });
+  } catch (e) {
+    console.error("Failed to update context config:", e);
+  }
+}
+
+if ($contextToggle && $contextInput) {
+  $contextToggle.addEventListener("change", updateContextConfig);
+  $contextInput.addEventListener("change", updateContextConfig);
 }
 
 // ── Provider Logic ────────────────────────────────────────────
@@ -500,6 +535,7 @@ async function loadAgents() {
 // ── Boot ──────────────────────────────────────────────────────
 (async () => {
   $sendFrom.value = "boss"; // Initial value
+  await loadContextConfig();
   await loadProviderConfig();
   await loadAgents();
   await loadHistory();

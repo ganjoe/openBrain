@@ -1,18 +1,19 @@
 #!/bin/bash
 cd /home/daniel/openBrain
 
-echo "🛠️  Rebuilding MCP servers (compiling TypeScript)..."
-docker compose build mcp-cco
-docker compose up -d mcp-cco
+echo "🛠️  Rebuilding all custom services in parallel..."
+docker compose build \
+  mcp-server mcp-cco \
+  nexus-frontend nexus-service \
+  agent-cco-bot agent-ea-bot
 
-echo "🌐 Rebuilding Nexus Dashboard..."
-docker compose build nexus-frontend
-docker compose up -d nexus-frontend
-
-echo "🤖 Restarting Bots (reloading prompts)..."
-docker restart openbrain-cco-bot openbrain-ea-bot
+echo "🚀 Starting updated services..."
+docker compose up -d \
+  mcp-server mcp-cco \
+  nexus-frontend nexus-service \
+  agent-cco-bot agent-ea-bot
 
 echo "🗄️  Restarting PostgREST (flushing SQL schema cache)..."
 docker restart openbrain-postgrest
 
-echo "✅ All agents successfully rebuilt and refreshed!"
+echo "✅ All agents and services successfully rebuilt and refreshed!"

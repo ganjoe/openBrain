@@ -177,7 +177,7 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
         await sendTelemetry(
           `${metricsStr}\n\n` +
           `[X-Post] 📅 ${dateStr}\n` +
-          `📝 "${content.substring(0, 100).replace(/\n/g, ' ')}..."\n` +
+          `📝 "${content}"\n` +
           `🏷️ Topics: ${topics} | 🔑 Keywords: ${keywords}`
         );
       }
@@ -219,7 +219,7 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
           body: JSON.stringify({
             from_agent: "system",
             to: "cco",
-            text: `Der Hintergrund-Sync für ${cleanName} ist soeben mit ${totalSaved} verarbeiteten Posts abgeschlossen worden. Bitte erstelle jetzt die versprochene Zusammenfassung für den Boss. Nutze deine Such-Tools um die neuesten ${cleanName} Posts abzurufen, analysiere sie und schreibe die Zusammenfassung an 'boss'.`,
+            text: `Der Hintergrund-Sync für ${cleanName} ist soeben mit ${totalSaved} verarbeiteten Posts abgeschlossen worden. Bitte erstelle jetzt die versprochene Zusammenfassung für den Boss. Nutze deine Such-Tools (WICHTIG: Setze den Parameter 'limit' strikt auf ${totalSaved} und suche AUSSCHLIESSLICH nach ${cleanName}, nach keinen anderen Accounts!) um diese neuesten Posts abzurufen, analysiere sie und schreibe die Zusammenfassung an 'boss'.`,
             msg_type: "chat"
           }),
         });

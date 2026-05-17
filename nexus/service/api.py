@@ -216,7 +216,50 @@ async def update_provider(req: ProviderUpdateRequest):
     return {"status": "updated", "config": current_config}
 
 
+class ContextLimitRequest(BaseModel):
+    enabled: bool
+    limit: int
+
+@router.get("/api/settings/context_limit")
+async def get_context_limit():
+    """Fetch the current context limit config from the DB."""
+    rows = await _db_get("system_settings", {"key": "eq.chat_context_limit"})
+    if rows:
+        return rows[0].get("value", {"enabled": False, "limit": 10})
+    return {"enabled": False, "limit": 10}
+
+@router.post("/api/settings/context_limit")
+async def update_context_limit(req: ContextLimitRequest):
+    """Update context limit config and broadcast via MQTT."""
+    config_val = {"enabled": req.enabled, "limit": req.limit}
+    
+    # Save to DB
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        r = await client.patch(
+            f"{GATEWAY_URL}/rest/v1/system_settings?key=eq.chat_context_limit",
+            headers={**DB_HEADERS, "Content-Type": "application/json"},
+            json={"value": config_val}
+        )
+        if r.status_code not in (200, 204):
+            # Try POST if it doesn't exist
+            r2 = await client.post(
+                f"{GATEWAY_URL}/rest/v1/system_settings",
+                headers={**DB_HEADERS, "Content-Type": "application/json"},
+                json={"key": "chat_context_limit", "value": config_val}
+            )
+            if r2.status_code not in (200, 201, 204):
+                raise HTTPException(status_code=502, detail=f"DB error: {r2.text}")
+                
+    # Broadcast via MQTT
+    mqtt_client = get_mqtt_client()
+    if mqtt_client:
+        payload = json.dumps(config_val)
+        mqtt_client.publish("system/config/context_limit", payload, qos=1, retain=True)
+        
+    return {"status": "updated", "config": config_val}
+
 # ─── LM Studio Settings ───────────────────────────────────────────────────────
+
 
 LM_STUDIO_URL = "http://host.docker.internal:1234/v1"
 

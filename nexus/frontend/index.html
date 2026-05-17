@@ -85,6 +85,17 @@
           <span id="room-label">Global Stream</span>
         </div>
         <div class="header-right">
+          <!-- Context Toggle & Input -->
+          <div class="context-container">
+            <label class="switch" title="Begrenzt den Chatverlauf im KI-Kontext manuell (Standard: 10)">
+              <input type="checkbox" id="context-toggle">
+              <span class="slider round"></span>
+            </label>
+            <span class="autoscroll-label" title="Begrenzt den Chatverlauf im KI-Kontext manuell (Standard: 10)">Context</span>
+            <input type="number" id="context-limit-input" min="1" max="100" value="10" disabled 
+                   title="Anzahl der Chatnachrichten, die in den LLM-Kontext geladen werden" class="context-input">
+          </div>
+
           <label class="switch" title="Auto-Scroll aktivieren/deaktivieren">
             <input type="checkbox" id="autoscroll-toggle" checked>
             <span class="slider round"></span>
