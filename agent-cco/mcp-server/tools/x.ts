@@ -220,7 +220,7 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
             from_agent: "system",
             to: "cco",
             text: `Der Hintergrund-Sync für ${cleanName} ist soeben mit ${totalSaved} verarbeiteten Posts abgeschlossen worden. Bitte erstelle jetzt die versprochene Zusammenfassung für den Boss. Nutze deine Such-Tools um die neuesten ${cleanName} Posts abzurufen, analysiere sie und schreibe die Zusammenfassung an 'boss'.`,
-            message_type: "chat"
+            msg_type: "chat"
           }),
         });
       } catch (e) {

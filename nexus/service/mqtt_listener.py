@@ -106,7 +106,8 @@ def on_message(client, userdata, msg):
     msg_type = raw.get("header", {}).get("msg_type", "chat")
     from_id  = raw.get("header", {}).get("from", "?")
     
-    should_log = (msg_type == "chat")
+    # We log chat messages (human/agent) and telemetry (system progress)
+    should_log = (msg_type in ["chat", "telemetry"])
     
     if should_log:
         asyncio.run_coroutine_threadsafe(log_message(raw), loop)
