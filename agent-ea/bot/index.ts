@@ -420,7 +420,7 @@ async function main() {
         if (configMap.enabled) {
           contextLimit = configMap.limit || 10;
         } else {
-          contextLimit = 10;
+          contextLimit = 0;
         }
       }
     }
@@ -480,7 +480,7 @@ async function main() {
         if (envelope.enabled) {
           contextLimit = envelope.limit || 10;
         } else {
-          contextLimit = 10;
+          contextLimit = 0;
         }
         console.log(`🔄 Context limit synchronized: ${contextLimit}`);
         return;

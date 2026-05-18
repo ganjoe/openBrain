@@ -65,6 +65,7 @@ BEGIN
       OR t.metadata->'keywords' @> to_jsonb(p_exact_keyword)
       OR t.metadata->'topics' @> to_jsonb(p_exact_keyword)
       OR UPPER(t.metadata->>'author') = UPPER(p_exact_keyword)
+      OR t.content ILIKE '%' || p_exact_keyword || '%'
     )
   ORDER BY t.created_at DESC
   LIMIT match_count;
@@ -75,3 +76,60 @@ GRANT EXECUTE ON FUNCTION semantic_search_workspace(vector, float, int, text, te
 GRANT EXECUTE ON FUNCTION exact_search_workspace(text, int, text, text, int) TO anon;
 GRANT EXECUTE ON FUNCTION semantic_search_workspace(vector, float, int, text, text, int) TO service_role;
 GRANT EXECUTE ON FUNCTION exact_search_workspace(text, int, text, text, int) TO service_role;
+
+-- First Mention of Keywords (Full Text)
+CREATE OR REPLACE FUNCTION find_first_keyword_mentions(
+  p_keywords text[],
+  p_authors text[] DEFAULT NULL,
+  p_limit int DEFAULT 10
+)
+RETURNS TABLE (
+  keyword text,
+  first_mentioned_at timestamptz,
+  author text,
+  post_content text,
+  post_id uuid
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN QUERY
+  WITH keyword_matches AS (
+    SELECT
+      k.keyword,
+      t.content,
+      t.metadata->>'author' AS author,
+      (t.metadata->>'published_at')::timestamptz AS published_at,
+      t.id AS post_id
+    FROM
+      agent_workspace t
+    CROSS JOIN unnest(p_keywords) AS k(keyword)
+    WHERE
+      t.artifact_type = 'x_post'
+      AND t.metadata->>'published_at' IS NOT NULL
+      AND (p_authors IS NULL OR array_length(p_authors, 1) IS NULL OR LOWER(t.metadata->>'author') = ANY(p_authors))
+      AND t.content ILIKE '%' || k.keyword || '%'
+  ),
+  first_mentions AS (
+    SELECT DISTINCT ON (m.keyword)
+      m.keyword,
+      m.published_at,
+      m.author,
+      m.content,
+      m.post_id
+    FROM keyword_matches m
+    ORDER BY m.keyword, m.published_at ASC
+  )
+  SELECT
+    fm.keyword,
+    fm.published_at,
+    fm.author,
+    fm.content,
+    fm.post_id
+  FROM first_mentions fm
+  ORDER BY fm.published_at DESC
+  LIMIT p_limit;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION find_first_keyword_mentions(text[], text[], int) TO anon;
+GRANT EXECUTE ON FUNCTION find_first_keyword_mentions(text[], text[], int) TO service_role;

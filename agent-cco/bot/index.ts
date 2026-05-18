@@ -271,7 +271,8 @@ async function handleIncoming(
   console.log(`\n💬 [${AGENT_ID}] message from '${from}': ${text.slice(0, 80)}`);
 
   // Load history + tools in parallel (fetch specific history with sender)
-  const historyPromise = loadHistoryFromDb(from, contextLimit);
+  const actualLimit = from === "system" ? 0 : contextLimit;
+  const historyPromise = loadHistoryFromDb(from, actualLimit);
 
   const availableTools: any[] = [];
   const toolToClient = new Map<string, StatelessMcpClient>();
@@ -419,7 +420,7 @@ async function main() {
         if (configMap.enabled) {
           contextLimit = configMap.limit || 10;
         } else {
-          contextLimit = 10;
+          contextLimit = 0;
         }
       }
     }
@@ -479,7 +480,7 @@ async function main() {
         if (envelope.enabled) {
           contextLimit = envelope.limit || 10;
         } else {
-          contextLimit = 10;
+          contextLimit = 0;
         }
         console.log(`🔄 Context limit synchronized: ${contextLimit}`);
         return;

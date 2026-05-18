@@ -139,18 +139,11 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
         const content = tweet.text;
         const tickers = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
         
-        // Metadata extraction (batched later if possible, but extractMetadata is LLM based)
-        // For now, we still call extractMetadata individually as it's complex, 
-        // but we batch embeddings.
-        const baseMetadata = await extractMetadata(content, false, signal);
-        const metricsStr = baseMetadata._metrics || "";
-        delete baseMetadata._metrics;
         const finalMetadata = {
-          ...baseMetadata,
           author: cleanName,
           external_id: tweet.id,
           published_at: tweet.created_at,
-          tickers: Array.from(new Set([...tickers, ...(baseMetadata.tickers as string[] || [])])),
+          tickers: Array.from(new Set(tickers)),
         };
 
         textsForEmbedding.push(content);
@@ -164,21 +157,12 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
 
         // Inform user via system channel (human readable)
         const dateStr = tweet.created_at ? new Date(tweet.created_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
-        const topics = Array.isArray(baseMetadata.topics) ? baseMetadata.topics.join(', ') : 'Keine';
-        
-        // Extract keywords or fallback to tickers if keywords don't exist
-        let keywords = 'Keine';
-        if (Array.isArray(baseMetadata.keywords)) {
-          keywords = baseMetadata.keywords.join(', ');
-        } else if (tickers && tickers.length > 0) {
-          keywords = tickers.join(', ');
-        }
+        const tickersStr = tickers.length > 0 ? tickers.join(', ') : 'Keine';
 
         await sendTelemetry(
-          `${metricsStr}\n\n` +
           `[X-Post] 📅 ${dateStr}\n` +
           `📝 "${content}"\n` +
-          `🏷️ Topics: ${topics} | 🔑 Keywords: ${keywords}`
+          `🔑 Tickers: ${tickersStr}`
         );
       }
 
@@ -341,47 +325,50 @@ export function registerXTools(server: McpServer) {
   );
 
   server.registerTool(
-    "find_new_ticker_mentions",
+    "find_first_keyword_mentions",
     {
-      title: "Find New Ticker Mentions",
-      description: "Search the database for tickers that were mentioned for the FIRST time. Returns the newest X first-mentions.",
+      title: "Find First Keyword Mentions",
+      description: "Searches the database for the FIRST TIME specific keywords were ever mentioned in the full text. Dumps the resulting posts directly to the chat.",
       inputSchema: {
+        keywords: z.array(z.string()).describe("List of keywords to find the first mention for (e.g. ['AI', 'Robotik'])."),
         authors: z.array(z.string()).optional().describe("List of author usernames to filter by (e.g. ['@elonmusk']). Empty means all authors."),
-        limit: z.number().optional().default(3).describe("Number of new tickers to return.")
+        limit: z.number().optional().default(10).describe("Max results to return.")
       },
     },
-    async ({ authors, limit }: { authors?: string[], limit: number }) => {
+    async ({ keywords, authors, limit }: { keywords: string[], authors?: string[], limit: number }) => {
       try {
+        if (!keywords || keywords.length === 0) {
+          return { content: [{ type: "text", text: "Keywords array cannot be empty." }] };
+        }
+
         const targetAuthors = authors && authors.length > 0 ? authors.map(a => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`) : null;
         
-        const { data, error } = await supabase.rpc("get_new_ticker_mentions", {
+        const { data, error } = await supabase.rpc("find_first_keyword_mentions", {
+           p_keywords: keywords,
            p_authors: targetAuthors,
            p_limit: limit
         });
         
         if (error) throw new Error(`Supabase error: ${error.message}`);
 
-        const results = data.map((r: any) => ({
-          ticker: r.ticker,
-          first_mentioned_at: r.first_mentioned_at,
-          author: r.author,
-          post_content: r.post_content
-        }));
-
-        if (results.length === 0) {
-          return { content: [{ type: "text", text: "Es wurden keine Ticker in der Datenbank gefunden." }] };
+        if (!data || data.length === 0) {
+          return { content: [{ type: "text", text: "Keine der Keywords wurden jemals erwähnt." }] };
         }
 
-        return {
-          content: [
-            { 
-              type: "text", 
-              text: JSON.stringify(results, null, 2) 
-            }
-          ]
-        };
+        // Format and dump to chat
+        let dumpText = `**Erste Erwähnungen gefunden für:** ${keywords.join(', ')}\n\n`;
+        data.forEach((r: any) => {
+          const dateStr = r.first_mentioned_at ? new Date(r.first_mentioned_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
+          dumpText += `### Keyword: ${r.keyword} (Erste Erwähnung)\n`;
+          dumpText += `📅 ${dateStr} | 👤 ${r.author} | 🔗 ID: ${r.post_id}\n`;
+          dumpText += `📝 "${r.post_content}"\n\n---\n\n`;
+        });
+
+        await sendTelemetry(dumpText);
+
+        return { content: [{ type: "text", text: `Success. ${data.length} first-mentions have been published directly to the chat via telemetry. Do not summarize them. Just output [STOP].` }] };
       } catch (err: any) {
-         return { content: [{ type: "text", text: `Fehler bei der Ticker-Suche: ${err.message}` }], isError: true };
+         return { content: [{ type: "text", text: `Fehler bei der Keyword-Suche: ${err.message}` }], isError: true };
       }
     }
   );

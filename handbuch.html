@@ -239,9 +239,27 @@ for (const [key, val] of Object.entries(m)) {
 <P>Die Architektur trennt die Suche strikt in zwei hochspezialisierte Werkzeuge, um "False Positives" (z.B. "sievers" bei der Suche nach dem Ticker "SIVE") zu eliminieren:</P>
 <UL>
 <LI><B>Semantische Suche (<CODE>semantic_search_workspace</CODE>):</B> F&uuml;hrt reinen Vektorvergleich (<CODE><=></CODE>) durch. Nutzt Ollama-Embeddings, um inhaltlich verwandte Themen (z.B. "Laser" bei der Suche nach "Photonics") zu finden, ignoriert aber harte Text&uuml;bereinstimmungen.</LI>
-<LI><B>Exakte Keyword-Suche (<CODE>exact_search_workspace</CODE>):</B> Umgeht die ressourcenintensive LLM/Ollama-Vektorisierung komplett. Nutzt stattdessen extrem performante, native PostgreSQL-JSONB-Operatoren (<CODE>@></CODE>). Anstatt den Flie&szlig;text unscharf zu durchsuchen, fragt das System direkt die strukturierten Felder ab, die das LLM beim Sync anlegt (z.B. <CODE>t.metadata->'tickers' @> '"SIVE"'</CODE>). Dies liefert Resultate in Millisekunden und erzwingt exakte Wortgrenzen.</LI>
+<LI><B>Exakte Keyword-Suche (<CODE>exact_search_workspace</CODE>):</B> Nutzt native PostgreSQL-JSONB-Operatoren (<CODE>@></CODE>) f&uuml;r strukturierte Metadaten (Tickers, Authors) UND erg&auml;nzend einen case-insensitiven <CODE>ILIKE</CODE>-Abgleich &uuml;ber den kompletten Post-Inhalt. Dies kombiniert die Pr&auml;zision harter Wortgrenzen in Metadaten mit der Flexibilit&auml;t einer globalen Volltextsuche.</LI>
 </UL>
 
+<H4>2.2.1 Token-Optimierung via Return Modes & Snippets</H4>
+<P>Um das Kontext-Fenster des LLM bei umfangreichen Suchergebnissen (z.B. hunderte X-Posts) nicht zu &uuml;berlasten, verf&uuml;gen die Suchwerkzeuge &uuml;ber einen <CODE>return_mode</CODE> Parameter:</P>
+<UL>
+<LI><B>snippets (Default):</B> Schneidet den Flie&szlig;text nach 150 Zeichen ab, f&uuml;gt den Autor hinzu und entfernt irrelevante Metadaten. Dies reduziert den Token-Verbrauch drastisch und liefert dem LLM einen schnellen &Uuml;berblick.</LI>
+<LI><B>ids_only:</B> Liefert ausschlie&szlig;lich die Datenbank-IDs zur&uuml;ck. Ideal f&uuml;r reine Z&auml;hlungen.</LI>
+<LI><B>full_text:</B> Gibt den gesamten Inhalt inkl. Metadaten zur&uuml;ck. Nur zu verwenden, wenn absolut n&ouml;tig.</LI>
+</UL>
+<P>Sollte das LLM aufgrund eines Snippets erkennen, dass es den ganzen Text analysieren muss, nutzt es das dedizierte Werkzeug <CODE>read_workspace_posts([ids])</CODE>, um die gew&uuml;nschten Dokumente explizit und ungeschw&auml;rzt in voller L&auml;nge nachzuladen.</P>
+
+<H4>2.2.2 Telemetrie und Chronologie</H4>
+<P>Zus&auml;tzlich zur LLM-Ausgabe erzeugt der MCP-Server detaillierte Such-Telemetrie f&uuml;r das Nexus-Dashboard. Ergebnisse werden serverseitig nach Tagen aggregiert, sodass der Nutzer im Live-Chat sofort eine Aufschl&uuml;sselung sieht (z.B. <I>10 Treffer gesamt: 2 am 14.05., 8 am 15.05.</I>), sortiert mit dem neuesten Datum als letzte Zeile.</P>
+
+<H4>2.2.3 Trend-Erkennung & Erste Erw&auml;hnungen (First Mentions)</H4>
+<P>Um fr&uuml;hzeitig Hypes oder neue Trends in den Daten zu identifizieren, verf&uuml;gt das System &uuml;ber das spezialisierte MCP-Werkzeug <CODE>find_first_keyword_mentions</CODE>. Anstatt lediglich die neuesten Posts aufzulisten, sucht dieses Tool den historischen "Nullpunkt" f&uuml;r beliebige Buzzwords.</P>
+<UL>
+<LI><B>Funktionsweise (SQL CROSS JOIN):</B> Der Agent &uuml;bergibt dem Tool ein JSON-Array mit Keywords (z.B. <CODE>["AI", "FURUYA", "Auros"]</CODE>). Die PostgreSQL-Funktion f&uuml;hrt einen <CODE>CROSS JOIN</CODE> &uuml;ber diese Keywords mit einem Volltext-<CODE>ILIKE</CODE>-Abgleich &uuml;ber alle X-Posts aus und filtert pro Wort den chronologisch allerersten Treffer (<CODE>ORDER BY published_at ASC</CODE>).</LI>
+<LI><B>Direct-Dump Mechanismus:</B> Da es pro Keyword ohnehin nur <I>einen</I> wahren ersten historischen Post gibt, l&auml;dt der MCP-Server diesen Post nicht in den Kontext des Agenten, sondern umgeht die LLM-Inferenz v&ouml;llig. Das Tool nutzt <CODE>sendTelemetry</CODE>, um den gefundenen Original-Post inkl. Zeitstempel und Autor <I>direkt</I> in den Live-Chat des Nexus zu werfen, was Halluzinationen zu 100% ausschlie&szlig;t und extrem schnell ist.</LI>
+</UL>
 <A NAME="postgrest"></A>
 <H2>3. Die API-Schicht: PostgREST & Automatisierung</H2>
 <P>Anstatt Backend-Code in Node.js zu schreiben, um SQL in JSON zu konvertieren, nutzen wir PostgREST. Dieser bin&auml;re Haskell-Service l&auml;uft neben der Datenbank, analysiert das Schema zur Laufzeit und stellt on-the-fly REST-Endpunkte f&uuml;r alle Tabellen und RPCs bereit. Maximale Performance, null Boilerplate.</P>

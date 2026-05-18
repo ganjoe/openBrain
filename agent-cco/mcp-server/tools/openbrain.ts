@@ -43,8 +43,44 @@ async function dumpToChat(title: string, data: any[]) {
   }
 }
 
+async function sendSearchTelemetry(keyword: string, data: any[]) {
+  if (!data || data.length === 0) {
+    await sendTelemetry(`[Suche] Suche nach "${keyword}" ergab 0 Treffer.`);
+    return;
+  }
+  
+  const countsByDay: Record<string, number> = {};
+  for (const t of data) {
+    const dateStr = new Date(t.created_at).toISOString().split('T')[0];
+    countsByDay[dateStr] = (countsByDay[dateStr] || 0) + 1;
+  }
+  
+  const sortedDays = Object.keys(countsByDay).sort();
+  await sendTelemetry(`[Suche] Suche nach "${keyword}" ergab ${data.length} Treffer.`);
+  for (const day of sortedDays) {
+    await sendTelemetry(` - ${day}: ${countsByDay[day]} Treffer`);
+  }
+}
+
+function formatSearchResults(data: any[], returnMode: string) {
+  if (returnMode === "ids_only") {
+    return data.map((t: any, i: number) => `[${i + 1}] ID: ${t.id} | Date: ${new Date(t.created_at).toLocaleDateString()}`).join("\n");
+  } else if (returnMode === "full_text") {
+    return data.map((t: any, i: number) => `[${i + 1}] ID: ${t.id} | Agent: ${t.agent_id} | Type: ${t.artifact_type} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`).join("\n\n");
+  } else {
+    return data.map((t: any, i: number) => {
+      let snippet = t.content || "";
+      if (snippet.length > 150) {
+        snippet = snippet.substring(0, 150) + "...";
+      }
+      const author = t.metadata?.author || "Unknown";
+      return `[${i + 1}] ID: ${t.id} | Date: ${new Date(t.created_at).toLocaleDateString()} | Author: ${author}\nSnippet: ${snippet}`;
+    }).join("\n\n");
+  }
+}
+
 export function registerOpenBrainTools(server: McpServer) {
-  // Tool: Search
+  // Tool: Search Thoughts
   server.registerTool(
     "search_thoughts",
     {
@@ -59,9 +95,7 @@ export function registerOpenBrainTools(server: McpServer) {
     },
     async ({ query, limit, threshold, owner }: any) => {
       try {
-        // Logic for isolation: EA can see everything if owner is NULL. CCO is always filtered.
         const p_agent_id = GLOBAL_BRAIN_ACCESS ? (owner || null) : AGENT_ID;
-        
         const qEmb = await getEmbedding(query);
         const { data, error } = await supabase.rpc("hybrid_search_open_brain", {
           query_embedding: qEmb,
@@ -72,14 +106,13 @@ export function registerOpenBrainTools(server: McpServer) {
         });
 
         if (error) throw error;
+        await sendSearchTelemetry(query, data || []);
         if (!data || data.length === 0) {
-          await sendTelemetry(`[Suche] Gedanken-Suche nach "${query}" ergab 0 Treffer.`);
           return { content: [{ type: "text", text: "No results." }] };
         }
-        await sendTelemetry(`[Suche] Gedanken-Suche nach "${query}" ergab ${data.length} Treffer.`);
 
         const results = data.map((t: any, i: number) => {
-            return `[${i + 1}] Agent: ${t.agent_id} | Type: ${t.thought_type} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}`;
+            return `[${i + 1}] ID: ${t.id} | Agent: ${t.agent_id} | Type: ${t.thought_type} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}`;
         });
 
         return { content: [{ type: "text", text: results.join("\n\n") }] };
@@ -102,10 +135,11 @@ export function registerOpenBrainTools(server: McpServer) {
         artifact_type: z.string().optional().describe("Filter by artifact type (e.g., 'x_post')"),
         days_back: z.number().optional().describe("Filter posts from the last X days."),
         dump_to_chat: z.boolean().optional().default(false).describe("If true, results are directly published to the user's chat and NOT returned to you for analysis. Use this when the user says 'list', 'show me all', 'dump', etc."),
+        return_mode: z.enum(["ids_only", "snippets", "full_text"]).optional().default("snippets").describe("Detail level of results. Use 'snippets' for quick overviews, 'full_text' when you MUST read everything."),
         ...(GLOBAL_BRAIN_ACCESS ? { owner: z.string().optional().describe("Filter by agent ID.") } : {})
       },
     },
-    async ({ query, limit, threshold, artifact_type, days_back, dump_to_chat, owner }: any) => {
+    async ({ query, limit, threshold, artifact_type, days_back, dump_to_chat, return_mode, owner }: any) => {
       try {
         console.log(`[semantic_search_workspace] query="${query}" type="${artifact_type}" limit=${limit} days_back=${days_back} dump=${dump_to_chat}`);
         const p_agent_id = GLOBAL_BRAIN_ACCESS ? (owner || null) : AGENT_ID;
@@ -126,22 +160,19 @@ export function registerOpenBrainTools(server: McpServer) {
         }
         
         console.log(`[semantic_search_workspace] Found ${data ? data.length : 0} results.`);
+        await sendSearchTelemetry(query, data || []);
+        
         if (!data || data.length === 0) {
-            await sendTelemetry(`[Suche] Semantische Workspace-Suche nach "${query}" ergab 0 Treffer.`);
             return { content: [{ type: "text", text: "No results found in workspace." }] };
         }
-        await sendTelemetry(`[Suche] Semantische Workspace-Suche nach "${query}" ergab ${data.length} Treffer.`);
 
         if (dump_to_chat) {
           await dumpToChat(query, data);
           return { content: [{ type: "text", text: `Success. ${data.length} posts have been published directly to the chat. Do not summarize them. Just output [STOP].` }] };
         }
 
-        const results = data.map((t: any, i: number) => {
-            return `[${i + 1}] Agent: ${t.agent_id} | Type: ${t.artifact_type} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`;
-        });
-
-        return { content: [{ type: "text", text: results.join("\n\n") }] };
+        const formattedResults = formatSearchResults(data, return_mode);
+        return { content: [{ type: "text", text: formattedResults }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
       }
@@ -160,10 +191,11 @@ export function registerOpenBrainTools(server: McpServer) {
         artifact_type: z.string().optional().describe("Filter by artifact type (e.g., 'x_post')"),
         days_back: z.number().optional().describe("Filter posts from the last X days."),
         dump_to_chat: z.boolean().optional().default(false).describe("If true, results are directly published to the user's chat and NOT returned to you for analysis. Use this when the user says 'list', 'show me all', 'dump', etc."),
+        return_mode: z.enum(["ids_only", "snippets", "full_text"]).optional().default("snippets").describe("Detail level of results. Use 'snippets' for quick overviews, 'full_text' when you MUST read everything."),
         ...(GLOBAL_BRAIN_ACCESS ? { owner: z.string().optional().describe("Filter by agent ID.") } : {})
       },
     },
-    async ({ keyword, limit, artifact_type, days_back, dump_to_chat, owner }: any) => {
+    async ({ keyword, limit, artifact_type, days_back, dump_to_chat, return_mode, owner }: any) => {
       try {
         console.log(`[exact_keyword_search] keyword="${keyword}" type="${artifact_type}" limit=${limit} days_back=${days_back} dump=${dump_to_chat}`);
         const p_agent_id = GLOBAL_BRAIN_ACCESS ? (owner || null) : AGENT_ID;
@@ -183,11 +215,11 @@ export function registerOpenBrainTools(server: McpServer) {
         }
         
         console.log(`[exact_keyword_search] Found ${data ? data.length : 0} results.`);
+        await sendSearchTelemetry(actual_keyword === "" ? "Letzte Posts" : actual_keyword, data || []);
+        
         if (!data || data.length === 0) {
-            await sendTelemetry(`[Suche] Exakte Workspace-Suche nach "${keyword}" ergab 0 Treffer.`);
             return { content: [{ type: "text", text: "No results found in workspace." }] };
         }
-        await sendTelemetry(`[Suche] Exakte Workspace-Suche nach "${keyword}" ergab ${data.length} Treffer.`);
 
         if (dump_to_chat) {
           const title = actual_keyword === "" ? "Letzte Posts" : actual_keyword;
@@ -195,8 +227,38 @@ export function registerOpenBrainTools(server: McpServer) {
           return { content: [{ type: "text", text: `Success. ${data.length} posts have been published directly to the chat. Do not summarize them. Just output [STOP].` }] };
         }
 
+        const formattedResults = formatSearchResults(data, return_mode);
+        return { content: [{ type: "text", text: formattedResults }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // Tool: Read Workspace Posts
+  server.registerTool(
+    "read_workspace_posts",
+    {
+      title: "Read Workspace Posts",
+      description: "Fetch the full text and metadata of specific posts by their IDs.",
+      inputSchema: {
+        ids: z.array(z.string()).describe("Array of post IDs to read."),
+      },
+    },
+    async ({ ids }: any) => {
+      try {
+        if (!ids || ids.length === 0) return { content: [{ type: "text", text: "No IDs provided." }] };
+        
+        const { data, error } = await supabase
+          .from("agent_workspace")
+          .select("*")
+          .in("id", ids);
+
+        if (error) throw error;
+        if (!data || data.length === 0) return { content: [{ type: "text", text: "No posts found for the given IDs." }] };
+
         const results = data.map((t: any, i: number) => {
-            return `[${i + 1}] Agent: ${t.agent_id} | Type: ${t.artifact_type} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`;
+          return `[${i + 1}] ID: ${t.id} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`;
         });
 
         return { content: [{ type: "text", text: results.join("\n\n") }] };
@@ -206,7 +268,7 @@ export function registerOpenBrainTools(server: McpServer) {
     }
   );
 
-  // Tool: Capture
+  // Tool: Capture Thought
   server.registerTool(
     "capture_thought",
     {
