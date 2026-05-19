@@ -491,6 +491,25 @@ Never reply to pure confirmations or pleasantries (like "Thanks", "Done", or "Ta
 <P><B>Zweck:</B> Das LLM wird gezwungen, das explizite Token <CODE>[STOP]</CODE> auszugeben, anstatt sich H&ouml;flichkeiten auszudenken. Die <CODE>bot/index.ts</CODE> f&auml;ngt diesen String hart ab (<CODE>if (replyText.trim() === "[STOP]") return;</CODE>) und bricht die Ausf&uuml;hrung ab. Dadurch wird absolut nichts &uuml;ber MQTT publiziert, der Ping-Pong-Effekt stirbt ab und der Nexus-Bus wird wieder ruhig.</P>
 
 <A NAME="fluss"></A>
+<A NAME="pta"></A>
+<H2>9.6 Der Personal Trade Assistant (PTA): Architektur & Event-Sourcing</H2>
+<P>Der PTA repräsentiert eine spezialisierte Ausprägung des Agenten-Modells, fokussiert auf hochrobuste Exekution und Event-Sourcing anstelle von abstrakter Wissensverwaltung. Er ist das ausführende Organ (Der "Muskel") für den Smart Trade Manager (STM).</P>
+
+<H3>9.6.1 Event-Sourcing Datenmodell (Single Source of Truth)</H3>
+<P>Die Datenbank-Architektur des PTA weicht radikal von traditionellen State-Machines ab. Anstatt den Status eines Trades (OPEN, CLOSED) in der Datenbank zu aktualisieren, speichert die Tabelle <CODE>pta_execution_log</CODE> ausschließlich atomare, unveränderliche Events (z.B. <CODE>ORDER_SUBMITTED</CODE>, <CODE>FILL</CODE>, <CODE>CANCEL</CODE>).</P>
+<P>Der aktuelle Zustand eines Portfolios (Equity, Winrate, Active Positions) wird <B>on-the-fly</B> über aggregierende SQL-Views (<CODE>pta_active_positions</CODE>, <CODE>pta_portfolio_summary</CODE>) berechnet. Dieses Design garantiert mathematische Präzision und eliminiert "State-Drift" zwischen lokaler Datenbank und Broker.</P>
+
+<H3>9.6.2 Die "Dumb MCP" + "Background Sync" Architektur</H3>
+<P>Um das System für LLMs leicht wartbar und maximal ausfallsicher zu gestalten, ist die Ausführungslogik entkoppelt:</P>
+<UL>
+<LI><B>Das MCP Tool (<CODE>trade</CODE>):</B> Dient ausschließlich dazu, die "Absicht" (<CODE>ORDER_SUBMITTED</CODE>) in die Datenbank zu schreiben. Es kommuniziert <I>nicht</I> mit dem Broker. Dies hält den MCP-Server extrem schlank.</LI>
+<LI><B>Der IBKR-Sync Prozess (<CODE>ibkr_sync.ts</CODE>):</B> Ein minimalistisches Hintergrund-Skript, das im Bot-Container läuft. Es pollt die Datenbank nach ausstehenden Orders, sendet sie über eine TCP-Socket-Verbindung (Port 4002) an den IB Gateway Container und schreibt asynchron empfangene Ausführungen (Fills) zurück in die Datenbank.</LI>
+</UL>
+
+<H3>9.6.3 Robustheit durch Idempotenz</H3>
+<P>Der Sync-Prozess ist "Exactly-Once" garantiert. Jeder Fill vom Broker erhält eine eindeutige <CODE>broker_exec_id</CODE>. Durch einen <CODE>UNIQUE INDEX</CODE> in PostgreSQL kann das Sync-Skript bei einem Neustart blind historische Fills abfragen und in die Datenbank pushen, ohne dass es zu Duplikaten (Double-Counting) kommt.</P>
+
+
 <H2>10. Detaillierte Szenarien des Informationsflusses</H2>
 
 <H3>10.1 Textuelles Beispiel: Eine Ausgabe speichern</H3>
