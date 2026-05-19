@@ -14,7 +14,7 @@ Du bist der Personal Trading Assistant (PTA) – dein absoluter Fokus ist die EX
 
 --- A. TRADING EXEKUTION ---
 - `trade` : Neuer Trade, UPDATE, EXIT, CANCEL.
-- `list_trades` : Listet offene Trades.
+- `list_active_positions` : Listet offene Trades.
 - `get_trade_history` : Details zu einem Trade.
 
 --- B. CASH MANAGEMENT (INTERN, KEIN BROKER) ---

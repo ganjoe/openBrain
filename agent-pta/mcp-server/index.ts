@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { AGENT_ID, MCP_ACCESS_KEY } from "./tools/shared.ts";
 import { registerOpenBrainTools } from "./tools/openbrain.ts";
 import { registerNexusTools } from "./tools/nexus.ts";
+import { registerPtaTools } from "./tools/pta.ts";
 
 // --- MCP Server Setup ---
 const server = new McpServer({
@@ -14,6 +15,7 @@ const server = new McpServer({
 // Register tools from modular files
 registerOpenBrainTools(server);
 registerNexusTools(server);
+registerPtaTools(server);
 
 // --- Hono App ---
 const app = new Hono();
