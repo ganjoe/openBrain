@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS pta_execution_log (
   stop_price      NUMERIC,              -- Auxiliary price for Stop Orders
   broker_order_id TEXT,                 -- ID returned by IBKR/Broker
   commission      NUMERIC DEFAULT 0.0,
+  currency        TEXT DEFAULT 'USD',   -- Trade currency (e.g., USD, EUR)
+  exchange        TEXT,                 -- Exchange hint (e.g., SMART, FWB2)
+  slippage        NUMERIC DEFAULT 0.0,  -- Recorded slippage on fill
   notes           TEXT,                 -- Technical execution notes (not strategy)
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -36,6 +39,7 @@ WITH fill_aggregation AS (
     SELECT 
         trade_id,
         ticker,
+        currency,
         SUM(
             CASE 
                 WHEN action IN ('BUY', 'DEPOSIT') THEN quantity 
@@ -43,10 +47,11 @@ WITH fill_aggregation AS (
                 ELSE 0 
             END
         ) as net_quantity,
-        SUM(commission) as total_commission
+        SUM(commission) as total_commission,
+        SUM(slippage) as total_slippage
     FROM pta_execution_log
     WHERE event_type IN ('FILL', 'CASH_TRANSFER')
-    GROUP BY trade_id, ticker
+    GROUP BY trade_id, ticker, currency
 ),
 latest_stops AS (
     -- Find the most recent stop price submitted for the trade
@@ -60,8 +65,10 @@ latest_stops AS (
 SELECT 
     f.trade_id,
     f.ticker,
+    f.currency,
     f.net_quantity,
     f.total_commission,
+    f.total_slippage,
     s.current_stop_loss,
     CASE 
         WHEN f.net_quantity > 0 THEN 'LONG'
@@ -87,6 +94,9 @@ CREATE OR REPLACE FUNCTION pta_log_event(
   p_stop_price NUMERIC DEFAULT NULL,
   p_broker_order_id TEXT DEFAULT NULL,
   p_commission NUMERIC DEFAULT 0.0,
+  p_currency TEXT DEFAULT 'USD',
+  p_exchange TEXT DEFAULT NULL,
+  p_slippage NUMERIC DEFAULT 0.0,
   p_notes TEXT DEFAULT NULL
 )
 RETURNS BIGINT AS $$
@@ -94,9 +104,11 @@ DECLARE
   v_id BIGINT;
 BEGIN
   INSERT INTO pta_execution_log (
-    trade_id, ticker, event_type, action, quantity, price, stop_price, broker_order_id, commission, notes
+    trade_id, ticker, event_type, action, quantity, price, stop_price, 
+    broker_order_id, commission, currency, exchange, slippage, notes
   ) VALUES (
-    p_trade_id, p_ticker, p_event_type, p_action, p_quantity, p_price, p_stop_price, p_broker_order_id, p_commission, p_notes
+    p_trade_id, p_ticker, p_event_type, p_action, p_quantity, p_price, p_stop_price, 
+    p_broker_order_id, p_commission, p_currency, p_exchange, p_slippage, p_notes
   ) RETURNING id INTO v_id;
   
   RETURN v_id;
