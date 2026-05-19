@@ -46,7 +46,7 @@ BEGIN
     p_broker_order_id, p_commission, p_currency, p_exchange, p_slippage, p_notes,
     p_broker_exec_id, COALESCE(p_order_ref, p_trade_id)
   ) 
-  ON CONFLICT (broker_exec_id) WHERE event_type = 'FILL' DO NOTHING
+  ON CONFLICT (broker_exec_id) WHERE event_type = 'FILL' AND broker_exec_id IS NOT NULL DO NOTHING
   RETURNING id INTO v_id;
   
   -- If v_id is NULL (because of DO NOTHING), we still want to return a valid result or handle it.

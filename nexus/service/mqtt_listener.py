@@ -28,9 +28,15 @@ message_queue: asyncio.Queue = asyncio.Queue(maxsize=500)
 # Shared MQTT client — set on connect, used by api.py for non-blocking publish
 _mqtt_client: mqtt.Client | None = None
 
+_seen_agents: set[str] = set()
+
 
 def get_mqtt_client() -> mqtt.Client | None:
     return _mqtt_client
+
+
+def get_seen_agents() -> set[str]:
+    return _seen_agents
 
 SUBSCRIPTIONS = [
     ("agents/+/inbox",           1),
@@ -91,6 +97,14 @@ def on_message(client, userdata, msg):
     # Ensure msg_type is always set
     if not raw.get("header", {}).get("msg_type"):
         raw.setdefault("header", {})["msg_type"] = _derive_msg_type(msg.topic)
+
+    # Track seen agents in memory
+    from_id = raw.get("header", {}).get("from")
+    if from_id and from_id not in ("unknown", "?", "nexus", "all"):
+        _seen_agents.add(from_id)
+    to_id = raw.get("header", {}).get("to")
+    if to_id and to_id not in ("unknown", "?", "nexus", "all"):
+        _seen_agents.add(to_id)
 
     # Push to SSE queue (non-blocking, drop oldest if full)
     try:

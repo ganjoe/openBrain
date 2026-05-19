@@ -71,28 +71,61 @@ export function registerPtaTools(server: McpServer) {
     "list_active_positions",
     {
       title: "List Active Positions",
-      description: "Show all currently open trades and their net positions.",
+      description: "Show all currently open trades and their net positions, pulling live data from the broker.",
       inputSchema: {
         ticker: z.string().optional().describe("Optional filter by ticker"),
       },
     },
     async ({ ticker }: any) => {
       try {
-        let query = supabase.from("pta_active_positions").select("*");
-        if (ticker) query = query.eq("ticker", ticker.toUpperCase());
+        // 1. Trigger live position refresh from IBKR by logging a REFRESH_REQUESTED event
+        await supabase.from("pta_execution_log").insert({
+          trade_id: "SYSTEM",
+          ticker: "SYSTEM",
+          event_type: "REFRESH_REQUESTED",
+          action: "REFRESH",
+          quantity: 0,
+          price: 0
+        });
 
-        const { data, error } = await query;
-        if (error) throw error;
+        // 2. Wait for 4 seconds to let ibkr_sync fetch and save live positions to pta_ibkr_positions
+        await new Promise(resolve => setTimeout(resolve, 4000));
 
-        if (!data || data.length === 0) {
-          return { content: [{ type: "text", text: "No active positions found." }] };
+        // 3. Fetch local active positions
+        let activeQuery = supabase.from("pta_active_positions").select("*");
+        if (ticker) activeQuery = activeQuery.eq("ticker", ticker.toUpperCase());
+        const { data: activeData, error: activeErr } = await activeQuery;
+        if (activeErr) throw activeErr;
+
+        // 4. Fetch live broker positions
+        let liveQuery = supabase.from("pta_ibkr_positions").select("*");
+        if (ticker) liveQuery = liveQuery.eq("ticker", ticker.toUpperCase());
+        const { data: liveData, error: liveErr } = await liveQuery;
+        if (liveErr) throw liveErr;
+
+        let responseText = "";
+
+        // Format live broker positions
+        if (liveData && liveData.length > 0) {
+          responseText += "=== LIVE IBKR PORTFOLIO STATUS (from Broker) ===\n";
+          responseText += liveData.map((p: any) => 
+            `- Ticker: ${p.ticker} | Qty: ${p.quantity} | Avg Cost: ${p.avg_cost.toFixed(2)} | Account: ${p.account}`
+          ).join("\n") + "\n\n";
+        } else {
+          responseText += "=== LIVE IBKR PORTFOLIO STATUS (from Broker) ===\nNo active positions in IBKR account.\n\n";
         }
 
-        const report = data.map((p: any) => 
-          `[${p.trade_id}] ${p.ticker}: ${p.net_quantity} @ ${p.position_type} (SL: ${p.current_stop_loss || 'NONE'})`
-        ).join("\n");
+        // Format active tracked trades
+        if (activeData && activeData.length > 0) {
+          responseText += "=== TRACKED TRADES (LOCAL DB) ===\n";
+          responseText += activeData.map((p: any) => 
+            `- [${p.trade_id}] ${p.ticker}: ${p.net_quantity} @ ${p.position_type} (SL: ${p.current_stop_loss || 'NONE'})`
+          ).join("\n");
+        } else {
+          responseText += "=== TRACKED TRADES (LOCAL DB) ===\nNo active tracked trades in local database.";
+        }
 
-        return { content: [{ type: "text", text: report }] };
+        return { content: [{ type: "text", text: responseText }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error fetching positions: ${err.message}` }], isError: true };
       }

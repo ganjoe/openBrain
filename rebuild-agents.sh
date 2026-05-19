@@ -3,15 +3,15 @@ cd /home/daniel/openBrain
 
 echo "🛠️  Rebuilding all custom services in parallel..."
 docker compose build \
-  mcp-server mcp-cco \
+  mcp-server mcp-cco mcp-pta \
   nexus-frontend nexus-service \
-  agent-cco-bot agent-ea-bot
+  agent-cco-bot agent-ea-bot agent-pta-bot
 
 echo "🚀 Starting updated services..."
 docker compose up -d \
-  mcp-server mcp-cco \
+  mcp-server mcp-cco mcp-pta \
   nexus-frontend nexus-service \
-  agent-cco-bot agent-ea-bot
+  agent-cco-bot agent-ea-bot agent-pta-bot
 
 echo "🗄️  Restarting PostgREST (flushing SQL schema cache)..."
 docker restart openbrain-postgrest

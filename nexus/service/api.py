@@ -109,15 +109,23 @@ async def get_history(since: int = Query(0, description="Unix timestamp")):
 @router.get("/api/agents")
 async def get_agents():
     """
-    Returns a deduplicated list of all known agent IDs seen in nexus_messages.
+    Returns a deduplicated list of all known agent IDs seen in nexus_messages or online via MQTT.
     The dashboard uses this to populate the checkboxes.
     """
     # Pull distinct from_agent and to_agent values
-    rows = await _db_get("nexus_chat", {"select": "from_agent,to_agent", "limit": 1000})
+    rows = await _db_get("nexus_chat", {"select": "from_agent,to_agent", "order": "unix_ts.desc", "limit": 5000})
     seen: set[str] = set()
     for row in rows:
         seen.add(row["from_agent"])
         seen.add(row["to_agent"])
+
+    # Also add in-memory seen agents from MQTT status
+    try:
+        from mqtt_listener import get_seen_agents
+        seen.update(get_seen_agents())
+    except ImportError:
+        pass
+
     seen.discard("nexus")  # internal nexus system agent (Redundant: has its own button)
     seen.discard("all")    # discard broadcast address (Breaks hierarchy)
     return sorted(seen)

@@ -15,5 +15,5 @@ mqtt:
 mcp:
   # Local MCP servers this agent can call directly via HTTP
   local_servers:
-    - url: "http://mcp-server:8787"
-      label: "openbrain-memory"
+    - url: "http://mcp-pta:8789"
+      label: "openbrain-pta-execution"

@@ -278,12 +278,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-volumes:
-  openbrain_pgdata:
-  openbrain_ollama:
-  openbrain_mqtt:
-
-
   # --- PTA MCP Server ---
   mcp-pta:
     build:
@@ -334,6 +328,16 @@ volumes:
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
       LM_STUDIO_URL: http://host.docker.internal:1234
       POSTGREST_URL: http://postgrest:3000
+      SUPABASE_URL: http://gateway:80
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      IB_GATEWAY_HOST: "10.20.0.23"
+      IB_GATEWAY_PORT: "4002"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+volumes:
+  openbrain_pgdata:
+  openbrain_ollama:
+  openbrain_mqtt:
+

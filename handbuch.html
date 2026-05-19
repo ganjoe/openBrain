@@ -28,6 +28,7 @@
 <LI><A HREF="#nexus">The Nexus: MQTT-basierter Agenten-Kommunikations-Hub</A>
     <UL>
         <LI><A HREF="#nexus-provider">Multi-Provider Management: Dynamische LLM-Orchestrierung</A></LI>
+        <LI><A HREF="#nexus-discovery">Automatische Agenten-Erkennung (Discovery)</A></LI>
     </UL>
 <LI><A HREF="#mcp">Der Tool-Server: Deep Dive in die Deno MCP Implementierung</A>
 <LI><A HREF="#bot">Der Executive Assistant: Bot-Logik, Historie & Agentik</A>
@@ -382,6 +383,15 @@ graph TD
 <LI><B>Inactive (Lesemodus):</B> Der Chat friert die aktuelle Scroll-Position ein. Dies erlaubt es dem Nutzer, in Ruhe &auml;ltere Analysen zu lesen, w&auml;hrend neue Nachrichten im Hintergrund lautlos angeh&auml;ngt werden.</LI>
 </UL>
 
+<A NAME="nexus-discovery"></A>
+<H3>7.5 Automatische Agenten-Erkennung (Discovery)</H3>
+<P>Damit neue oder selten genutzte Agenten ohne manuelle Datenbankeintr&auml;ge oder Dummy-Nachrichten im Dashboard sichtbar werden, nutzt der Nexus eine automatische Erkennung:</P>
+<UL>
+<LI><B>MQTT Status als Trigger:</B> Beim Starten publiziert jeder Agenten-Bot eine Statusmeldung (<CODE>status: "online"</CODE>) mit dem Flag <CODE>retain: true</CODE> auf dem Topic <CODE>agents/status</CODE>. Der MQTT-Broker speichert dieses Statuspaket dauerhaft.</LI>
+<LI><B>Intelligentes Backend-Caching:</B> Beim Systemstart abonniert der <CODE>nexus-service</CODE> dieses Topic und erh&auml;lt sofort alle gespeicherten Statusmeldungen. Die aktiven Agenten-IDs werden im Arbeitsspeicher (<CODE>_seen_agents</CODE>) gepuffert.</LI>
+<LI><B>Kombinierter Endpunkt:</B> Der API-Endpunkt <CODE>/api/agents</CODE> liest sowohl die historischen Agenten aus der Chat-Datenbank (<CODE>nexus_chat</CODE>) als auch die aktuell im Speicher registrierten MQTT-Agenten aus und liefert eine konsolidierte Liste an das Frontend.</LI>
+</UL>
+
 <A NAME="mcp"></A>
 <H2>8. Der Tool-Server: Deep Dive in die Deno MCP Implementierung</H2>
 <P>Der MCP-Server ist das technologische Bindeglied zwischen Bot und Datenbank. Er exponiert LLM-lesbare Werkzeuge und orchestriert die Vektorisierung. Wir nutzen hierf&uuml;r <B>Deno</B> anstelle von Node.js.</P>
@@ -508,6 +518,15 @@ Never reply to pure confirmations or pleasantries (like "Thanks", "Done", or "Ta
 
 <H3>9.6.3 Robustheit durch Idempotenz</H3>
 <P>Der Sync-Prozess ist "Exactly-Once" garantiert. Jeder Fill vom Broker erhält eine eindeutige <CODE>broker_exec_id</CODE>. Durch einen <CODE>UNIQUE INDEX</CODE> in PostgreSQL kann das Sync-Skript bei einem Neustart blind historische Fills abfragen und in die Datenbank pushen, ohne dass es zu Duplikaten (Double-Counting) kommt.</P>
+
+<H3>9.6.4 Live-Portfolio-Synchronisation von Interactive Brokers</H3>
+<P>Wenn der Nutzer oder ein koordinierender Agent den Live-Status des Portfolios abfragt, wird das MCP-Tool <CODE>list_active_positions</CODE> aufgerufen. Um sicherzustellen, dass keine permanente Hintergrundlast oder ein ungewollter Live-Mirror läuft, wird das Portfolio rein auf Anfrage (On-Demand Snapshot) synchronisiert:</P>
+<OL>
+<LI><B>Refresh-Trigger:</B> Das MCP-Tool schreibt einen Kontroll-Event des Typs <CODE>REFRESH_REQUESTED</CODE> in das <CODE>pta_execution_log</CODE>.</LI>
+<LI><B>Sync-Reaktion:</B> Das Hintergrund-Skript <CODE>ibkr_sync.ts</CODE> erkennt diesen Request im nächsten Durchlauf, setzt die Sync-Kennzeichnung und stößt einmalig <CODE>ib.reqPositions()</CODE> an.</LI>
+<LI><B>Snapshot-Verarbeitung:</B> Eintreffende Positionen werden im Speicher gesammelt. Sobald das Event <CODE>EventName.positionEnd</CODE> signalisiert, dass der Snapshot vollständig ist, wird die Verbindung über <CODE>ib.cancelPositions()</CODE> sofort wieder beendet.</LI>
+<LI><B>Speicherung & Bericht:</B> Die alte Tabelle <CODE>pta_ibkr_positions</CODE> wird geleert und mit dem neuen Snapshot überschrieben. Das MCP-Tool liest diese Daten nach einer Wartezeit von 1,5 Sekunden aus und gibt einen konsolidierten Bericht (Live-Broker-Status + lokal getrackte Trades) zurück.</LI>
+</OL>
 
 
 <H2>10. Detaillierte Szenarien des Informationsflusses</H2>
@@ -646,7 +665,7 @@ cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 <LI><B>Prompt-Konfiguration als Volume mounten (KRITISCH):</B> Prompts geh&ouml;ren niemals hart in den Code oder als Environment Variables in die <CODE>docker-compose.yml</CODE>! Erstelle <CODE>prompt.txt</CODE> und <CODE>metadata-prompt.txt</CODE> und mounte sie via Docker Volumes als read-only (<CODE>:ro</CODE>) in die Bot- und MCP-Container. Das erm&ouml;glicht dir, die Prompts jederzeit on-the-fly im Host-Editor anzupassen, ohne Container neu bauen zu m&uuml;ssen.</LI>
 <LI><B>Container deklarieren:</B> Dupliziere in der <CODE>docker-compose.yml</CODE> die Bot- und MCP-Bl&ouml;cke. Mounte <CODE>config.yaml</CODE> als read-only Volume. Der Bot liest MCP-URLs, MQTT-Broker und Agenten-ID automatisch daraus.</LI>
 <LI><B>Schema-Isolation:</B> Falls der Broker eigene relationale Daten braucht, quetsche sie nicht in die Core-Tabellen. Erstelle per Supabase Studio ein neues Schema (z.B. <CODE>CREATE SCHEMA broker;</CODE>). PostgREST spiegelt dieses Schema sofort in eine isolierte REST-API.</LI>
-<LI><B>Starten:</B> <CODE>docker compose up -d --build agent-xyz-bot</CODE>. Der neue Agent verbindet sich via MQTT und erscheint sofort als Checkbox im Dashboard.</LI>
+<LI><B>Starten & Erkennung:</B> <CODE>docker compose up -d --build agent-xyz-bot</CODE>. Der neue Agent verbindet sich via MQTT, sendet sein Online-Signal und erscheint dank der automatischen MQTT-Discovery sofort als Checkbox im Dashboard, ohne dass vorher Nachrichten ausgetauscht werden müssen.</LI>
 </OL>
 
 <H3>13.4 Hot-Reloading via rebuild-agents.sh</H3>
