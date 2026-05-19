@@ -283,3 +283,57 @@ volumes:
   openbrain_ollama:
   openbrain_mqtt:
 
+
+  # --- PTA MCP Server ---
+  mcp-pta:
+    build:
+      context: ./agent-pta/mcp-server
+      dockerfile: Dockerfile
+    container_name: openbrain-mcp-pta
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    volumes:
+      - ./agent-pta/metadata-prompt.txt:/app/metadata-prompt.txt:ro
+    environment:
+      SUPABASE_URL: http://gateway:80
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_EMBED_MODEL: qwen3-embedding:8b
+      LM_STUDIO_URL: http://host.docker.internal:1234
+      PORT: "8789"
+      AGENT_ID: "pta"
+      GLOBAL_BRAIN_ACCESS: "false"
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    ports:
+      - "8789:8789"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # --- PTA Bot: Personal Trade Assistant ---
+  agent-pta-bot:
+    build:
+      context: ./agent-pta/bot
+      dockerfile: Dockerfile
+    container_name: openbrain-pta-bot
+    restart: unless-stopped
+    depends_on:
+      - nexus-broker
+      - mcp-pta
+    volumes:
+      - ./agent-pta/prompt.txt:/app/prompt.txt:ro
+      - ./agent-pta/config.yaml:/app/config.yaml:ro
+    environment:
+      CONFIG_PATH: /app/config.yaml
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      LM_STUDIO_URL: http://host.docker.internal:1234
+      POSTGREST_URL: http://postgrest:3000
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
