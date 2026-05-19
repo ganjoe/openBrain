@@ -11,5 +11,5 @@ RUN npm install
 # Copy source code and config
 COPY . .
 
-# Run the bot
-CMD ["npm", "start"]
+# Run the bot and the sync script
+CMD ["/app/start_bot.sh"]
