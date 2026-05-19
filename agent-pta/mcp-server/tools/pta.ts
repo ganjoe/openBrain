@@ -132,4 +132,45 @@ export function registerPtaTools(server: McpServer) {
       }
     }
   );
+
+  // Tool: Get Portfolio Metrics
+  server.registerTool(
+    "get_portfolio_metrics",
+    {
+      title: "Get Portfolio Metrics",
+      description: "Retrieve aggregated portfolio performance (realized PnL, winrate, calculated cash balance) based purely on internal execution logs.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const { data, error } = await supabase.from("pta_portfolio_summary").select("*").single();
+
+        if (error) throw error;
+        if (!data) return { content: [{ type: "text", text: "No portfolio data available yet." }] };
+
+        const winrate = data.closed_trades > 0 
+            ? ((data.winning_trades / data.closed_trades) * 100).toFixed(1) 
+            : "0.0";
+
+        const report = `
+=== PORTFOLIO METRICS (Aggregate Log Based) ===
+Calculated Cash Balance: ${data.calculated_cash_balance}
+Cash Injected: ${data.cash_injected}
+
+Total Realized PnL: ${data.total_realized_pnl}
+Total Commissions Paid: ${data.total_commissions_paid}
+
+Total Trades: ${data.total_trades}
+Closed Trades: ${data.closed_trades}
+Winning Trades: ${data.winning_trades}
+Winrate: ${winrate}%
+===============================================
+        `.trim();
+
+        return { content: [{ type: "text", text: report }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error fetching portfolio metrics: ${err.message}` }], isError: true };
+      }
+    }
+  );
 }
