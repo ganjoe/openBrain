@@ -9,6 +9,11 @@ CREATE TABLE IF NOT EXISTS pta_ibkr_positions (
   ticker          TEXT NOT NULL,
   quantity        NUMERIC NOT NULL,
   avg_cost        NUMERIC NOT NULL,
+  market_price    NUMERIC,
+  market_value    NUMERIC,
+  unrealized_pnl  NUMERIC,
+  realized_pnl    NUMERIC,
+  position_pct    NUMERIC,
   updated_at      TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT unique_account_ticker UNIQUE (account, ticker)
 );

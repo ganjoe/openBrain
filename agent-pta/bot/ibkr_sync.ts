@@ -26,7 +26,10 @@ const ib = new IBApi({
 let isConnected = false;
 let orderIdCounter = -1;
 let isSyncingPositions = false;
-let activePositionsTemp: Array<{ account: string; ticker: string; pos: number; avgCost: number }> = [];
+let activePositionsTemp: Array<{ account: string; ticker: string; pos: number; avgCost: number; marketPrice: number; marketValue: number; unrealizedPNL: number; realizedPNL: number }> = [];
+let activeAccountMetrics: Record<string, { totalCashBalance: number; netLiquidation: number; availableFunds: number }> = {};
+let isSyncingOrders = false;
+let activeOpenOrdersTemp: Array<{ account: string; permId: number; orderId: number; ticker: string; action: string; quantity: number; orderType: string; limitPrice?: number; stopPrice?: number; status: string }> = [];
 
 // --- IBKR Connection Handlers ---
 ib.on(EventName.connected, () => {
@@ -51,24 +54,51 @@ ib.on(EventName.nextValidId, (orderId: number) => {
   console.log(`[IBKR Sync] Next Valid Order ID: ${orderIdCounter}`);
 });
 
-// --- Position Handling (Live Portfolio Snapshot) ---
-ib.on(EventName.position, (account: string, contract: Contract, pos: number, avgCost?: number) => {
+// --- Position Handling (Live Portfolio Rich Snapshot) ---
+ib.on(EventName.updatePortfolio, (contract: Contract, position: number, marketPrice: number, marketValue: number, averageCost?: number, unrealizedPNL?: number, realizedPNL?: number, accountName?: string) => {
   if (!isSyncingPositions) return;
-  if (!contract.symbol) return;
-  console.log(`[IBKR Sync] Live Position Snapshot: ${contract.symbol} | Qty: ${pos} @ ${avgCost} (Account: ${account})`);
+  if (!contract.symbol || position === 0) return;
+  
+  const account = accountName || "UNKNOWN";
+  console.log(`[IBKR Sync] Rich Position Snapshot: ${contract.symbol} | Qty: ${position} | MktPrice: ${marketPrice} | PnL: ${unrealizedPNL}`);
+  
   activePositionsTemp.push({
     account,
     ticker: contract.symbol,
-    pos,
-    avgCost: avgCost || 0
+    pos: position,
+    avgCost: averageCost || 0,
+    marketPrice: marketPrice || 0,
+    marketValue: marketValue || 0,
+    unrealizedPNL: unrealizedPNL || 0,
+    realizedPNL: realizedPNL || 0
   });
 });
 
-ib.on(EventName.positionEnd, async () => {
+ib.on(EventName.updateAccountValue, (key: string, value: string, currency: string, accountName: string) => {
+  if (!isSyncingPositions) return;
+  const account = accountName || "UNKNOWN";
+  
+  if (!activeAccountMetrics[account]) {
+    activeAccountMetrics[account] = { totalCashBalance: 0, netLiquidation: 0, availableFunds: 0 };
+  }
+  
+  if (currency === "EUR") {
+    const numVal = parseFloat(value) || 0;
+    if (key === "TotalCashBalance") {
+      activeAccountMetrics[account].totalCashBalance = numVal;
+    } else if (key === "NetLiquidation") {
+      activeAccountMetrics[account].netLiquidation = numVal;
+    } else if (key === "AvailableFunds") {
+      activeAccountMetrics[account].availableFunds = numVal;
+    }
+  }
+});
+
+ib.on(EventName.accountDownloadEnd, async (accountName: string) => {
   if (!isSyncingPositions) return;
   isSyncingPositions = false;
-  ib.cancelPositions(); // Stop active streaming immediately
-  console.log(`[IBKR Sync] Finished processing live positions. Saving snapshot of ${activePositionsTemp.length} positions...`);
+  ib.reqAccountUpdates(false, accountName); // Stop active streaming immediately
+  console.log(`[IBKR Sync] Finished processing live positions. Saving rich snapshot of ${activePositionsTemp.length} positions...`);
 
   try {
     // 1. Delete all old records in pta_ibkr_positions
@@ -76,22 +106,103 @@ ib.on(EventName.positionEnd, async () => {
 
     // 2. Insert new positions
     if (activePositionsTemp.length > 0) {
-      const inserts = activePositionsTemp.map(p => ({
-        account: p.account,
-        ticker: p.ticker,
-        quantity: p.pos,
-        avg_cost: p.avgCost,
-        updated_at: new Date().toISOString()
-      }));
+      const inserts = activePositionsTemp.map(p => {
+        const netLiq = activeAccountMetrics[p.account]?.netLiquidation || 0;
+        const positionPct = netLiq > 0 ? (p.marketValue / netLiq) * 100 : 0;
+        return {
+          account: p.account,
+          ticker: p.ticker,
+          quantity: p.pos,
+          avg_cost: p.avgCost,
+          market_price: p.marketPrice,
+          market_value: p.marketValue,
+          unrealized_pnl: p.unrealizedPNL,
+          realized_pnl: p.realizedPNL,
+          position_pct: positionPct,
+          updated_at: new Date().toISOString()
+        };
+      });
       const { error } = await supabase.from("pta_ibkr_positions").insert(inserts);
       if (error) {
         console.error("[IBKR Sync] Error inserting snapshot positions:", error.message);
+      }
+    }
+    
+    // 3. Upsert account metrics
+    for (const [account, metrics] of Object.entries(activeAccountMetrics)) {
+      const cashQuote = metrics.netLiquidation > 0 ? (metrics.totalCashBalance / metrics.netLiquidation) * 100 : 0;
+      const { error: accErr } = await supabase.from("pta_ibkr_account_summary").upsert({
+        account: account,
+        total_cash_balance: metrics.totalCashBalance,
+        net_liquidation: metrics.netLiquidation,
+        available_funds: metrics.availableFunds,
+        cash_quote: cashQuote,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "account" });
+      if (accErr) {
+        console.error(`[IBKR Sync] Error upserting account summary for ${account}:`, accErr.message);
       }
     }
   } catch (err) {
     console.error("[IBKR Sync] Exception during position snapshot write:", err);
   } finally {
     activePositionsTemp = [];
+    activeAccountMetrics = {};
+  }
+});
+
+// --- Open Order Handling ---
+ib.on(EventName.openOrder, (orderId: number, contract: Contract, order: Order, orderState: OrderState) => {
+  if (!isSyncingOrders) return;
+  const account = order.account || "UNKNOWN";
+  console.log(`[IBKR Sync] Open Order Snapshot: ${contract.symbol} | ${order.action} | Qty: ${order.totalQuantity} | Type: ${order.orderType} | Status: ${orderState.status} | PermId: ${order.permId}`);
+  
+  activeOpenOrdersTemp.push({
+    account,
+    permId: order.permId || 0,
+    orderId,
+    ticker: contract.symbol || "UNKNOWN",
+    action: order.action || "UNKNOWN",
+    quantity: order.totalQuantity || 0,
+    orderType: order.orderType || "UNKNOWN",
+    limitPrice: order.lmtPrice || undefined,
+    stopPrice: order.auxPrice || undefined,
+    status: orderState.status || "Unknown"
+  });
+});
+
+ib.on(EventName.openOrderEnd, async () => {
+  if (!isSyncingOrders) return;
+  isSyncingOrders = false;
+  console.log(`[IBKR Sync] Finished processing live open orders. Saving snapshot of ${activeOpenOrdersTemp.length} orders...`);
+  
+  try {
+    // Delete all old records in pta_ibkr_open_orders
+    await supabase.from("pta_ibkr_open_orders").delete().neq("account", "LTM_DUMMY");
+    
+    if (activeOpenOrdersTemp.length > 0) {
+      const inserts = activeOpenOrdersTemp.map(o => ({
+        account: o.account,
+        perm_id: o.permId,
+        order_id: o.orderId,
+        ticker: o.ticker,
+        action: o.action,
+        quantity: o.quantity,
+        order_type: o.orderType,
+        limit_price: o.limitPrice,
+        stop_price: o.stopPrice,
+        status: o.status,
+        updated_at: new Date().toISOString()
+      }));
+      const { error } = await supabase.from("pta_ibkr_open_orders").insert(inserts);
+      if (error) {
+        console.error("[IBKR Sync] Error inserting snapshot open orders:", error.message);
+      }
+    }
+  } catch (err) {
+    console.error("[IBKR Sync] Exception during open orders snapshot write:", err);
+  } finally {
+    activeOpenOrdersTemp = [];
   }
 });
 
@@ -147,10 +258,13 @@ async function syncLoop() {
     if (refreshErr) {
       console.error("[IBKR Sync] Database error while fetching refresh requests:", refreshErr.message);
     } else if (refreshReqs && refreshReqs.length > 0) {
-      console.log(`[IBKR Sync] Received ${refreshReqs.length} refresh request(s). Triggering reqPositions() snapshot...`);
+      console.log(`[IBKR Sync] Received ${refreshReqs.length} refresh request(s). Triggering reqAccountUpdates() snapshot...`);
       isSyncingPositions = true;
+      isSyncingOrders = true;
       activePositionsTemp = [];
-      ib.reqPositions();
+      activeOpenOrdersTemp = [];
+      ib.reqAccountUpdates(true, "");
+      ib.reqAllOpenOrders();
       
       // Delete the processed refresh requests
       const { error: deleteErr } = await supabase
@@ -213,6 +327,93 @@ async function syncLoop() {
            console.error(`[IBKR Sync] Critical: Order sent but failed to update DB for ID ${po.id}:`, updateErr);
            // Note: In a perfect world, we'd pause or alert here.
        }
+    }
+
+    // 2. Find Pending Cancel Requests in DB
+    const { data: cancelReqs, error: cancelErr } = await supabase
+      .from("pta_execution_log")
+      .select("*")
+      .eq("event_type", "CANCEL_REQUESTED")
+      .is("broker_order_id", null);
+
+    if (cancelErr) {
+      console.error("[IBKR Sync] Database error while fetching cancel requests:", cancelErr.message);
+    }
+
+    for (const cr of cancelReqs || []) {
+      console.log(`[IBKR Sync] Processing Cancel Request: DB-ID ${cr.id} for ticker ${cr.ticker}`);
+      
+      // Look up the open order in our cached open orders table
+      const { data: openOrders, error: lookupErr } = await supabase
+        .from("pta_ibkr_open_orders")
+        .select("*")
+        .eq("ticker", cr.ticker);
+      
+      if (lookupErr) {
+        console.error(`[IBKR Sync] Error looking up open orders for ${cr.ticker}:`, lookupErr.message);
+        continue;
+      }
+
+      if (!openOrders || openOrders.length === 0) {
+        console.log(`[IBKR Sync] No open order found for ${cr.ticker}. Marking cancel as processed.`);
+        await supabase
+          .from("pta_execution_log")
+          .update({ broker_order_id: "NONE_FOUND", notes: "No matching open order at broker" })
+          .eq("id", cr.id);
+        continue;
+      }
+
+      // Cancel each matching open order for this ticker
+      for (const oo of openOrders) {
+        // We need to use reqAllOpenOrders to bind orderId, then cancel
+        // Since we know the permId, we can use reqAllOpenOrders + cancel in a callback
+        console.log(`[IBKR Sync] Cancelling order for ${cr.ticker}: PermId=${oo.perm_id}, OrderId=${oo.order_id}`);
+        
+        // Use a promise to handle the async cancel flow
+        await new Promise<void>((resolve) => {
+          let cancelled = false;
+          
+          const onOpenOrder = (orderId: number, contract: Contract, order: Order, orderState: OrderState) => {
+            if (order.permId === oo.perm_id && !cancelled) {
+              cancelled = true;
+              console.log(`[IBKR Sync] Found order via permId ${oo.perm_id} -> orderId ${orderId}. Sending cancelOrder...`);
+              ib.cancelOrder(orderId);
+            }
+          };
+          
+          const onOpenOrderEnd = () => {
+            ib.off(EventName.openOrder, onOpenOrder);
+            ib.off(EventName.openOrderEnd, onOpenOrderEnd);
+            if (!cancelled) {
+              console.log(`[IBKR Sync] Could not find order with permId ${oo.perm_id} in open orders list.`);
+            }
+            resolve();
+          };
+          
+          ib.on(EventName.openOrder, onOpenOrder);
+          ib.on(EventName.openOrderEnd, onOpenOrderEnd);
+          ib.reqAllOpenOrders();
+          
+          // Safety timeout in case openOrderEnd never fires
+          setTimeout(() => {
+            ib.off(EventName.openOrder, onOpenOrder);
+            ib.off(EventName.openOrderEnd, onOpenOrderEnd);
+            resolve();
+          }, 5000);
+        });
+      }
+
+      // Mark the cancel request as processed
+      const { error: updateErr } = await supabase
+        .from("pta_execution_log")
+        .update({ broker_order_id: "CANCELLED", notes: `Cancelled ${openOrders.length} order(s) for ${cr.ticker}` })
+        .eq("id", cr.id);
+
+      if (updateErr) {
+        console.error(`[IBKR Sync] Failed to mark cancel request ${cr.id} as processed:`, updateErr.message);
+      } else {
+        console.log(`[IBKR Sync] Cancel request ${cr.id} for ${cr.ticker} processed successfully.`);
+      }
     }
 
   } catch (err) {

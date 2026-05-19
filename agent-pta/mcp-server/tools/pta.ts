@@ -28,7 +28,10 @@ export function registerPtaTools(server: McpServer) {
         let eventType = "ORDER_SUBMITTED";
         let action = params.action;
 
-        if (params.action === "CASH") {
+        if (params.action === "CANCEL") {
+            eventType = "CANCEL_REQUESTED";
+            action = "CANCEL";
+        } else if (params.action === "CASH") {
             eventType = "CASH_TRANSFER";
             action = params.quantity && params.quantity > 0 ? "DEPOSIT" : "WITHDRAW";
         } else if (params.action === "EXIT") {
@@ -102,17 +105,66 @@ export function registerPtaTools(server: McpServer) {
         if (ticker) liveQuery = liveQuery.eq("ticker", ticker.toUpperCase());
         const { data: liveData, error: liveErr } = await liveQuery;
         if (liveErr) throw liveErr;
+        // 5. Fetch account summary
+        const { data: accData, error: accErr } = await supabase.from("pta_ibkr_account_summary").select("*").limit(1).maybeSingle();
+        if (accErr) throw accErr;
+
+        // 6. Fetch live open orders
+        let ordersQuery = supabase.from("pta_ibkr_open_orders").select("*");
+        if (ticker) ordersQuery = ordersQuery.eq("ticker", ticker.toUpperCase());
+        const { data: ordersData, error: ordersErr } = await ordersQuery;
+        if (ordersErr) throw ordersErr;
 
         let responseText = "";
+
+        // Format account summary
+        if (accData && !ticker) {
+          responseText += "=== LIVE IBKR ACCOUNT SUMMARY (EUR) ===\n";
+          responseText += `- Total Cash Balance: ${accData.total_cash_balance.toFixed(2)}\n`;
+          responseText += `- Net Liquidation Value: ${accData.net_liquidation.toFixed(2)}\n`;
+          responseText += `- Available Funds: ${accData.available_funds.toFixed(2)}\n`;
+          responseText += `- Cash Quote: ${accData.cash_quote?.toFixed(2) || '0.00'}%\n\n`;
+        }
+
+
+        // Group open orders by ticker
+        const ordersByTicker: Record<string, any[]> = {};
+        for (const o of ordersData || []) {
+          if (!ordersByTicker[o.ticker]) ordersByTicker[o.ticker] = [];
+          ordersByTicker[o.ticker].push(o);
+        }
 
         // Format live broker positions
         if (liveData && liveData.length > 0) {
           responseText += "=== LIVE IBKR PORTFOLIO STATUS (from Broker) ===\n";
-          responseText += liveData.map((p: any) => 
-            `- Ticker: ${p.ticker} | Qty: ${p.quantity} | Avg Cost: ${p.avg_cost.toFixed(2)} | Account: ${p.account}`
-          ).join("\n") + "\n\n";
+          const lines = liveData.map((p: any) => {
+            let line = `- Ticker: ${p.ticker} | Qty: ${p.quantity} | Avg Cost: ${p.avg_cost?.toFixed(2) || '0.00'} | Mkt Price: ${p.market_price?.toFixed(2) || '0.00'} | Mkt Value: ${p.market_value?.toFixed(2) || '0.00'} | Unrlz PnL: ${p.unrealized_pnl?.toFixed(2) || '0.00'} | Rlz PnL: ${p.realized_pnl?.toFixed(2) || '0.00'} | Weight: ${p.position_pct?.toFixed(2) || '0.00'}% | Account: ${p.account}`;
+            
+            const tickerOrders = ordersByTicker[p.ticker] || [];
+            if (tickerOrders.length > 0) {
+              for (const o of tickerOrders) {
+                const priceStr = o.limit_price ? ` @ LMT ${o.limit_price.toFixed(2)}` : (o.stop_price ? ` @ STP ${o.stop_price.toFixed(2)}` : "");
+                line += `\n    └─ [Active Order: ${o.action} ${o.quantity} ${o.order_type}${priceStr} (Status: ${o.status})]`;
+              }
+            }
+            return line;
+          });
+          responseText += lines.join("\n") + "\n\n";
         } else {
           responseText += "=== LIVE IBKR PORTFOLIO STATUS (from Broker) ===\nNo active positions in IBKR account.\n\n";
+        }
+
+        // Format other open orders (which have no active position)
+        const activeTickers = new Set((liveData || []).map((p: any) => p.ticker));
+        const otherOrders = (ordersData || []).filter((o: any) => !activeTickers.has(o.ticker));
+        if (otherOrders.length > 0 && !ticker) {
+          responseText += "=== OTHER OPEN ORDERS (no active positions) ===\n";
+          responseText += otherOrders.map((o: any) => {
+            const priceStr = o.limit_price 
+              ? ` | Lmt Price: ${o.limit_price.toFixed(2)}` 
+              : (o.stop_price ? ` | Stop Price: ${o.stop_price.toFixed(2)}` : "");
+            return `- Ticker: ${o.ticker} | Action: ${o.action} | Qty: ${o.quantity} | Type: ${o.order_type}${priceStr} | Status: ${o.status} | Account: ${o.account}`;
+          }).join("\n") + "\n\n";
         }
 
         // Format active tracked trades
