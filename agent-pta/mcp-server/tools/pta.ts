@@ -115,17 +115,39 @@ export function registerPtaTools(server: McpServer) {
         const { data: ordersData, error: ordersErr } = await ordersQuery;
         if (ordersErr) throw ordersErr;
 
+        // 7. Fetch exchange rates
+        let rates: Record<string, number> = { "EUR": 1.0 };
+        try {
+          const currencies = new Set((liveData || []).map((p: any) => p.currency));
+          const nonEur = Array.from(currencies).filter(c => c && c !== "EUR");
+          
+          if (nonEur.length > 0) {
+            const res = await fetch("https://api.frankfurter.app/latest");
+            if (res.ok) {
+              const json = await res.json();
+              if (json && json.rates) {
+                for (const curr of nonEur as string[]) {
+                  if (json.rates[curr]) {
+                    rates[curr] = 1.0 / json.rates[curr];
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch exchange rates", e);
+        }
+
         let responseText = "";
 
         // Format account summary
         if (accData && !ticker) {
-          responseText += "=== LIVE IBKR ACCOUNT SUMMARY (EUR) ===\n";
-          responseText += `- Total Cash Balance: ${accData.total_cash_balance.toFixed(2)}\n`;
-          responseText += `- Net Liquidation Value: ${accData.net_liquidation.toFixed(2)}\n`;
-          responseText += `- Available Funds: ${accData.available_funds.toFixed(2)}\n`;
+          responseText += "=== LIVE IBKR ACCOUNT SUMMARY (Base: EUR) ===\n";
+          responseText += `- Total Cash Balance: ${accData.total_cash_balance.toFixed(2)} EUR\n`;
+          responseText += `- Net Liquidation Value: ${accData.net_liquidation.toFixed(2)} EUR\n`;
+          responseText += `- Available Funds: ${accData.available_funds.toFixed(2)} EUR\n`;
           responseText += `- Cash Quote: ${accData.cash_quote?.toFixed(2) || '0.00'}%\n\n`;
         }
-
 
         // Group open orders by ticker
         const ordersByTicker: Record<string, any[]> = {};
@@ -138,7 +160,11 @@ export function registerPtaTools(server: McpServer) {
         if (liveData && liveData.length > 0) {
           responseText += "=== LIVE IBKR PORTFOLIO STATUS (from Broker) ===\n";
           const lines = liveData.map((p: any) => {
-            let line = `- Ticker: ${p.ticker} | Qty: ${p.quantity} | Avg Cost: ${p.avg_cost?.toFixed(2) || '0.00'} | Mkt Price: ${p.market_price?.toFixed(2) || '0.00'} | Mkt Value: ${p.market_value?.toFixed(2) || '0.00'} | Unrlz PnL: ${p.unrealized_pnl?.toFixed(2) || '0.00'} | Rlz PnL: ${p.realized_pnl?.toFixed(2) || '0.00'} | Weight: ${p.position_pct?.toFixed(2) || '0.00'}% | Account: ${p.account}`;
+            const curr = p.currency || "USD";
+            const rate = rates[curr] || 1.0;
+            const mktValueEur = (p.market_value || 0) * rate;
+
+            let line = `- Ticker: ${p.ticker} | Qty: ${p.quantity} | Avg Cost: ${p.avg_cost?.toFixed(2) || '0.00'} ${curr} | Mkt Price: ${p.market_price?.toFixed(2) || '0.00'} ${curr} | Mkt Value: ${p.market_value?.toFixed(2) || '0.00'} ${curr} (~${mktValueEur.toFixed(2)} EUR) | Unrlz PnL: ${p.unrealized_pnl?.toFixed(2) || '0.00'} ${curr} | Rlz PnL: ${p.realized_pnl?.toFixed(2) || '0.00'} ${curr} | Weight: ${p.position_pct?.toFixed(2) || '0.00'}% | Account: ${p.account}`;
             
             const tickerOrders = ordersByTicker[p.ticker] || [];
             if (tickerOrders.length > 0) {
@@ -189,29 +215,58 @@ export function registerPtaTools(server: McpServer) {
     "get_trade_history",
     {
       title: "Get Trade History",
-      description: "Retrieve all execution events for a specific trade ID.",
+      description: "Retrieve all execution events for a specific trade ID. Or retrieve a list of all historical closed trades if no trade ID is provided.",
       inputSchema: {
-        trade_id: z.string().describe("The Trade-ID to look up"),
+        trade_id: z.string().optional().describe("Optional. The Trade-ID to look up. If omitted, returns a list of recent closed trades."),
+        limit: z.number().optional().describe("Optional. Number of recent trades to return when trade_id is omitted. Default 50."),
+        start_date: z.string().optional().describe("Optional. Start date (YYYY-MM-DD) for historical trades list."),
+        end_date: z.string().optional().describe("Optional. End date (YYYY-MM-DD) for historical trades list."),
+        min_trade_index: z.number().optional().describe("Optional. Minimum sequential trade number (e.g. 150)"),
+        max_trade_index: z.number().optional().describe("Optional. Maximum sequential trade number (e.g. 159)"),
       },
     },
-    async ({ trade_id }: any) => {
+    async ({ trade_id, limit, start_date, end_date, min_trade_index, max_trade_index }: any) => {
       try {
-        const { data, error } = await supabase
-          .from("pta_execution_log")
-          .select("*")
-          .eq("trade_id", trade_id)
-          .order("created_at", { ascending: true });
+        if (trade_id) {
+          const { data, error } = await supabase
+            .from("pta_execution_log")
+            .select("*")
+            .eq("trade_id", trade_id)
+            .order("created_at", { ascending: true });
 
-        if (error) throw error;
-        if (!data || data.length === 0) {
-          return { content: [{ type: "text", text: `No history found for Trade-ID: ${trade_id}` }] };
+          if (error) throw error;
+          if (!data || data.length === 0) {
+            return { content: [{ type: "text", text: `No history found for Trade-ID: ${trade_id}` }] };
+          }
+
+          const history = data.map((e: any) => 
+            `${new Date(e.created_at).toLocaleString()} | ${e.event_type} | ${e.action} | Qty: ${e.quantity} | Price: ${e.price || '-'} | OID: ${e.broker_order_id || '-'}`
+          ).join("\n");
+
+          return { content: [{ type: "text", text: `History for ${trade_id}:\n\n${history}` }] };
+        } else {
+          let query = supabase.from("pta_trade_history").select("*");
+
+          if (start_date) query = query.gte("close_time", start_date);
+          if (end_date) query = query.lte("close_time", end_date + "T23:59:59Z");
+          if (min_trade_index) query = query.gte("trade_index", min_trade_index);
+          if (max_trade_index) query = query.lte("trade_index", max_trade_index);
+
+          const { data, error } = await query
+            .order("close_time", { ascending: false })
+            .limit(limit || 50);
+
+          if (error) throw error;
+          if (!data || data.length === 0) {
+            return { content: [{ type: "text", text: `No closed trades found in history.` }] };
+          }
+
+          const history = data.map((t: any) => 
+            `#${t.trade_index} | [${t.trade_id}] ${new Date(t.close_time).toLocaleDateString()} | ${t.ticker} | ${t.is_winner ? 'WIN' : 'LOSS'} | PnL: ${t.net_pnl} | Winrate: ${parseFloat(t.running_winrate).toFixed(1)}%`
+          ).join("\n");
+
+          return { content: [{ type: "text", text: `Recent ${data.length} Closed Trades:\n\n${history}` }] };
         }
-
-        const history = data.map((e: any) => 
-          `${new Date(e.created_at).toLocaleString()} | ${e.event_type} | ${e.action} | Qty: ${e.quantity} | Price: ${e.price || '-'} | OID: ${e.broker_order_id || '-'}`
-        ).join("\n");
-
-        return { content: [{ type: "text", text: `History for ${trade_id}:\n\n${history}` }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error fetching history: ${err.message}` }], isError: true };
       }
@@ -249,12 +304,98 @@ Total Trades: ${data.total_trades}
 Closed Trades: ${data.closed_trades}
 Winning Trades: ${data.winning_trades}
 Winrate: ${winrate}%
-===============================================
-        `.trim();
+===========================================`;
 
         return { content: [{ type: "text", text: report }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error fetching portfolio metrics: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // Tool: Portfolio Analytics
+  server.registerTool(
+    "portfolio_analytics",
+    {
+      title: "Portfolio Analytics",
+      description: "Calculates performance statistics like Winrate, Total PnL, Profit Factor, Average Win/Loss based on all closed trades. Can optionally be filtered by timeframe.",
+      inputSchema: {
+        start_date: z.string().optional().describe("Start date (YYYY-MM-DD)"),
+        end_date: z.string().optional().describe("End date (YYYY-MM-DD)"),
+        days: z.number().optional().describe("Number of days looking back from today (e.g. 30 for last 30 days)"),
+      },
+    },
+    async ({ start_date, end_date, days }: any) => {
+      try {
+        let query = supabase
+          .from("pta_trade_performance")
+          .select("*")
+          .eq("is_closed", true);
+
+        if (days) {
+          const pastDate = new Date();
+          pastDate.setDate(pastDate.getDate() - days);
+          query = query.gte("close_time", pastDate.toISOString());
+        } else {
+          if (start_date) query = query.gte("close_time", new Date(start_date).toISOString());
+          if (end_date) query = query.lte("close_time", new Date(end_date).toISOString());
+        }
+
+        const { data: closedTrades, error: closedErr } = await query;
+        if (closedErr) throw closedErr;
+
+        let grossProfit = 0;
+        let grossLoss = 0;
+        let winningCount = 0;
+        let losingCount = 0;
+        let totalRealizedPnl = 0;
+        let totalCommissions = 0;
+
+        for (const t of closedTrades || []) {
+          totalRealizedPnl += t.net_pnl;
+          totalCommissions += t.total_commission;
+          if (t.is_winner) {
+            grossProfit += t.net_pnl;
+            winningCount++;
+          } else {
+            grossLoss += Math.abs(t.net_pnl);
+            losingCount++;
+          }
+        }
+
+        const totalClosed = closedTrades?.length || 0;
+        const winrate = totalClosed > 0 ? (winningCount / totalClosed) * 100 : 0;
+        const profitFactor = grossLoss > 0 ? (grossProfit / grossLoss) : (grossProfit > 0 ? 999 : 0);
+        const avgWin = winningCount > 0 ? grossProfit / winningCount : 0;
+        const avgLoss = losingCount > 0 ? grossLoss / losingCount : 0;
+        const expectancy = (winrate / 100 * avgWin) - ((1 - winrate / 100) * avgLoss);
+
+        let report = `=== PORTFOLIO ANALYTICS ===\n\n`;
+        if (days) report += `Timeframe: Last ${days} days\n`;
+        else if (start_date || end_date) report += `Timeframe: ${start_date || '...'} to ${end_date || '...'}\n`;
+        else report += `Timeframe: All Time\n`;
+
+        report += `\n== TRADES ==\n`;
+        report += `- Closed Trades: ${totalClosed}\n`;
+        report += `- Winning Trades: ${winningCount}\n`;
+        report += `- Losing Trades: ${losingCount}\n\n`;
+        
+        report += `== PERFORMANCE ==\n`;
+        report += `- Net Realized PnL: ${totalRealizedPnl.toFixed(2)}\n`;
+        report += `- Total Commissions Paid: ${totalCommissions.toFixed(2)}\n`;
+        report += `- Winrate: ${winrate.toFixed(2)}%\n`;
+        report += `- Profit Factor: ${profitFactor.toFixed(2)}\n`;
+        report += `- Expectancy (Net): ${expectancy.toFixed(2)} per trade\n\n`;
+
+        report += `== AVERAGES ==\n`;
+        report += `- Average Win: ${avgWin.toFixed(2)}\n`;
+        report += `- Average Loss: ${avgLoss.toFixed(2)}\n`;
+        report += `- Gross Profit: ${grossProfit.toFixed(2)}\n`;
+        report += `- Gross Loss: ${grossLoss.toFixed(2)}\n`;
+
+        return { content: [{ type: "text", text: report }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error generating analytics: ${err.message}` }], isError: true };
       }
     }
   );

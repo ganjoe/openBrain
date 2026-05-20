@@ -44,7 +44,7 @@ const ib = new IBApi({
 let isConnected = false;
 let orderIdCounter = -1;
 let isSyncingPositions = false;
-let activePositionsTemp: Array<{ account: string; ticker: string; pos: number; avgCost: number; marketPrice: number; marketValue: number; unrealizedPNL: number; realizedPNL: number }> = [];
+let activePositionsTemp: Array<{ account: string; ticker: string; currency: string; pos: number; avgCost: number; marketPrice: number; marketValue: number; unrealizedPNL: number; realizedPNL: number }> = [];
 let activeAccountMetrics: Record<string, { totalCashBalance: number; netLiquidation: number; availableFunds: number }> = {};
 let isSyncingOrders = false;
 let activeOpenOrdersTemp: Array<{ account: string; permId: number; orderId: number; ticker: string; action: string; quantity: number; orderType: string; limitPrice?: number; stopPrice?: number; status: string }> = [];
@@ -85,6 +85,7 @@ ib.on(EventName.updatePortfolio, (contract: Contract, position: number, marketPr
   activePositionsTemp.push({
     account,
     ticker: contract.symbol,
+    currency: contract.currency || "USD",
     pos: position,
     avgCost: averageCost || 0,
     marketPrice: marketPrice || 0,
@@ -132,6 +133,7 @@ ib.on(EventName.accountDownloadEnd, async (accountName: string) => {
         return {
           account: p.account,
           ticker: p.ticker,
+          currency: p.currency,
           quantity: p.pos,
           avg_cost: p.avgCost,
           market_price: p.marketPrice,

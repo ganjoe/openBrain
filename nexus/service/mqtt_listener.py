@@ -22,8 +22,8 @@ logger = logging.getLogger("nexus.mqtt")
 BROKER_HOST = os.environ.get("MQTT_BROKER_HOST", "nexus-broker")
 BROKER_PORT = int(os.environ.get("MQTT_BROKER_PORT", "1883"))
 
-# Live message queue shared with the SSE endpoint
-message_queue: asyncio.Queue = asyncio.Queue(maxsize=500)
+# Live message queues for SSE endpoints (Pub-Sub Broadcast)
+sse_clients: set[asyncio.Queue] = set()
 
 # Shared MQTT client — set on connect, used by api.py for non-blocking publish
 _mqtt_client: mqtt.Client | None = None
@@ -106,15 +106,20 @@ def on_message(client, userdata, msg):
     if to_id and to_id not in ("unknown", "?", "nexus", "all"):
         _seen_agents.add(to_id)
 
-    # Push to SSE queue (non-blocking, drop oldest if full)
-    try:
-        message_queue.put_nowait(raw)
-    except asyncio.QueueFull:
+    # Push to all active SSE client queues (broadcast)
+    dead_clients = set()
+    for q in list(sse_clients):
         try:
-            message_queue.get_nowait()
-            message_queue.put_nowait(raw)
-        except Exception:
-            pass
+            q.put_nowait(raw)
+        except asyncio.QueueFull:
+            try:
+                q.get_nowait()
+                q.put_nowait(raw)
+            except Exception:
+                dead_clients.add(q)
+                
+    for q in dead_clients:
+        sse_clients.discard(q)
 
     # Persist to DB asynchronously (filter out automated/status messages)
     msg_type = raw.get("header", {}).get("msg_type", "chat")

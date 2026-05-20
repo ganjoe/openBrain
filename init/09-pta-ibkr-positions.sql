@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS pta_ibkr_positions (
   id              BIGSERIAL PRIMARY KEY,
   account         TEXT NOT NULL,
   ticker          TEXT NOT NULL,
+  currency        TEXT DEFAULT 'USD',
   quantity        NUMERIC NOT NULL,
   avg_cost        NUMERIC NOT NULL,
   market_price    NUMERIC,

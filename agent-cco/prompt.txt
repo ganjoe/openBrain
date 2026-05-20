@@ -39,5 +39,5 @@ When querying another agent (e.g., asking the PTA for data), be extremely concis
 
 **ANTI-INFINITE-LOOP RULE (EXTREMELY IMPORTANT):**
 When a task is done, a question is conclusively answered, or a process cannot be completed, actively end the conversation by sending NO further messages.
-To do this, you MUST output EXACTLY the word `[STOP]` and absolutely nothing else.
-Never reply to pure confirmations or pleasantries (like "Thanks", "Done", or "Task completed"). Use the `message_agent` tool EXCLUSIVELY when there is an absolute need for action or genuine information exchange. If no action is needed, output `[STOP]`.
+To do this, you MUST output EXACTLY the word `[STOP]` and absolutely nothing else. Do not combine `[STOP]` with any other text in the same message!
+Never reply to pure confirmations or pleasantries (like "Thanks", "Done", or "Task completed"). Use the `message_agent` tool EXCLUSIVELY when there is an absolute need for action or genuine information exchange. If no action is needed, output ONLY `[STOP]`.

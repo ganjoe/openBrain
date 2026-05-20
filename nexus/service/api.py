@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from mqtt_listener import message_queue, get_mqtt_client
+from mqtt_listener import sse_clients, get_mqtt_client
 
 logger = logging.getLogger("nexus.api")
 
@@ -416,17 +416,23 @@ async def sse_stream():
     SSE endpoint — pushes new messages to the dashboard in real-time.
     The dashboard subscribes here to avoid polling.
     """
+    q = asyncio.Queue(maxsize=100)
+    sse_clients.add(q)
+    
     async def event_generator():
-        while True:
-            try:
-                msg = await asyncio.wait_for(message_queue.get(), timeout=25.0)
-                data = json.dumps(msg, ensure_ascii=False)
-                yield f"data: {data}\n\n"
-            except asyncio.TimeoutError:
-                # Heartbeat to keep the connection alive
-                yield ": heartbeat\n\n"
-            except asyncio.CancelledError:
-                break
+        try:
+            while True:
+                try:
+                    msg = await asyncio.wait_for(q.get(), timeout=25.0)
+                    data = json.dumps(msg, ensure_ascii=False)
+                    yield f"data: {data}\n\n"
+                except asyncio.TimeoutError:
+                    # Heartbeat to keep the connection alive
+                    yield ": heartbeat\n\n"
+                except asyncio.CancelledError:
+                    break
+        finally:
+            sse_clients.discard(q)
 
     return StreamingResponse(
         event_generator(),
