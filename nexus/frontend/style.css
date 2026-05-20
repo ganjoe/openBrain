@@ -292,7 +292,25 @@ input:checked + .slider:before { transform: translateX(14px); background-color: 
 .slider.round:before { border-radius: 50%; }
 
 #room-label { font-weight: 600; font-size: 12px; color: var(--text); }
-.indicator { font-size: 12px; }
+.indicator {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+}
+.indicator.online {
+  color: var(--online);
+  text-shadow: 0 0 5px var(--online);
+}
+.indicator.offline {
+  color: var(--offline);
+  opacity: 0.7;
+  text-shadow: 0 0 5px var(--offline);
+}
+#ib-indicator {
+  margin-right: 15px;
+}
 
 #messages {
   flex: 1;

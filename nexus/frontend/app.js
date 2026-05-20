@@ -532,6 +532,65 @@ async function loadAgents() {
   }
 }
 
+// ── IB Gateway Status ─────────────────────────────────────────
+async function fetchIBGatewayStatus() {
+  const $ibIndicator = document.getElementById("ib-indicator");
+  const $ibToggleBtn = document.getElementById("ib-toggle-btn");
+  if (!$ibIndicator) return;
+  try {
+    const r = await fetch(`${API}/api/settings/ib_gateway_status`);
+    const data = await r.json();
+    
+    if (data.connected) {
+      $ibIndicator.className = "indicator online";
+      $ibIndicator.title = "IB Broker Gateway: Connected";
+    } else {
+      $ibIndicator.className = "indicator offline";
+      $ibIndicator.title = "IB Broker Gateway: Disconnected";
+    }
+
+    if ($ibToggleBtn) {
+      if ($ibToggleBtn.textContent !== "⏳") {
+        if (data.docker_running) {
+          $ibToggleBtn.style.color = "var(--online)";
+          $ibToggleBtn.style.textShadow = "0 0 5px var(--online)";
+          $ibToggleBtn.dataset.state = "running";
+        } else {
+          $ibToggleBtn.style.color = "var(--offline)";
+          $ibToggleBtn.style.textShadow = "none";
+          $ibToggleBtn.dataset.state = "stopped";
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Failed to fetch IB Gateway status:", e);
+    $ibIndicator.className = "indicator offline";
+    $ibIndicator.title = "IB Broker Gateway: Disconnected";
+  }
+}
+
+const $ibToggleBtn = document.getElementById("ib-toggle-btn");
+if ($ibToggleBtn) {
+  $ibToggleBtn.addEventListener("click", async () => {
+    const isRunning = $ibToggleBtn.dataset.state === "running";
+    const action = isRunning ? "stop" : "start";
+    
+    $ibToggleBtn.textContent = "⏳";
+    $ibToggleBtn.style.color = "var(--text-dim)";
+    $ibToggleBtn.style.textShadow = "none";
+    
+    try {
+      await fetch(`${API}/api/settings/ib_gateway/${action}`, { method: "POST" });
+      setTimeout(fetchIBGatewayStatus, 1500);
+    } catch (e) {
+      console.error(`Failed to ${action} IB Gateway:`, e);
+    } finally {
+      $ibToggleBtn.textContent = "⏻";
+      fetchIBGatewayStatus();
+    }
+  });
+}
+
 // ── Boot ──────────────────────────────────────────────────────
 (async () => {
   $sendFrom.value = "boss"; // Initial value
@@ -540,6 +599,8 @@ async function loadAgents() {
   await loadAgents();
   await loadHistory();
   fetchLMStudioStatus();
+  fetchIBGatewayStatus();
+  setInterval(fetchIBGatewayStatus, 5000);
   connectSSE();
   updateRoomLabel();
 })();

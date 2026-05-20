@@ -150,13 +150,14 @@ services:
       SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       MQTT_BROKER_HOST: nexus-broker
       MQTT_BROKER_PORT: "1883"
+      IB_GATEWAY_CONTAINER_NAME: "ib-gateway_live-ib-gateway-1"
     ports:
       - "7734:7734"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - /home/daniel/.lmstudio:/lmstudio:ro
-
+      - /var/run/docker.sock:/var/run/docker.sock
   # --- The Nexus: Web Dashboard ---
   nexus-frontend:
     build:

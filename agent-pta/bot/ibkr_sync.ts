@@ -14,6 +14,24 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVIC
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+async function updateGatewayStatus(connected: boolean) {
+  try {
+    const { error } = await supabase
+      .from("system_settings")
+      .upsert(
+        { key: "ib_gateway_status", value: { connected }, updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
+    if (error) {
+      console.error("[IBKR Sync] Failed to update gateway status in DB:", error.message);
+    } else {
+      console.log(`[IBKR Sync] Updated gateway status in DB to connected: ${connected}`);
+    }
+  } catch (err) {
+    console.error("[IBKR Sync] Exception during gateway status update:", err);
+  }
+}
+
 console.log(`[IBKR Sync] Starting. IBKR: ${IB_HOST}:${IB_PORT}`);
 
 const ib = new IBApi({
@@ -35,6 +53,7 @@ let activeOpenOrdersTemp: Array<{ account: string; permId: number; orderId: numb
 ib.on(EventName.connected, () => {
   console.log("[IBKR Sync] Connected to IB Gateway.");
   isConnected = true;
+  updateGatewayStatus(true).catch(err => console.error("Error in connected status update:", err));
   // Request next valid ID to start placing orders
   ib.reqIds(-1);
 });
@@ -42,6 +61,7 @@ ib.on(EventName.connected, () => {
 ib.on(EventName.disconnected, () => {
   console.log("[IBKR Sync] Disconnected from IB Gateway. Reconnecting in 5s...");
   isConnected = false;
+  updateGatewayStatus(false).catch(err => console.error("Error in disconnected status update:", err));
   setTimeout(() => ib.connect(), 5000);
 });
 
@@ -303,16 +323,69 @@ async function syncLoop() {
          currency: po.currency || "USD"
        };
 
+       // Determine Action: map BUY -> BUY, SELL -> SELL. For UPDATE, check current position.
+       let orderAction: "BUY" | "SELL" = "BUY";
+       if (po.action === "BUY") {
+         orderAction = "BUY";
+       } else if (po.action === "SELL") {
+         orderAction = "SELL";
+       } else if (po.action === "UPDATE") {
+         try {
+           const { data: position } = await supabase
+             .from("pta_ibkr_positions")
+             .select("quantity")
+             .eq("ticker", po.ticker)
+             .maybeSingle();
+
+           if (position && position.quantity < 0) {
+             orderAction = "BUY";
+           } else {
+             orderAction = "SELL";
+           }
+         } catch (posErr) {
+           console.error(`[IBKR Sync] Error checking position for ${po.ticker}, defaulting to SELL:`, posErr);
+           orderAction = "SELL";
+         }
+       }
+
+       // Determine Order Type, Limit Price, and Stop/Aux Price
+       let orderType: "MKT" | "LMT" | "STP" | "STP LMT" = "MKT";
+       let lmtPrice: number | undefined = undefined;
+       let auxPrice: number | undefined = undefined;
+
+       if (po.price && po.stop_price) {
+         orderType = "STP LMT";
+         lmtPrice = po.price;
+         auxPrice = po.stop_price;
+       } else if (po.stop_price) {
+         const isLimit = po.notes && po.notes.toLowerCase().includes("limit");
+         if (isLimit) {
+           orderType = "STP LMT";
+           lmtPrice = po.stop_price;
+           auxPrice = po.stop_price;
+         } else {
+           orderType = "STP";
+           auxPrice = po.stop_price;
+         }
+       } else if (po.price) {
+         orderType = "LMT";
+         lmtPrice = po.price;
+       }
+
        // Build Order
        const order: Order = {
          orderId: currentOrderId,
-         action: (po.action === "BUY" ? "BUY" : "SELL") as any,
+         action: orderAction as any,
          totalQuantity: po.quantity,
-         orderType: (po.price ? "LMT" : "MKT") as any,
-         lmtPrice: po.price ? po.price : undefined,
+         orderType: orderType as any,
+         lmtPrice,
+         auxPrice,
          orderRef: po.trade_id, // Link to STM's intention
+         tif: 'GTC',
          transmit: true
        };
+
+       console.log(`[IBKR Sync] Placing ${orderType} ${orderAction} order for ${po.quantity} ${po.ticker} (Limit: ${lmtPrice || 'N/A'}, Stop: ${auxPrice || 'N/A'})`);
 
        // Submit
        ib.placeOrder(currentOrderId, contract, order);
@@ -325,7 +398,6 @@ async function syncLoop() {
 
        if (updateErr) {
            console.error(`[IBKR Sync] Critical: Order sent but failed to update DB for ID ${po.id}:`, updateErr);
-           // Note: In a perfect world, we'd pause or alert here.
        }
     }
 
@@ -363,8 +435,20 @@ async function syncLoop() {
         continue;
       }
 
+      // Check for targeted cancellation by perm_id
+      let targetPermId: number | null = null;
+      if (cr.notes && cr.notes.includes("PERM_ID:")) {
+         const match = cr.notes.match(/PERM_ID:\s*(\d+)/);
+         if (match) targetPermId = parseInt(match[1]);
+      }
+
       // Cancel each matching open order for this ticker
       for (const oo of openOrders) {
+        if (targetPermId !== null && oo.perm_id !== targetPermId) {
+            console.log(`[IBKR Sync] Skipping order ${oo.perm_id} as it does not match target ${targetPermId}`);
+            continue;
+        }
+
         // We need to use reqAllOpenOrders to bind orderId, then cancel
         // Since we know the permId, we can use reqAllOpenOrders + cancel in a callback
         console.log(`[IBKR Sync] Cancelling order for ${cr.ticker}: PermId=${oo.perm_id}, OrderId=${oo.order_id}`);
@@ -422,7 +506,12 @@ async function syncLoop() {
 }
 
 // Start
-ib.connect();
+updateGatewayStatus(false).then(() => {
+  ib.connect();
+}).catch(err => {
+  console.error("Initial status update failed:", err);
+  ib.connect();
+});
 setInterval(syncLoop, 2000); // Check DB every 2 seconds
 
 // Request executions of today to catch up on startup

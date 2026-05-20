@@ -101,7 +101,9 @@
             <span class="slider round"></span>
           </label>
           <span class="autoscroll-label" title="Auto-Scroll">Auto-Scroll</span>
-          <span id="conn-indicator" class="indicator offline">●</span>
+          <span id="ib-indicator" class="indicator offline" title="IB Broker Gateway: Disconnected">● IBKR</span>
+          <button id="ib-toggle-btn" class="icon-btn" title="Start/Stop IB Gateway" style="margin-left: 8px;">⏻</button>
+          <span id="conn-indicator" class="indicator offline" title="Live Connection">●</span>
         </div>
       </header>
 
@@ -110,7 +112,7 @@
 
   </div>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
   <script>
     // Auto-collapse filters on mobile
     if (window.innerWidth <= 768) {

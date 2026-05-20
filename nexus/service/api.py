@@ -266,6 +266,61 @@ async def update_context_limit(req: ContextLimitRequest):
         
     return {"status": "updated", "config": config_val}
 
+IB_CONTAINER_NAME = os.getenv("IB_GATEWAY_CONTAINER_NAME", "ib-gateway_live-ib-gateway-1")
+
+async def get_docker_container_running(container_name: str) -> bool:
+    try:
+        async with httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")) as client:
+            r = await client.get(f"http://localhost/containers/{container_name}/json")
+            if r.status_code == 200:
+                data = r.json()
+                return data.get("State", {}).get("Running", False)
+    except Exception as e:
+        print(f"Docker API error: {e}")
+    return False
+
+@router.get("/api/settings/ib_gateway_status")
+async def get_ib_gateway_status():
+    """Fetch the current IB Gateway status (Docker + DB)."""
+    docker_running = await get_docker_container_running(IB_CONTAINER_NAME)
+    
+    rows = await _db_get("system_settings", {"key": "eq.ib_gateway_status"})
+    connected = False
+    if rows:
+        connected = rows[0].get("value", {}).get("connected", False)
+        
+    return {"connected": connected, "docker_running": docker_running}
+
+@router.post("/api/settings/ib_gateway/start")
+async def start_ib_gateway():
+    try:
+        async with httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")) as client:
+            r = await client.post(f"http://localhost/containers/{IB_CONTAINER_NAME}/start")
+            if r.status_code not in (204, 304):
+                raise HTTPException(status_code=500, detail=f"Failed to start container: {r.text}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "started"}
+
+@router.post("/api/settings/ib_gateway/stop")
+async def stop_ib_gateway():
+    try:
+        async with httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")) as client:
+            r = await client.post(f"http://localhost/containers/{IB_CONTAINER_NAME}/stop")
+            if r.status_code not in (204, 304):
+                raise HTTPException(status_code=500, detail=f"Failed to stop container: {r.text}")
+                
+        # Manually set connected: false in DB so UI updates instantly
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{GATEWAY_URL}/rest/v1/system_settings",
+                headers={**DB_HEADERS, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"},
+                json={"key": "ib_gateway_status", "value": {"connected": False}}
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "stopped"}
+
 # ─── LM Studio Settings ───────────────────────────────────────────────────────
 
 
