@@ -392,6 +392,13 @@ graph TD
 <LI><B>Kombinierter Endpunkt:</B> Der API-Endpunkt <CODE>/api/agents</CODE> liest sowohl die historischen Agenten aus der Chat-Datenbank (<CODE>nexus_chat</CODE>) als auch die aktuell im Speicher registrierten MQTT-Agenten aus und liefert eine konsolidierte Liste an das Frontend.</LI>
 </UL>
 
+<H3>7.6 Live-Streams & Server-Sent Events (SSE) Architektur</H3>
+<P>Um die Kommunikation im Nexus-Dashboard in Echtzeit darzustellen, nutzt das System <B>Server-Sent Events (SSE)</B>. Anstatt dass das Frontend sek&uuml;ndlich pollt, h&auml;lt der Browser eine unidirektionale Verbindung zum <CODE>nexus-service</CODE> offen, &uuml;ber die neue Nachrichten sofort gepusht werden.</P>
+<UL>
+<LI><B>Das Pub-Sub (Broadcast) Modell:</B> In der Vergangenheit f&uuml;hrte eine einzelne geteilte <CODE>asyncio.Queue</CODE> zu Problemen ("Geister"-Verbindungen stahlen Nachrichten, wenn der Benutzer den Tab neu lud). Dies wurde durch ein echtes Broadcast-Modell gel&ouml;st: Das System verwaltet nun ein Set aus allen offenen Client-Warteschlangen (<CODE>sse_clients: set[asyncio.Queue]</CODE>). Trifft eine MQTT-Nachricht ein, wird sie in einer <CODE>for</CODE>-Schleife atomar an alle aktiven Browser-Verbindungen verteilt. Tote Verbindungen werden im <CODE>finally</CODE>-Block der SSE-Streams automatisch aufger&auml;umt.</LI>
+<LI><B>Rehydration bei Verbindungsabbruch:</B> Bricht die SSE-Verbindung ab (z.B. Netzwechsel), holt das Frontend beim automatischen Reconnect verpasste Nachrichten &uuml;ber den REST-Endpunkt <CODE>/api/history?since=LAST_UNIX</CODE> aus der Datenbank nach, bevor es den Live-Stream wieder aufnimmt.</LI>
+</UL>
+
 <A NAME="mcp"></A>
 <H2>8. Der Tool-Server: Deep Dive in die Deno MCP Implementierung</H2>
 <P>Der MCP-Server ist das technologische Bindeglied zwischen Bot und Datenbank. Er exponiert LLM-lesbare Werkzeuge und orchestriert die Vektorisierung. Wir nutzen hierf&uuml;r <B>Deno</B> anstelle von Node.js.</P>
@@ -528,6 +535,19 @@ Never reply to pure confirmations or pleasantries (like "Thanks", "Done", or "Ta
 <LI><B>Speicherung & Bericht:</B> Die alte Tabelle <CODE>pta_ibkr_positions</CODE> wird geleert und mit dem neuen Snapshot überschrieben. Das MCP-Tool liest diese Daten nach einer Wartezeit von 1,5 Sekunden aus und gibt einen konsolidierten Bericht (Live-Broker-Status + lokal getrackte Trades) zurück.</LI>
 </OL>
 
+<H3>9.6.5 Multi-W&auml;hrungs-Support & Live FX-Conversion</H3>
+<P>Um ein globales Portfolio sauber analysieren zu k&ouml;nnen, implementiert der PTA ein dynamisches Multi-W&auml;hrungs-Management:</P>
+<UL>
+<LI><B>Erfassung der Ursprungsw&auml;hrung:</B> Das Hintergrund-Skript <CODE>ibkr_sync.ts</CODE> liest beim Snapshot-Abruf die native W&auml;hrung (<CODE>currency</CODE>) jeder Aktie von Interactive Brokers aus und persistiert diese in der <CODE>pta_ibkr_positions</CODE> Tabelle.</LI>
+<LI><B>Dynamische Umrechnung (Frankfurter API):</B> Anstatt Wechselkurse aufw&auml;ndig intern zu cachen, f&uuml;hrt das <CODE>list_active_positions</CODE> MCP-Tool beim Aufruf einen On-the-fly Fetch zur <CODE>api.frankfurter.app</CODE> durch, um die tagesaktuellen Devisenkurse zu laden. Der Report listet anschlie&szlig;end sowohl den originalen Marktwert (z.B. USD) als auch das dynamisch berechnete &Auml;quivalent in Euro auf. Dies erh&auml;lt die Architektur schlank (kein Forex-Sync-Prozess n&ouml;tig) und garantiert punktgenaue Live-Berichte f&uuml;r den Agenten.</LI>
+</UL>
+
+<H3>9.6.6 Generische Trade-Historie (Flexible MCP Tools)</H3>
+<P>Das System-Design verhindert den Bau von spezialisierten "UI-Tools" f&uuml;r jede einzelne Tabellen-Anforderung. Stattdessen vertraut das Architekturmodell auf die Abstraktionsf&auml;higkeit des LLMs:</P>
+<UL>
+<LI><B>Das `get_trade_history` Tool:</B> Dieses Werkzeug wurde generisch gestaltet. Wird eine spezifische <CODE>trade_id</CODE> &uuml;bergeben, liefert es die atomaren Execution-Events dieses einen Trades. L&auml;sst der Agent den Parameter jedoch leer, fungiert das Tool als Bulk-Daten-Provider: Es fragt den <CODE>pta_trade_history</CODE> View ab und liefert eine strukturierte Rohdaten-Liste aller geschlossenen Trades (inklusive Laufnummer, kumulierter Winrate, PnL) zur&uuml;ck.</LI>
+<LI><B>Flexible Filterung:</B> Das Tool unterst&uuml;tzt optionale Zeit-Filter (<CODE>start_date</CODE>, <CODE>end_date</CODE>) sowie Index-Filter (<CODE>min_trade_index</CODE>, <CODE>max_trade_index</CODE>), um riesige Portfolios paginieren zu k&ouml;nnen. Dies bef&auml;higt den Agenten, exakt die gew&uuml;nschten Epochen abzurufen und auf Wunsch beliebig (z.B. zeilenweise als Tabelle) f&uuml;r den Nutzer zu formatieren, ohne dass hierf&uuml;r TypeScript-Code ge&auml;ndert werden muss.</LI>
+</UL>
 
 <H2>10. Detaillierte Szenarien des Informationsflusses</H2>
 
