@@ -5,6 +5,8 @@ import { AGENT_ID, MCP_ACCESS_KEY } from "./tools/shared.ts";
 import { registerOpenBrainTools } from "./tools/openbrain.ts";
 import { registerNexusTools } from "./tools/nexus.ts";
 import { registerPtaTools } from "./tools/pta.ts";
+import { registerMinerviniTools } from "./tools/ask_minervini.ts";
+import { registerQuoteTools } from "./tools/get_quote.ts";
 
 // --- MCP Server Setup ---
 const server = new McpServer({
@@ -16,6 +18,8 @@ const server = new McpServer({
 registerOpenBrainTools(server);
 registerNexusTools(server);
 registerPtaTools(server);
+registerMinerviniTools(server);
+registerQuoteTools(server);
 
 // --- Hono App ---
 const app = new Hono();

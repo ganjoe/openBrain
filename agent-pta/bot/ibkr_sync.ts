@@ -49,11 +49,21 @@ let activeAccountMetrics: Record<string, { totalCashBalance: number; netLiquidat
 let isSyncingOrders = false;
 let activeOpenOrdersTemp: Array<{ account: string; permId: number; orderId: number; ticker: string; action: string; quantity: number; orderType: string; limitPrice?: number; stopPrice?: number; status: string }> = [];
 
+// --- Quote Request State ---
+let tickerIdCounter = 100000;
+const activeQuoteRequests: Map<number, { ticker: string, dbId: number }> = new Map();
+
+
 // --- IBKR Connection Handlers ---
 ib.on(EventName.connected, () => {
   console.log("[IBKR Sync] Connected to IB Gateway.");
   isConnected = true;
   updateGatewayStatus(true).catch(err => console.error("Error in connected status update:", err));
+  
+  // Set Market Data Type to 4 (Delayed-Frozen) 
+  // so we still get quotes even without paid live subscriptions and when market is closed.
+  ib.reqMarketDataType(4);
+  
   // Request next valid ID to start placing orders
   ib.reqIds(-1);
 });
@@ -65,8 +75,19 @@ ib.on(EventName.disconnected, () => {
   setTimeout(() => ib.connect(), 5000);
 });
 
-ib.on(EventName.error, (err: Error, code: number, reqId: number) => {
+ib.on(EventName.error, async (err: Error, code: number, reqId: number) => {
   console.error(`[IBKR Error] Code: ${code}, ReqId: ${reqId}, Msg: ${err.message}`);
+  
+  // If it's a market data error for a quote request, mark it as error so it doesn't hang
+  if (reqId >= 100000 && activeQuoteRequests.has(reqId) && code !== 2104 && code !== 2106) {
+      const req = activeQuoteRequests.get(reqId);
+      if (req) {
+         console.log(`[IBKR Sync] Marking quote request for ${req.ticker} as ERROR due to code ${code}`);
+         activeQuoteRequests.delete(reqId);
+         ib.cancelMktData(reqId);
+         await supabase.from("pta_execution_log").update({ notes: "ERROR", price: 0 }).eq("id", req.dbId);
+      }
+  }
 });
 
 ib.on(EventName.nextValidId, (orderId: number) => {
@@ -266,6 +287,33 @@ ib.on(EventName.execDetailsEnd, (reqId: number) => {
     console.log(`[IBKR Sync] Finished processing execution details for reqId ${reqId}`);
 });
 
+// --- Market Data Handler (Quotes) ---
+ib.on(EventName.tickPrice, async (tickerId: number, field: number, price: number) => {
+  // field 4 is Last Price, 9 is Close Price, 1 is Bid, 2 is Ask.
+  // 66 is Delayed Bid, 67 is Delayed Ask, 68 is Delayed Last, 75 is Delayed Close
+  if (price <= 0) return;
+  
+  const validFields = [4, 9, 1, 2, 66, 67, 68, 75];
+  if (validFields.includes(field)) {
+    const req = activeQuoteRequests.get(tickerId);
+    if (req) {
+      console.log(`[IBKR Sync] Quote received for ${req.ticker}: ${price} (Field ${field})`);
+      activeQuoteRequests.delete(tickerId); // only process first valid price
+      ib.cancelMktData(tickerId);
+      
+      const { error } = await supabase
+        .from("pta_execution_log")
+        .update({ price: price, notes: "COMPLETED", updated_at: new Date().toISOString() })
+        .eq("id", req.dbId);
+        
+      if (error) {
+         console.error(`[IBKR Sync] Failed to update quote for ${req.ticker}:`, error);
+      }
+    }
+  }
+});
+
+
 // --- Main Sync Loop ---
 async function syncLoop() {
   if (!isConnected || orderIdCounter < 0) return;
@@ -298,6 +346,39 @@ async function syncLoop() {
         console.error("[IBKR Sync] Failed to delete processed refresh requests:", deleteErr.message);
       }
     }
+
+    // Check for any pending quote requests
+    const { data: quoteReqs, error: quoteErr } = await supabase
+      .from("pta_execution_log")
+      .select("*")
+      .eq("event_type", "QUOTE_REQUESTED")
+      .eq("notes", "PENDING");
+
+    if (quoteErr) {
+      console.error("[IBKR Sync] Database error while fetching quote requests:", quoteErr.message);
+    } else if (quoteReqs && quoteReqs.length > 0) {
+      for (const qr of quoteReqs) {
+         if (!qr.ticker) continue;
+         
+         // Mark as processing so we don't request it again next loop
+         await supabase.from("pta_execution_log").update({ notes: "PROCESSING" }).eq("id", qr.id);
+         
+         tickerIdCounter++;
+         const reqId = tickerIdCounter;
+         activeQuoteRequests.set(reqId, { ticker: qr.ticker, dbId: qr.id });
+         
+         const contract: Contract = {
+           symbol: qr.ticker,
+           secType: "STK" as any,
+           exchange: "SMART",
+           currency: qr.currency || "USD" // default to USD if none provided
+         };
+         
+         console.log(`[IBKR Sync] Requesting market data for ${qr.ticker} with tickerId ${reqId}`);
+         ib.reqMktData(reqId, contract, "", false, false);
+      }
+    }
+
 
     // 1. Find Pending Orders in DB (ORDER_SUBMITTED without broker_order_id)
     const { data: pendingOrders, error } = await supabase

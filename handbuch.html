@@ -1,6 +1,7 @@
 <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
 <HTML>
 <HEAD>
+<meta charset="UTF-8">
 <TITLE>Referenz-Handbuch: Open Brain Architektur - Enzyklopaedische Edition</TITLE>
 </HEAD>
 <BODY BGCOLOR="#FFFFFF" TEXT="#000000" LINK="#0000FF" VLINK="#800080">
@@ -13,52 +14,58 @@
 </TABLE>
 <HR>
 
-<H2>Vorwort zur Enzyklop&auml;dischen Edition</H2>
-<P>Dieses Dokument ist die definitive, ersch&ouml;pfende Dokumentation des Open Brain Projekts. Es richtet sich an System-Architekten, Entwickler und Administratoren, die jeden Aspekt der lokalen KI-Infrastruktur auf technischer Ebene verstehen m&uuml;ssen. Von der Bit-Ebene der Vektor-Datenbank bis hin zur semantischen Logik des Deno-MCP-Servers: Hier wird das System ohne metaphorische Umschweife seziert.</P>
+<H2>Vorwort zur Enzyklopädischen Edition</H2>
+<P>Dieses Dokument ist die definitive, erschöpfende Dokumentation des Open Brain Projekts. Es richtet sich an System-Architekten, Entwickler und Administratoren, die jeden Aspekt der lokalen KI-Infrastruktur auf technischer Ebene verstehen müssen. Von der Bit-Ebene der Vektor-Datenbank bis hin zur semantischen Logik des Deno-MCP-Servers: Hier wird das System ohne metaphorische Umschweife seziert.</P>
 
 <HR>
+
+
 <H2>Inhaltsverzeichnis</H2>
+<H3>TEIL I: DAS BASIS-SYSTEM</H3>
 <OL>
-<LI><A HREF="#architektur">System-Architektur: Das lokale Nervensystem</A>
-<LI><A HREF="#db">Die Daten-Schicht: Die 3-Saeulen-Architektur</A>
-<LI><A HREF="#postgrest">Die API-Schicht: PostgREST & Automatisierung</A>
-<LI><A HREF="#studio">Die Administrations-Schicht: Supabase Studio & Meta</A>
-<LI><A HREF="#ollama">Die Embedding-Schicht: Ollama & Vektorisierung</A>
-<LI><A HREF="#gateway">Die Proxy-Schicht: Nginx - Der Dirigent des Netzwerkverkehrs</A>
-<LI><A HREF="#nexus">The Nexus: MQTT-basierter Agenten-Kommunikations-Hub</A>
-    <UL>
-        <LI><A HREF="#nexus-provider">Multi-Provider Management: Dynamische LLM-Orchestrierung</A></LI>
-        <LI><A HREF="#nexus-discovery">Automatische Agenten-Erkennung (Discovery)</A></LI>
-    </UL>
-<LI><A HREF="#mcp">Der Tool-Server: Deep Dive in die Deno MCP Implementierung</A>
-<LI><A HREF="#bot">Der Executive Assistant: Bot-Logik, Historie & Agentik</A>
-<LI><A HREF="#fluss">Detaillierte Szenarien des Informationsflusses</A>
-<LI><A HREF="#sicherheit">Tiefgreifendes Sicherheits- und Rollenkonzept</A>
-<LI><A HREF="#wartung">Wartung: Backup & Wiederherstellung</A>
-<LI><A HREF="#deployment">Deployment & Setup: Vom GitHub Repo zum laufenden System</A>
+<LI><A HREF="#architektur">System-Architektur: Das lokale Nervensystem</A></LI>
+<LI><A HREF="#db">Die Daten-Schicht: Die 3-Saeulen-Architektur</A></LI>
+<LI><A HREF="#postgrest">Die API-Schicht: PostgREST & Automatisierung</A></LI>
+<LI><A HREF="#studio">Die Administrations-Schicht: Supabase Studio & Meta</A></LI>
+<LI><A HREF="#ollama">Die Embedding-Schicht: Ollama & Vektorisierung</A></LI>
+<LI><A HREF="#gateway">Die Proxy-Schicht: Nginx - Der Dirigent des Netzwerkverkehrs</A></LI>
+<LI><A HREF="#nexus">The Nexus: MQTT-basierter Agenten-Kommunikations-Hub</A></LI>
+<LI><A HREF="#mcp">Der Tool-Server: Deep Dive in die Deno MCP Implementierung</A></LI>
+<LI><A HREF="#sicherheit">Tiefgreifendes Sicherheits- und Rollenkonzept</A></LI>
+<LI><A HREF="#wartung">Wartung: Backup & Wiederherstellung</A></LI>
+<LI><A HREF="#deployment">Deployment & Setup: Vom GitHub Repo zum laufenden System</A></LI>
+</OL>
+<H3>TEIL II: DIE AGENTEN</H3>
+<OL>
+<LI><A HREF="#bot">Der Executive Assistant: Bot-Logik, Historie & Agentik</A></LI>
+<LI><A HREF="#cco">Der Chief Communications Officer (CCO)</A></LI>
+<LI><A HREF="#pta">Der Personal Trading Assistant (PTA)</A></LI>
+</OL>
+<H3>TEIL III: ABSCHLUSS</H3>
+<OL>
 </OL>
 <HR>
-
+<H1 style='color: #01579b; border-bottom: 2px solid #01579b;'>TEIL I: DAS BASIS-SYSTEM</H1>
 <A NAME="architektur"></A>
 <H2>1. System-Architektur: Das lokale Nervensystem</H2>
-<P>Die Architektur von Open Brain ist kompromisslos nach dem Prinzip der <B>Separation of Concerns</B> (Trennung der Zust&auml;ndigkeiten) entworfen. Anstatt einer monolithischen Anwendung besteht das System aus dedizierten Microservices. Dies ist eine technische Notwendigkeit, um die asymmetrischen Hardware-Anforderungen (CPU-Last f&uuml;r Embeddings, GPU-Last f&uuml;r LLM-Inferenz, I/O-Last f&uuml;r die Datenbank) isoliert skalieren zu k&ouml;nnen.</P>
+<P>Die Architektur von Open Brain ist kompromisslos nach dem Prinzip der <B>Separation of Concerns</B> (Trennung der Zuständigkeiten) entworfen. Anstatt einer monolithischen Anwendung besteht das System aus dedizierten Microservices. Dies ist eine technische Notwendigkeit, um die asymmetrischen Hardware-Anforderungen (CPU-Last für Embeddings, GPU-Last für LLM-Inferenz, I/O-Last für die Datenbank) isoliert skalieren zu können.</P>
 
 <H3>1.1 Die Layer-Struktur</H3>
 <P>Das System operiert in vier streng getrennten horizontalen Schichten:</P>
 <UL>
-<LI><B>Persistence Layer (Datenhaltung):</B> Hier liegt das persistente Wissen. Die PostgreSQL-Datenbank ist passiv, zustandslos hinsichtlich der KI-Logik und speichert ausschlie&szlig;lich Vektoren und JSONB-Strukturen hochgradig optimiert.
+<LI><B>Persistence Layer (Datenhaltung):</B> Hier liegt das persistente Wissen. Die PostgreSQL-Datenbank ist passiv, zustandslos hinsichtlich der KI-Logik und speichert ausschließlich Vektoren und JSONB-Strukturen hochgradig optimiert.
 <LI><B>Abstraction Layer (Schnittstellen):</B> PostgREST und das Nginx-Gateway abstrahieren die Datenbank zu einer RESTful-API. Dies entkoppelt die Datenbank-Clients von SQL-Spezifika.
 <LI><B>Inference Layer (Intelligenz):</B> Ollama (Embeddings) und LM Studio (LLM) fungieren als zustandslose Inference-Engines. Sie erhalten Prompts, berechnen Tensoren und liefern Resultate, ohne jeglichen State zu halten.
-<LI><B>Application Layer (Interaktion & Agentik):</B> Der MCP-Server und die Agenten-Bots implementieren die Gesch&auml;ftslogik. Sie orchestrieren den ReAct-Loop (Reasoning and Acting) und entscheiden, welche Tools in welcher Reihenfolge ausgef&uuml;hrt werden.</UL>
+<LI><B>Application Layer (Interaktion & Agentik):</B> Der MCP-Server und die Agenten-Bots implementieren die Geschäftslogik. Sie orchestrieren den ReAct-Loop (Reasoning and Acting) und entscheiden, welche Tools in welcher Reihenfolge ausgeführt werden.</UL>
 
 <H3>1.2 Das Docker-Netzwerk und Container-Topologie</H3>
-<P>Auf Netzwerkebene existieren alle Container in einem isolierten virtuellen Docker-Bridge-Netzwerk namens <CODE>openbrain_default</CODE>. Die interne Namensaufl&ouml;sung erfolgt &uuml;ber den Docker-DNS (z.B. <CODE>http://db:5432</CODE>). Nach au&szlig;en ist das Netzwerk strikt isoliert. Jeglicher externe Traffic (z.B. vom Host-Browser zum Supabase Studio) muss explizit &uuml;ber Port-Mappings geschleust werden, was eine erste "Zero-Trust"-Barriere etabliert.</P>
+<P>Auf Netzwerkebene existieren alle Container in einem isolierten virtuellen Docker-Bridge-Netzwerk namens <CODE>openbrain_default</CODE>. Die interne Namensauflösung erfolgt über den Docker-DNS (z.B. <CODE>http://db:5432</CODE>). Nach außen ist das Netzwerk strikt isoliert. Jeglicher externe Traffic (z.B. vom Host-Browser zum Supabase Studio) muss explizit über Port-Mappings geschleust werden, was eine erste "Zero-Trust"-Barriere etabliert.</P>
 
-<P>Die Container-Abh&auml;ngigkeiten sind wie folgt definiert:</P>
+<P>Die Container-Abhängigkeiten sind wie folgt definiert:</P>
 <UL>
-<LI><B>Die Daten-Basis:</B> <CODE>openbrain-db</CODE> (PostgreSQL 17). Ausschie&szlig;lich intern f&uuml;r <CODE>postgrest</CODE> und <CODE>meta</CODE> erreichbar.
+<LI><B>Die Daten-Basis:</B> <CODE>openbrain-db</CODE> (PostgreSQL 17). Ausschießlich intern für <CODE>postgrest</CODE> und <CODE>meta</CODE> erreichbar.
 <LI><B>API & Orchestrierung:</B> <CODE>gateway</CODE> (Nginx) fungiert als zentraler Reverse-Proxy. Er transformiert <CODE>/rest/v1/</CODE> Anfragen via URL-Rewriting zu sauberen <CODE>postgrest</CODE> Calls und managt CORS-Header zentral.
-<LI><B>KI & Agenten:</B> Pro Agent laufen zwei Container: <CODE>mcp-server</CODE> (Tool-Hub) und <CODE>agent-bot</CODE> (ReAct-Loop). Agenten-Identit&auml;t kommt ausschlie&szlig;lich aus <CODE>config.yaml</CODE> &mdash; nie hartkodiert.
+<LI><B>KI & Agenten:</B> Pro Agent laufen zwei Container: <CODE>mcp-server</CODE> (Tool-Hub) und <CODE>agent-bot</CODE> (ReAct-Loop). Agenten-Identität kommt ausschließlich aus <CODE>config.yaml</CODE> — nie hartkodiert.
 <LI><B>The Nexus:</B> <CODE>nexus-broker</CODE> (Mosquitto MQTT, Port 1883) ist der asynchrone Kommunikations-Bus. <CODE>nexus-service</CODE> (Port 7734) loggt jede Nachricht. <CODE>nexus-frontend</CODE> (Port 7733) ist das Admin-Dashboard.</LI>
 </UL>
 
@@ -132,7 +139,7 @@ graph TD
 </script>
 
 <H3>1.3 Multi-Agenten Docker-Netzwerk (UML Komponenten-Diagramm)</H3>
-<P>Die Multi-Agenten-Skalierung (Details in Abschnitt 13) erzwingt eine saubere Trennung. Das untenstehende Diagramm differenziert zwischen den <B>Shared Core-Services (blau)</B>, die als unteilbares Fundament laufen, und einer <B>ge-forkten Agenten-Instanz (orange)</B> mit ihrem dedizierten <B>MCP-Server (gr&uuml;n, gestrichelt)</B>. Dieses Design-Pattern garantiert 100% Autarkie: Jeder Agent l&auml;uft in seiner eigenen Laufzeitumgebung, nutzt seine eigenen Tool-Konfigurationen und gef&auml;hrdet bei Abst&uuml;rzen niemals den Core-Loop anderer Agenten.</P>
+<P>Die Multi-Agenten-Skalierung (Details in Abschnitt 13) erzwingt eine saubere Trennung. Das untenstehende Diagramm differenziert zwischen den <B>Shared Core-Services (blau)</B>, die als unteilbares Fundament laufen, und einer <B>ge-forkten Agenten-Instanz (orange)</B> mit ihrem dedizierten <B>MCP-Server (grün, gestrichelt)</B>. Dieses Design-Pattern garantiert 100% Autarkie: Jeder Agent läuft in seiner eigenen Laufzeitumgebung, nutzt seine eigenen Tool-Konfigurationen und gefährdet bei Abstürzen niemals den Core-Loop anderer Agenten.</P>
 
 <div class="mermaid">
 flowchart TD
@@ -215,13 +222,13 @@ flowchart TD
 </UL>
 
 <H4>2. agent_workspace (Raw Data & Scrapes)</H4>
-<P>Ein isolierter Bereich f&uuml;r externe Datenimporte und tempor&auml;re Arbeits-Artefakte (z.B. X-Posts). Verhindert, dass das <CODE>open_brain</CODE> durch Massendaten-Importe "verrauscht". Diese Tabelle ist optimiert f&uuml;r Massendaten-Speicherung und bietet Platz f&uuml;r Rohdaten und deren semantische Vektoren.</P>
+<P>Ein isolierter Bereich für externe Datenimporte und temporäre Arbeits-Artefakte (z.B. X-Posts). Verhindert, dass das <CODE>open_brain</CODE> durch Massendaten-Importe "verrauscht". Diese Tabelle ist optimiert für Massendaten-Speicherung und bietet Platz für Rohdaten und deren semantische Vektoren.</P>
 
 <H4>3. nexus_chat (Communication Log)</H4>
 <P>Der zentrale Audit-Trail aller MQTT-Nachrichten und System-Events. Jede Kommunikation zwischen Agenten sowie alle System-Benachrichtigungen (Absender <CODE>system</CODE>) werden hier dauerhaft persistiert. Dies garantiert, dass auch automatisierte Statusmeldungen (z.B. Sync-Abschluss) nach einem Neuladen des Dashboards in der Historie erhalten bleiben.</P>
 
 <H4>Deep-Dive: Dynamische JSONB-Iterierung (Code-Free Configuration)</H4>
-<P>Das Architekturziel von Open Brain ist es, dass sich Agenten ausschlie&szlig;lich durch ihre Text-Konfiguration (Prompts) unterscheiden d&uuml;rfen. Um dies zu gew&auml;hrleisten, ist die Code-Basis des MCP-Servers 100% dynamisch aufgebaut. Wenn ein Agent-Tool (z.B. <CODE>search_thoughts</CODE>) Resultate aus der Datenbank liest, iteriert es programmatisch &uuml;ber <B>alle</B> Keys im JSONB-Objekt, ohne dass bestimmte Felder wie <CODE>people</CODE> hartkodiert w&auml;ren:</P>
+<P>Das Architekturziel von Open Brain ist es, dass sich Agenten ausschließlich durch ihre Text-Konfiguration (Prompts) unterscheiden dürfen. Um dies zu gewährleisten, ist die Code-Basis des MCP-Servers 100% dynamisch aufgebaut. Wenn ein Agent-Tool (z.B. <CODE>search_thoughts</CODE>) Resultate aus der Datenbank liest, iteriert es programmatisch über <B>alle</B> Keys im JSONB-Objekt, ohne dass bestimmte Felder wie <CODE>people</CODE> hartkodiert wären:</P>
 
 <PRE><CODE class="language-typescript">
 for (const [key, val] of Object.entries(m)) {
@@ -234,86 +241,86 @@ for (const [key, val] of Object.entries(m)) {
 }
 </CODE></PRE>
 
-<P><B>Die Konsequenz f&uuml;r Entwickler:</B> Da die Datenbank JSONB nicht limitiert und der Code dynamisch iteriert, hast du bei der Agenten-Erstellung v&ouml;llige Freiheit. Ein Koch-Bot kann in seinem Metadaten-Prompt anweisen, v&ouml;llig neue Arrays wie <CODE>"zutaten": ["Mehl", "Zucker"]</CODE> zu extrahieren. Diese werden sauber als JSONB gespeichert und bei einer sp&auml;teren LLM-Suche automatisch formatiert an den Bot zur&uuml;ckgeliefert. Keine einzige Zeile TypeScript-Code muss daf&uuml;r ver&auml;ndert werden.</P>
+<P><B>Die Konsequenz für Entwickler:</B> Da die Datenbank JSONB nicht limitiert und der Code dynamisch iteriert, hast du bei der Agenten-Erstellung völlige Freiheit. Ein Koch-Bot kann in seinem Metadaten-Prompt anweisen, völlig neue Arrays wie <CODE>"zutaten": ["Mehl", "Zucker"]</CODE> zu extrahieren. Diese werden sauber als JSONB gespeichert und bei einer späteren LLM-Suche automatisch formatiert an den Bot zurückgeliefert. Keine einzige Zeile TypeScript-Code muss dafür verändert werden.</P>
 
 <H3>2.2 Spezialisierte Such-Architektur (Semantik vs. Exakt)</H3>
 <P>Die Architektur trennt die Suche strikt in zwei hochspezialisierte Werkzeuge, um "False Positives" (z.B. "sievers" bei der Suche nach dem Ticker "SIVE") zu eliminieren:</P>
 <UL>
-<LI><B>Semantische Suche (<CODE>semantic_search_workspace</CODE>):</B> F&uuml;hrt reinen Vektorvergleich (<CODE><=></CODE>) durch. Nutzt Ollama-Embeddings, um inhaltlich verwandte Themen (z.B. "Laser" bei der Suche nach "Photonics") zu finden, ignoriert aber harte Text&uuml;bereinstimmungen.</LI>
-<LI><B>Exakte Keyword-Suche (<CODE>exact_search_workspace</CODE>):</B> Nutzt native PostgreSQL-JSONB-Operatoren (<CODE>@></CODE>) f&uuml;r strukturierte Metadaten (Tickers, Authors) UND erg&auml;nzend einen case-insensitiven <CODE>ILIKE</CODE>-Abgleich &uuml;ber den kompletten Post-Inhalt. Dies kombiniert die Pr&auml;zision harter Wortgrenzen in Metadaten mit der Flexibilit&auml;t einer globalen Volltextsuche.</LI>
+<LI><B>Semantische Suche (<CODE>semantic_search_workspace</CODE>):</B> Führt reinen Vektorvergleich (<CODE><=></CODE>) durch. Nutzt Ollama-Embeddings, um inhaltlich verwandte Themen (z.B. "Laser" bei der Suche nach "Photonics") zu finden, ignoriert aber harte Textübereinstimmungen.</LI>
+<LI><B>Exakte Keyword-Suche (<CODE>exact_search_workspace</CODE>):</B> Nutzt native PostgreSQL-JSONB-Operatoren (<CODE>@></CODE>) für strukturierte Metadaten (Tickers, Authors) UND ergänzend einen case-insensitiven <CODE>ILIKE</CODE>-Abgleich über den kompletten Post-Inhalt. Dies kombiniert die Präzision harter Wortgrenzen in Metadaten mit der Flexibilität einer globalen Volltextsuche.</LI>
 </UL>
 
-<H4>2.2.1 Token-Optimierung via Return Modes & Snippets</H4>
-<P>Um das Kontext-Fenster des LLM bei umfangreichen Suchergebnissen (z.B. hunderte X-Posts) nicht zu &uuml;berlasten, verf&uuml;gen die Suchwerkzeuge &uuml;ber einen <CODE>return_mode</CODE> Parameter:</P>
+<H4> Token-Optimierung via Return Modes & Snippets</H4>
+<P>Um das Kontext-Fenster des LLM bei umfangreichen Suchergebnissen (z.B. hunderte X-Posts) nicht zu überlasten, verfügen die Suchwerkzeuge über einen <CODE>return_mode</CODE> Parameter:</P>
 <UL>
-<LI><B>snippets (Default):</B> Schneidet den Flie&szlig;text nach 150 Zeichen ab, f&uuml;gt den Autor hinzu und entfernt irrelevante Metadaten. Dies reduziert den Token-Verbrauch drastisch und liefert dem LLM einen schnellen &Uuml;berblick.</LI>
-<LI><B>ids_only:</B> Liefert ausschlie&szlig;lich die Datenbank-IDs zur&uuml;ck. Ideal f&uuml;r reine Z&auml;hlungen.</LI>
-<LI><B>full_text:</B> Gibt den gesamten Inhalt inkl. Metadaten zur&uuml;ck. Nur zu verwenden, wenn absolut n&ouml;tig.</LI>
+<LI><B>snippets (Default):</B> Schneidet den Fließtext nach 150 Zeichen ab, fügt den Autor hinzu und entfernt irrelevante Metadaten. Dies reduziert den Token-Verbrauch drastisch und liefert dem LLM einen schnellen Überblick.</LI>
+<LI><B>ids_only:</B> Liefert ausschließlich die Datenbank-IDs zurück. Ideal für reine Zählungen.</LI>
+<LI><B>full_text:</B> Gibt den gesamten Inhalt inkl. Metadaten zurück. Nur zu verwenden, wenn absolut nötig.</LI>
 </UL>
-<P>Sollte das LLM aufgrund eines Snippets erkennen, dass es den ganzen Text analysieren muss, nutzt es das dedizierte Werkzeug <CODE>read_workspace_posts([ids])</CODE>, um die gew&uuml;nschten Dokumente explizit und ungeschw&auml;rzt in voller L&auml;nge nachzuladen.</P>
+<P>Sollte das LLM aufgrund eines Snippets erkennen, dass es den ganzen Text analysieren muss, nutzt es das dedizierte Werkzeug <CODE>read_workspace_posts([ids])</CODE>, um die gewünschten Dokumente explizit und ungeschwärzt in voller Länge nachzuladen.</P>
 
-<H4>2.2.2 Telemetrie und Chronologie</H4>
-<P>Zus&auml;tzlich zur LLM-Ausgabe erzeugt der MCP-Server detaillierte Such-Telemetrie f&uuml;r das Nexus-Dashboard. Ergebnisse werden serverseitig nach Tagen aggregiert, sodass der Nutzer im Live-Chat sofort eine Aufschl&uuml;sselung sieht (z.B. <I>10 Treffer gesamt: 2 am 14.05., 8 am 15.05.</I>), sortiert mit dem neuesten Datum als letzte Zeile.</P>
+<H4> Telemetrie und Chronologie</H4>
+<P>Zusätzlich zur LLM-Ausgabe erzeugt der MCP-Server detaillierte Such-Telemetrie für das Nexus-Dashboard. Ergebnisse werden serverseitig nach Tagen aggregiert, sodass der Nutzer im Live-Chat sofort eine Aufschlüsselung sieht (z.B. <I>10 Treffer gesamt: 2 am 14.05., 8 am 15.05.</I>), sortiert mit dem neuesten Datum als letzte Zeile.</P>
 
-<H4>2.2.3 Trend-Erkennung & Erste Erw&auml;hnungen (First Mentions)</H4>
-<P>Um fr&uuml;hzeitig Hypes oder neue Trends in den Daten zu identifizieren, verf&uuml;gt das System &uuml;ber das spezialisierte MCP-Werkzeug <CODE>find_first_keyword_mentions</CODE>. Anstatt lediglich die neuesten Posts aufzulisten, sucht dieses Tool den historischen "Nullpunkt" f&uuml;r beliebige Buzzwords.</P>
+<H4> Trend-Erkennung & Erste Erwähnungen (First Mentions)</H4>
+<P>Um frühzeitig Hypes oder neue Trends in den Daten zu identifizieren, verfügt das System über das spezialisierte MCP-Werkzeug <CODE>find_first_keyword_mentions</CODE>. Anstatt lediglich die neuesten Posts aufzulisten, sucht dieses Tool den historischen "Nullpunkt" für beliebige Buzzwords.</P>
 <UL>
-<LI><B>Funktionsweise (SQL CROSS JOIN):</B> Der Agent &uuml;bergibt dem Tool ein JSON-Array mit Keywords (z.B. <CODE>["AI", "FURUYA", "Auros"]</CODE>). Die PostgreSQL-Funktion f&uuml;hrt einen <CODE>CROSS JOIN</CODE> &uuml;ber diese Keywords mit einem Volltext-<CODE>ILIKE</CODE>-Abgleich &uuml;ber alle X-Posts aus und filtert pro Wort den chronologisch allerersten Treffer (<CODE>ORDER BY published_at ASC</CODE>).</LI>
-<LI><B>Direct-Dump Mechanismus:</B> Da es pro Keyword ohnehin nur <I>einen</I> wahren ersten historischen Post gibt, l&auml;dt der MCP-Server diesen Post nicht in den Kontext des Agenten, sondern umgeht die LLM-Inferenz v&ouml;llig. Das Tool nutzt <CODE>sendTelemetry</CODE>, um den gefundenen Original-Post inkl. Zeitstempel und Autor <I>direkt</I> in den Live-Chat des Nexus zu werfen, was Halluzinationen zu 100% ausschlie&szlig;t und extrem schnell ist.</LI>
+<LI><B>Funktionsweise (SQL CROSS JOIN):</B> Der Agent übergibt dem Tool ein JSON-Array mit Keywords (z.B. <CODE>["AI", "FURUYA", "Auros"]</CODE>). Die PostgreSQL-Funktion führt einen <CODE>CROSS JOIN</CODE> über diese Keywords mit einem Volltext-<CODE>ILIKE</CODE>-Abgleich über alle X-Posts aus und filtert pro Wort den chronologisch allerersten Treffer (<CODE>ORDER BY published_at ASC</CODE>).</LI>
+<LI><B>Direct-Dump Mechanismus:</B> Da es pro Keyword ohnehin nur <I>einen</I> wahren ersten historischen Post gibt, lädt der MCP-Server diesen Post nicht in den Kontext des Agenten, sondern umgeht die LLM-Inferenz völlig. Das Tool nutzt <CODE>sendTelemetry</CODE>, um den gefundenen Original-Post inkl. Zeitstempel und Autor <I>direkt</I> in den Live-Chat des Nexus zu werfen, was Halluzinationen zu 100% ausschließt und extrem schnell ist.</LI>
 </UL>
 <A NAME="postgrest"></A>
 <H2>3. Die API-Schicht: PostgREST & Automatisierung</H2>
-<P>Anstatt Backend-Code in Node.js zu schreiben, um SQL in JSON zu konvertieren, nutzen wir PostgREST. Dieser bin&auml;re Haskell-Service l&auml;uft neben der Datenbank, analysiert das Schema zur Laufzeit und stellt on-the-fly REST-Endpunkte f&uuml;r alle Tabellen und RPCs bereit. Maximale Performance, null Boilerplate.</P>
+<P>Anstatt Backend-Code in Node.js zu schreiben, um SQL in JSON zu konvertieren, nutzen wir PostgREST. Dieser binäre Haskell-Service läuft neben der Datenbank, analysiert das Schema zur Laufzeit und stellt on-the-fly REST-Endpunkte für alle Tabellen und RPCs bereit. Maximale Performance, null Boilerplate.</P>
 
 <H3>3.1 Die Rolle des Authenticator</H3>
-<P>PostgREST basiert auf nativem PostgreSQL Row-Level-Security (RLS). Bei eingehenden HTTP-Requests wird ein <CODE>SET ROLE</CODE> in der Datenbank ausgef&uuml;hrt:</P>
+<P>PostgREST basiert auf nativem PostgreSQL Row-Level-Security (RLS). Bei eingehenden HTTP-Requests wird ein <CODE>SET ROLE</CODE> in der Datenbank ausgeführt:</P>
 <OL>
-<LI><B>anon:</B> Der Default-State. Zugriff nur auf &ouml;ffentlich definierte Views.</LI>
-<LI><B>authenticator:</B> Der Verbindungs-User f&uuml;r PostgREST selbst (hat keine Datenzugriffe).</LI>
-<LI><B>service_role:</B> Die Administrative Bypass-Rolle. Der MCP-Server autorisiert sich &uuml;ber diese Rolle, um den RLS-Schutz f&uuml;r Schreiboperationen zu umgehen.</LI></OL>
+<LI><B>anon:</B> Der Default-State. Zugriff nur auf öffentlich definierte Views.</LI>
+<LI><B>authenticator:</B> Der Verbindungs-User für PostgREST selbst (hat keine Datenzugriffe).</LI>
+<LI><B>service_role:</B> Die Administrative Bypass-Rolle. Der MCP-Server autorisiert sich über diese Rolle, um den RLS-Schutz für Schreiboperationen zu umgehen.</LI></OL>
 
 <H3>3.2 JWT-Sicherheit</H3>
 <P>Sicherheit ist kryptografisch durch JSON Web Tokens (JWT) gesichert. Jeder HTTP-Request des MCP-Servers injiziert einen Bearer-Token, der via <CODE>HMAC-SHA256</CODE> mit dem <CODE>JWT_SECRET</CODE> signiert ist. Die Datenbank validiert die Signatur und setzt die User-Role entsprechend. Es gibt keine Schwachstellen durch unsichere API-Keys.</P>
 
 <A NAME="studio"></A>
 <H2>4. Die Administrations-Schicht: Supabase Studio & Meta</H2>
-<P>Trotz der 100% lokalen ("Air-Gapped") Ausf&uuml;hrung nutzen wir das grafische Frontend von Supabase. Es handelt sich um ein vollst&auml;ndiges lokales Deployment ihrer Open-Source-Architektur, nicht um eine Cloud-Anbindung.</P>
+<P>Trotz der 100% lokalen ("Air-Gapped") Ausführung nutzen wir das grafische Frontend von Supabase. Es handelt sich um ein vollständiges lokales Deployment ihrer Open-Source-Architektur, nicht um eine Cloud-Anbindung.</P>
 
 <H3>4.1 Das Dashboard (Port 3000)</H3>
-<P>Das Supabase Studio ist im Grunde ein modernes, webbasiertes <CODE>pgAdmin</CODE> oder <CODE>DBeaver</CODE>, geschrieben in Next.js. Da die Agenten ihre Metadaten als komplexe <CODE>JSONB</CODE>-Objekte speichern, ist eine reine Terminal-Ansicht (<CODE>psql</CODE>) oft ineffizient. &Uuml;ber Port 3000 erh&auml;ltst du eine grafische Tabellenansicht. Generiert das LLM ein fehlerhaftes JSON, l&auml;sst sich der State hier direkt auf Datenbank-Ebene patchen und debuggen. Zudem liefert es Werkzeuge zur Analyse von SQL-Logs und Query-Performance.</P>
+<P>Das Supabase Studio ist im Grunde ein modernes, webbasiertes <CODE>pgAdmin</CODE> oder <CODE>DBeaver</CODE>, geschrieben in Next.js. Da die Agenten ihre Metadaten als komplexe <CODE>JSONB</CODE>-Objekte speichern, ist eine reine Terminal-Ansicht (<CODE>psql</CODE>) oft ineffizient. Über Port 3000 erhältst du eine grafische Tabellenansicht. Generiert das LLM ein fehlerhaftes JSON, lässt sich der State hier direkt auf Datenbank-Ebene patchen und debuggen. Zudem liefert es Werkzeuge zur Analyse von SQL-Logs und Query-Performance.</P>
 
 <H3>4.2 Der meta-Service (Introspektions-Abstraktion)</H3>
-<P>Der Meta-Container ist eine notwendige Abstraktionsschicht f&uuml;r das Supabase Studio. Da das Next.js Frontend nicht direkt &uuml;ber ein SQL-Protokoll mit PostgreSQL kommuniziert, stellt der Meta-Service die erforderliche HTTP-REST-Schnittstelle f&uuml;r die Schema-Analyse bereit.</P>
-<P>Der Service greift auf das <CODE>information_schema</CODE> von Postgres zu und &uuml;bersetzt die interne SQL-Struktur in eine JSON-API. Dies erm&ouml;glicht dem Studio, Tabellen und Spalten dynamisch zu rendern, ohne die Datenbank direkt abfragen zu m&uuml;ssen.</P>
+<P>Der Meta-Container ist eine notwendige Abstraktionsschicht für das Supabase Studio. Da das Next.js Frontend nicht direkt über ein SQL-Protokoll mit PostgreSQL kommuniziert, stellt der Meta-Service die erforderliche HTTP-REST-Schnittstelle für die Schema-Analyse bereit.</P>
+<P>Der Service greift auf das <CODE>information_schema</CODE> von Postgres zu und übersetzt die interne SQL-Struktur in eine JSON-API. Dies ermöglicht dem Studio, Tabellen und Spalten dynamisch zu rendern, ohne die Datenbank direkt abfragen zu müssen.</P>
 
 <A NAME="ollama"></A>
 <H2>5. Die Embedding-Schicht: Ollama & Vektorisierung</H2>
-<P>W&auml;hrend klassische SQL-Suchen (<CODE>ILIKE</CODE>) bei semantischen Verkn&uuml;pfungen versagen, l&ouml;st Ollama das NLP-Problem (Natural Language Processing) durch lokale Tensor-Berechnungen in Echtzeit.</P>
+<P>Während klassische SQL-Suchen (<CODE>ILIKE</CODE>) bei semantischen Verknüpfungen versagen, löst Ollama das NLP-Problem (Natural Language Processing) durch lokale Tensor-Berechnungen in Echtzeit.</P>
 
 <H3>5.1 Semantische Transformation mit Ollama</H3>
-<P>Ollama wird isoliert f&uuml;r spezialisierte Embedding-Modelle (z.B. <B>Qwen3-Embedding-8B</B>) eingesetzt. Diese Modelle transformieren Texte extrem ressourceneffizient in dichte Vektor-R&auml;ume, wodurch die GPU-Kapazit&auml;t f&uuml;r die prim&auml;re LLM-Inferenz (via LM Studio) optimiert wird.</P>
+<P>Ollama wird isoliert für spezialisierte Embedding-Modelle (z.B. <B>Qwen3-Embedding-8B</B>) eingesetzt. Diese Modelle transformieren Texte extrem ressourceneffizient in dichte Vektor-Räume, wodurch die GPU-Kapazität für die primäre LLM-Inferenz (via LM Studio) optimiert wird.</P>
 
 <H3>5.2 Der Prozess der Vektorisierung</H3>
-<P>Der MCP-Server piped den Text via REST an Ollama. Ollama tokenisiert den String, f&uuml;hrt einen Forward-Pass durch das neuronale Netz aus und liefert ein 4096-dimensionales Float-Array zur&uuml;ck. Dieser Vektor ist die mathematische Signatur der Bedeutung. Ollama h&auml;lt dabei keinen State und speichert keine Nutzerdaten.</P>
+<P>Der MCP-Server piped den Text via REST an Ollama. Ollama tokenisiert den String, führt einen Forward-Pass durch das neuronale Netz aus und liefert ein 4096-dimensionales Float-Array zurück. Dieser Vektor ist die mathematische Signatur der Bedeutung. Ollama hält dabei keinen State und speichert keine Nutzerdaten.</P>
 
 <A NAME="gateway"></A>
 <H2>6. Die Proxy-Schicht: Nginx - Der Dirigent des Netzwerkverkehrs</H2>
-<P>Der Nginx-Container l&auml;uft als asynchroner Event-Driven Reverse Proxy. Er ist der un&uuml;berwindbare Checkpoint zwischen den Microservices und der Au&szlig;enwelt. Aber was bedeutet das im Kontext dieser Applikation genau?</P>
+<P>Der Nginx-Container läuft als asynchroner Event-Driven Reverse Proxy. Er ist der unüberwindbare Checkpoint zwischen den Microservices und der Außenwelt. Aber was bedeutet das im Kontext dieser Applikation genau?</P>
 
 <H3>6.1 Proxy vs. Reverse Proxy</H3>
-<P>Ein klassischer <B>Proxy</B> (z.B. in einem Firmennetzwerk) maskiert den Client: Der angerufene Server wei&szlig; nicht, welcher Rechner die Webseite tats&auml;chlich angefordert hat. Ein <B>Reverse Proxy</B> dreht dieses Prinzip um: Er maskiert die Backend-Infrastruktur gegen&uuml;ber dem aufrufenden Client.</P>
-<P>In Open Brain laufen verschiedene Dienste (z.B. PostgREST f&uuml;r die API, Meta f&uuml;r das Schema). Anstatt all diese internen Ports wild im Docker-Netz nach au&szlig;en zu &ouml;ffnen, b&uuml;ndelt Nginx alles auf einem einzigen zentralen Eingangspunkt (Port 8001). Jeder Request von au&szlig;en landet zuerst bei Nginx, der ihn pr&uuml;ft und an den richtigen internen Container weiterleitet. Das reduziert die Angriffsfl&auml;che signifikant und erm&ouml;glicht zentrales Logging.</P>
+<P>Ein klassischer <B>Proxy</B> (z.B. in einem Firmennetzwerk) maskiert den Client: Der angerufene Server weiß nicht, welcher Rechner die Webseite tatsächlich angefordert hat. Ein <B>Reverse Proxy</B> dreht dieses Prinzip um: Er maskiert die Backend-Infrastruktur gegenüber dem aufrufenden Client.</P>
+<P>In Open Brain laufen verschiedene Dienste (z.B. PostgREST für die API, Meta für das Schema). Anstatt all diese internen Ports wild im Docker-Netz nach außen zu öffnen, bündelt Nginx alles auf einem einzigen zentralen Eingangspunkt (Port 8001). Jeder Request von außen landet zuerst bei Nginx, der ihn prüft und an den richtigen internen Container weiterleitet. Das reduziert die Angriffsfläche signifikant und ermöglicht zentrales Logging.</P>
 
 <H3>6.2 Pfad-Harmonisierung (Was macht das SDK?)</H3>
-<P>Der MCP-Server interagiert mit der Datenbank &uuml;ber das <B>Supabase-SDK</B> (Software Development Kit). Ein SDK ist eine Bibliothek abstrahierter Funktionen, die API-Aufrufe kapselt. Da dieses spezifische SDK f&uuml;r den produktiven Betrieb in der Supabase-Cloud entworfen wurde, implementiert es hartkodierte API-Routen wie <CODE>/rest/v1/</CODE>.</P>
-<P>Da unsere Infrastruktur vollst&auml;ndig lokal operiert, existiert dieser URI-Namespace nicht nativ. Nginx &uuml;bernimmt an dieser Stelle das <B>Path-Rewriting</B>: Initiiert das SDK einen HTTP-Request an <CODE>/rest/v1/thoughts</CODE>, interceptiert Nginx diesen, entfernt per Regex das Cloud-Pr&auml;fix und delegiert den modifizierten Request an den lokalen <CODE>postgrest</CODE>-Container. Durch diese Emulation der Cloud-API-Struktur auf Netzwerkebene entf&auml;llt die Notwendigkeit, den Quellcode der externen npm-Pakete forken und patchen zu m&uuml;ssen.</P>
+<P>Der MCP-Server interagiert mit der Datenbank über das <B>Supabase-SDK</B> (Software Development Kit). Ein SDK ist eine Bibliothek abstrahierter Funktionen, die API-Aufrufe kapselt. Da dieses spezifische SDK für den produktiven Betrieb in der Supabase-Cloud entworfen wurde, implementiert es hartkodierte API-Routen wie <CODE>/rest/v1/</CODE>.</P>
+<P>Da unsere Infrastruktur vollständig lokal operiert, existiert dieser URI-Namespace nicht nativ. Nginx übernimmt an dieser Stelle das <B>Path-Rewriting</B>: Initiiert das SDK einen HTTP-Request an <CODE>/rest/v1/thoughts</CODE>, interceptiert Nginx diesen, entfernt per Regex das Cloud-Präfix und delegiert den modifizierten Request an den lokalen <CODE>postgrest</CODE>-Container. Durch diese Emulation der Cloud-API-Struktur auf Netzwerkebene entfällt die Notwendigkeit, den Quellcode der externen npm-Pakete forken und patchen zu müssen.</P>
 
 <H3>6.3 CORS-Management & Preflight-Requests</H3>
-<P>Das <B>CORS</B> (Cross-Origin Resource Sharing) Protokoll ist ein Sicherheitskonzept von Web-Browsern. Es blockiert standardm&auml;&szlig;ig clientseitige HTTP-Anfragen, wenn die anfordernde Domain (hier: Studio auf Port 3000) nicht mit der Ziel-Domain (hier: PostgREST auf Port 3001) identisch ist.</P>
-<P>Bei Cross-Origin-Szenarien f&uuml;hrt der Browser vor dem eigentlichen Request zwingend einen <B>Preflight-Request</B> (HTTP-Methode <CODE>OPTIONS</CODE>) aus, um die autorisierten Origins des Zielservers abzufragen. Um die internen Microservices nicht mit der Implementierung von Frontend-Sicherheitsprotokollen zu belasten, terminiert Nginx diese Preflight-Requests zentral. Nginx f&auml;ngt den <CODE>OPTIONS</CODE>-Call ab und beantwortet ihn direkt durch Injektion des <CODE>Access-Control-Allow-Origin</CODE> Headers. Der Browser wertet die HTTP-Response aus, autorisiert die Verbindung und f&uuml;hrt den eigentlichen Request durch, w&auml;hrend die Backend-Container von der CORS-Logik vollst&auml;ndig entkoppelt bleiben.</P>
+<P>Das <B>CORS</B> (Cross-Origin Resource Sharing) Protokoll ist ein Sicherheitskonzept von Web-Browsern. Es blockiert standardmäßig clientseitige HTTP-Anfragen, wenn die anfordernde Domain (hier: Studio auf Port 3000) nicht mit der Ziel-Domain (hier: PostgREST auf Port 3001) identisch ist.</P>
+<P>Bei Cross-Origin-Szenarien führt der Browser vor dem eigentlichen Request zwingend einen <B>Preflight-Request</B> (HTTP-Methode <CODE>OPTIONS</CODE>) aus, um die autorisierten Origins des Zielservers abzufragen. Um die internen Microservices nicht mit der Implementierung von Frontend-Sicherheitsprotokollen zu belasten, terminiert Nginx diese Preflight-Requests zentral. Nginx fängt den <CODE>OPTIONS</CODE>-Call ab und beantwortet ihn direkt durch Injektion des <CODE>Access-Control-Allow-Origin</CODE> Headers. Der Browser wertet die HTTP-Response aus, autorisiert die Verbindung und führt den eigentlichen Request durch, während die Backend-Container von der CORS-Logik vollständig entkoppelt bleiben.</P>
 
 <H3>6.4 Architektur-Diagramm: Nginx Routing</H3>
-<P>Das folgende Diagramm veranschaulicht, wie Nginx als zentraler Flaschenhals ("Choke Point") fungiert und die Cloud-Pfade transparent f&uuml;r die internen Container &uuml;bersetzt:</P>
+<P>Das folgende Diagramm veranschaulicht, wie Nginx als zentraler Flaschenhals ("Choke Point") fungiert und die Cloud-Pfade transparent für die internen Container übersetzt:</P>
 
 <div class="mermaid">
 graph TD
@@ -346,279 +353,102 @@ graph TD
 
 <A NAME="nexus"></A>
 <H2>7. The Nexus: MQTT-basierter Agenten-Kommunikations-Hub</H2>
-<P>The Nexus fungiert als asynchrones Kommunikations-R&uuml;ckgrat des Systems. Der zentrale Mechanismus ist ein <B>MQTT Message Broker (Mosquitto)</B>.</P>
-<H3>7.1 MQTT als Kommunikations-R&uuml;ckgrat</H3>
-<P>Der zentrale Kommunikations-Mechanismus basiert auf dem asynchronen MQTT-Protokoll (ISO/IEC 20922). Dies erm&ouml;glicht eine leichtgewichtige Pub/Sub-Kommunikation mit minimaler Latenz (&lt;5ms) und persistenter TCP-Verbindung.</P>
+<P>The Nexus fungiert als asynchrones Kommunikations-Rückgrat des Systems. Der zentrale Mechanismus ist ein <B>MQTT Message Broker (Mosquitto)</B>.</P>
+<H3>7.1 MQTT als Kommunikations-Rückgrat</H3>
+<P>Der zentrale Kommunikations-Mechanismus basiert auf dem asynchronen MQTT-Protokoll (ISO/IEC 20922). Dies ermöglicht eine leichtgewichtige Pub/Sub-Kommunikation mit minimaler Latenz (<5ms) und persistenter TCP-Verbindung.</P>
 <H3>7.2 Cross-Agent MCP via MQTT</H3>
-<P>Will Agent A ein Tool von Agent B nutzen, publiziert er auf <CODE>agents/B/mcp/request</CODE>. Agent B f&uuml;hrt das Tool aus und antwortet auf <CODE>agents/A/mcp/response/{req_id}</CODE>. Kein Agent kennt die HTTP-URL eines anderen. Der Nexus-Service loggt jeden Cross-Agent-MCP-Call mit <CODE>msg_type: mcp_request</CODE>.</P>
+<P>Will Agent A ein Tool von Agent B nutzen, publiziert er auf <CODE>agents/B/mcp/request</CODE>. Agent B führt das Tool aus und antwortet auf <CODE>agents/A/mcp/response/{req_id}</CODE>. Kein Agent kennt die HTTP-URL eines anderen. Der Nexus-Service loggt jeden Cross-Agent-MCP-Call mit <CODE>msg_type: mcp_request</CODE>.</P>
 
 <A NAME="nexus-provider"></A>
 <H3>7.3 Multi-Provider Management: Dynamische LLM-Orchestrierung</H3>
-<P>Open Brain verfolgt einen hybriden Ansatz bei der Modell-Inferenz. W&auml;hrend die lokale Ausf&uuml;hrung (LM Studio) das Standard-Szenario ist, erlaubt das System die nahtlose Zuschaltung von Cloud-Modellen wie <B>Google Gemini</B> für ressourcenintensive Aufgaben. Dieses "Brain-Swapping" erfolgt ohne System-Neustart.</P>
+<P>Open Brain verfolgt einen hybriden Ansatz bei der Modell-Inferenz. Während die lokale Ausführung (LM Studio) das Standard-Szenario ist, erlaubt das System die nahtlose Zuschaltung von Cloud-Modellen wie <B>Google Gemini</B> für ressourcenintensive Aufgaben. Dieses "Brain-Swapping" erfolgt ohne System-Neustart.</P>
 
-<H4>7.3.1 Zentrale Zustandsverwaltung (system_settings)</H4>
-<P>Die Konfiguration der LLM-Provider wird in der dedizierten Datenbank-Tabelle <CODE>system_settings</CODE> persistiert. Das System speichert hier ein JSON-Objekt (<CODE>provider_config</CODE>), welches jedem Agenten (ID) seinen aktuellen Provider zuweist (z.B. <CODE>{"ea": "local", "cco": "gemini"}</CODE>). Dies garantiert, dass die gew&auml;hlte Konfiguration auch nach einem Container-Neustart erhalten bleibt.</P>
+<H4> Zentrale Zustandsverwaltung (system_settings)</H4>
+<P>Die Konfiguration der LLM-Provider wird in der dedizierten Datenbank-Tabelle <CODE>system_settings</CODE> persistiert. Das System speichert hier ein JSON-Objekt (<CODE>provider_config</CODE>), welches jedem Agenten (ID) seinen aktuellen Provider zuweist (z.B. <CODE>{"ea": "local", "cco": "gemini"}</CODE>). Dies garantiert, dass die gewählte Konfiguration auch nach einem Container-Neustart erhalten bleibt.</P>
 
-<H4>7.3.2 Real-Time Switching via MQTT</H4>
-<P>Die Umschaltung der Intelligenz erfolgt asynchron und in Echtzeit &uuml;ber den Nexus-Bus:</P>
+<H4> Real-Time Switching via MQTT</H4>
+<P>Die Umschaltung der Intelligenz erfolgt asynchron und in Echtzeit über den Nexus-Bus:</P>
 <OL>
-<LI><B>Dashboard-Trigger:</B> Der Nutzer w&auml;hlt im Nexus-Frontend einen neuen Provider f&uuml;r einen Agenten aus.</LI>
+<LI><B>Dashboard-Trigger:</B> Der Nutzer wählt im Nexus-Frontend einen neuen Provider für einen Agenten aus.</LI>
 <LI><B>API-Broadcast:</B> Der <CODE>nexus-service</CODE> aktualisiert den Wert in der Datenbank und publiziert simultan eine Nachricht auf dem Topic <CODE>system/config/provider</CODE>.</LI>
-<LI><B>Agenten-Hot-Swap:</B> Der betroffene Agent (EA oder CCO) empf&auml;ngt die Nachricht, erkennt seine <CODE>AGENT_ID</CODE> und wechselt intern sofort den API-Adapter. Die n&auml;chste Inferenz-Anfrage wird bereits &uuml;ber das neue Backend geleitet.</LI>
+<LI><B>Agenten-Hot-Swap:</B> Der betroffene Agent (EA oder CCO) empfängt die Nachricht, erkennt seine <CODE>AGENT_ID</CODE> und wechselt intern sofort den API-Adapter. Die nächste Inferenz-Anfrage wird bereits über das neue Backend geleitet.</LI>
 </OL>
 
-<H4>7.3.3 Provider-Isolation</H4>
-<P>Das System unterst&uuml;tzt unterschiedliche Provider pro Agent. So kann beispielsweise der EA-Agent zur Kostenersparnis auf einem kleinen lokalen Modell laufen, w&auml;hrend der CCO-Agent f&uuml;r komplexe Marktanalysen tempor&auml;r auf Gemini 1.5 Pro hochgestuft wird. Dies bietet maximale Flexibilit&auml;t bei optimaler Ressourcenausnutzung.</P>
+<H4> Provider-Isolation</H4>
+<P>Das System unterstützt unterschiedliche Provider pro Agent. So kann beispielsweise der EA-Agent zur Kostenersparnis auf einem kleinen lokalen Modell laufen, während der CCO-Agent für komplexe Marktanalysen temporär auf Gemini 1.5 Pro hochgestuft wird. Dies bietet maximale Flexibilität bei optimaler Ressourcenausnutzung.</P>
 
-<H4>7.3.4 LM Studio JIT Loading & Unloading</H4>
-<P>Das Nexus Dashboard erm&ouml;glicht das direkte Laden und Entladen lokaler LLM-Modelle (via LM Studio v1 API). Das "Just-in-Time" (JIT) Loading erfolgt &uuml;ber einen Dummy-Inferenz-Aufruf, der LM Studio zwingt, das Modell in den VRAM zu laden. Ein Klick auf "Unload" nutzt den <CODE>POST /api/v1/models/unload</CODE> Endpoint inkl. der Instanz-ID, um Ressourcen im VRAM explizit wieder freizugeben. Dies erm&ouml;glicht h&auml;ndisches Speichermanagement, ohne das Dashboard verlassen zu m&uuml;ssen.</P>
+<H4> LM Studio JIT Loading & Unloading</H4>
+<P>Das Nexus Dashboard ermöglicht das direkte Laden und Entladen lokaler LLM-Modelle (via LM Studio v1 API). Das "Just-in-Time" (JIT) Loading erfolgt über einen Dummy-Inferenz-Aufruf, der LM Studio zwingt, das Modell in den VRAM zu laden. Ein Klick auf "Unload" nutzt den <CODE>POST /api/v1/models/unload</CODE> Endpoint inkl. der Instanz-ID, um Ressourcen im VRAM explizit wieder freizugeben. Dies ermöglicht händisches Speichermanagement, ohne das Dashboard verlassen zu müssen.</P>
 
 <H3>7.4 UI-Features & Live-Interaktion</H3>
 <P>Das Nexus-Frontend bietet spezialisierte Funktionen zur Steuerung des Live-Streams, um die Benutzererfahrung bei hoher Nachrichten-Frequenz zu optimieren.</P>
 
-<H4>7.4.1 Auto-Scroll Management</H4>
-<P>In einem System, in dem mehrere Agenten parallel arbeiten, kann die Scroll-Position im Chat-Fenster unvorhersehbar springen. Um dies zu verhindern, verf&uuml;gt das Dashboard &uuml;ber einen <B>Auto-Scroll Toggle</B> im Header des Stream-Panes.</P>
+<H4> Auto-Scroll Management</H4>
+<P>In einem System, in dem mehrere Agenten parallel arbeiten, kann die Scroll-Position im Chat-Fenster unvorhersehbar springen. Um dies zu verhindern, verfügt das Dashboard über einen <B>Auto-Scroll Toggle</B> im Header des Stream-Panes.</P>
 <UL>
-<LI><B>Active (Standard):</B> Der Chat fokussiert automatisch auf die neueste Nachricht. Ideal f&uuml;r die Live-&Uuml;berwachung.</LI>
-<LI><B>Inactive (Lesemodus):</B> Der Chat friert die aktuelle Scroll-Position ein. Dies erlaubt es dem Nutzer, in Ruhe &auml;ltere Analysen zu lesen, w&auml;hrend neue Nachrichten im Hintergrund lautlos angeh&auml;ngt werden.</LI>
+<LI><B>Active (Standard):</B> Der Chat fokussiert automatisch auf die neueste Nachricht. Ideal für die Live-Überwachung.</LI>
+<LI><B>Inactive (Lesemodus):</B> Der Chat friert die aktuelle Scroll-Position ein. Dies erlaubt es dem Nutzer, in Ruhe ältere Analysen zu lesen, während neue Nachrichten im Hintergrund lautlos angehängt werden.</LI>
 </UL>
 
 <A NAME="nexus-discovery"></A>
 <H3>7.5 Automatische Agenten-Erkennung (Discovery)</H3>
-<P>Damit neue oder selten genutzte Agenten ohne manuelle Datenbankeintr&auml;ge oder Dummy-Nachrichten im Dashboard sichtbar werden, nutzt der Nexus eine automatische Erkennung:</P>
+<P>Damit neue oder selten genutzte Agenten ohne manuelle Datenbankeinträge oder Dummy-Nachrichten im Dashboard sichtbar werden, nutzt der Nexus eine automatische Erkennung:</P>
 <UL>
 <LI><B>MQTT Status als Trigger:</B> Beim Starten publiziert jeder Agenten-Bot eine Statusmeldung (<CODE>status: "online"</CODE>) mit dem Flag <CODE>retain: true</CODE> auf dem Topic <CODE>agents/status</CODE>. Der MQTT-Broker speichert dieses Statuspaket dauerhaft.</LI>
-<LI><B>Intelligentes Backend-Caching:</B> Beim Systemstart abonniert der <CODE>nexus-service</CODE> dieses Topic und erh&auml;lt sofort alle gespeicherten Statusmeldungen. Die aktiven Agenten-IDs werden im Arbeitsspeicher (<CODE>_seen_agents</CODE>) gepuffert.</LI>
+<LI><B>Intelligentes Backend-Caching:</B> Beim Systemstart abonniert der <CODE>nexus-service</CODE> dieses Topic und erhält sofort alle gespeicherten Statusmeldungen. Die aktiven Agenten-IDs werden im Arbeitsspeicher (<CODE>_seen_agents</CODE>) gepuffert.</LI>
 <LI><B>Kombinierter Endpunkt:</B> Der API-Endpunkt <CODE>/api/agents</CODE> liest sowohl die historischen Agenten aus der Chat-Datenbank (<CODE>nexus_chat</CODE>) als auch die aktuell im Speicher registrierten MQTT-Agenten aus und liefert eine konsolidierte Liste an das Frontend.</LI>
 </UL>
 
 <H3>7.6 Live-Streams & Server-Sent Events (SSE) Architektur</H3>
-<P>Um die Kommunikation im Nexus-Dashboard in Echtzeit darzustellen, nutzt das System <B>Server-Sent Events (SSE)</B>. Anstatt dass das Frontend sek&uuml;ndlich pollt, h&auml;lt der Browser eine unidirektionale Verbindung zum <CODE>nexus-service</CODE> offen, &uuml;ber die neue Nachrichten sofort gepusht werden.</P>
+<P>Um die Kommunikation im Nexus-Dashboard in Echtzeit darzustellen, nutzt das System <B>Server-Sent Events (SSE)</B>. Anstatt dass das Frontend sekündlich pollt, hält der Browser eine unidirektionale Verbindung zum <CODE>nexus-service</CODE> offen, über die neue Nachrichten sofort gepusht werden.</P>
 <UL>
-<LI><B>Das Pub-Sub (Broadcast) Modell:</B> In der Vergangenheit f&uuml;hrte eine einzelne geteilte <CODE>asyncio.Queue</CODE> zu Problemen ("Geister"-Verbindungen stahlen Nachrichten, wenn der Benutzer den Tab neu lud). Dies wurde durch ein echtes Broadcast-Modell gel&ouml;st: Das System verwaltet nun ein Set aus allen offenen Client-Warteschlangen (<CODE>sse_clients: set[asyncio.Queue]</CODE>). Trifft eine MQTT-Nachricht ein, wird sie in einer <CODE>for</CODE>-Schleife atomar an alle aktiven Browser-Verbindungen verteilt. Tote Verbindungen werden im <CODE>finally</CODE>-Block der SSE-Streams automatisch aufger&auml;umt.</LI>
-<LI><B>Rehydration bei Verbindungsabbruch:</B> Bricht die SSE-Verbindung ab (z.B. Netzwechsel), holt das Frontend beim automatischen Reconnect verpasste Nachrichten &uuml;ber den REST-Endpunkt <CODE>/api/history?since=LAST_UNIX</CODE> aus der Datenbank nach, bevor es den Live-Stream wieder aufnimmt.</LI>
+<LI><B>Das Pub-Sub (Broadcast) Modell:</B> In der Vergangenheit führte eine einzelne geteilte <CODE>asyncio.Queue</CODE> zu Problemen ("Geister"-Verbindungen stahlen Nachrichten, wenn der Benutzer den Tab neu lud). Dies wurde durch ein echtes Broadcast-Modell gelöst: Das System verwaltet nun ein Set aus allen offenen Client-Warteschlangen (<CODE>sse_clients: set[asyncio.Queue]</CODE>). Trifft eine MQTT-Nachricht ein, wird sie in einer <CODE>for</CODE>-Schleife atomar an alle aktiven Browser-Verbindungen verteilt. Tote Verbindungen werden im <CODE>finally</CODE>-Block der SSE-Streams automatisch aufgeräumt.</LI>
+<LI><B>Rehydration bei Verbindungsabbruch:</B> Bricht die SSE-Verbindung ab (z.B. Netzwechsel), holt das Frontend beim automatischen Reconnect verpasste Nachrichten über den REST-Endpunkt <CODE>/api/history?since=LAST_UNIX</CODE> aus der Datenbank nach, bevor es den Live-Stream wieder aufnimmt.</LI>
 </UL>
 
 <A NAME="mcp"></A>
 <H2>8. Der Tool-Server: Deep Dive in die Deno MCP Implementierung</H2>
-<P>Der MCP-Server ist das technologische Bindeglied zwischen Bot und Datenbank. Er exponiert LLM-lesbare Werkzeuge und orchestriert die Vektorisierung. Wir nutzen hierf&uuml;r <B>Deno</B> anstelle von Node.js.</P>
+<P>Der MCP-Server ist das technologische Bindeglied zwischen Bot und Datenbank. Er exponiert LLM-lesbare Werkzeuge und orchestriert die Vektorisierung. Wir nutzen hierfür <B>Deno</B> anstelle von Node.js.</P>
 
-<P>Open Brain nutzt ein <B>Template- und Fork-Paradigma</B>. Jeder Agent operiert mit einem dedizierten MCP-Server und einem MQTT-Bot, was eine vollst&auml;ndige Isolation der Identit&auml;ten und Toolsets gew&auml;hrleistet.</P>
-<P>Durch die Koppelung eines eigenen MCP-Servers l&auml;dt jeder Bot eine individuelle <CODE>metadata-prompt.txt</CODE>. Dies verhindert ein globales Schema-Lock-in: Jeder Agent definiert &uuml;ber seinen MCP-Server eine eigene JSONB-Struktur in der Datenbank, ohne Kern-Komponenten oder andere Agenten zu beeinflussen.</P>
+<P>Open Brain nutzt ein <B>Template- und Fork-Paradigma</B>. Jeder Agent operiert mit einem dedizierten MCP-Server und einem MQTT-Bot, was eine vollständige Isolation der Identitäten und Toolsets gewährleistet.</P>
+<P>Durch die Koppelung eines eigenen MCP-Servers lädt jeder Bot eine individuelle <CODE>metadata-prompt.txt</CODE>. Dies verhindert ein globales Schema-Lock-in: Jeder Agent definiert über seinen MCP-Server eine eigene JSONB-Struktur in der Datenbank, ohne Kern-Komponenten oder andere Agenten zu beeinflussen.</P>
 
-<H3>8.2 Deep Dive: Die exakte Mechanik von 'capture_thought'</H3>
-<P>Um die Komplexit&auml;t hinter einem simplen "Notier dir das" zu entmystifizieren, hier die exakte Code-Mechanik, wenn das <CODE>capture_thought</CODE> Tool aufgerufen wird:</P>
+<H3>8.1 Deep Dive: Die exakte Mechanik von 'capture_thought'</H3>
+<P>Um die Komplexität hinter einem simplen "Notier dir das" zu entmystifizieren, hier die exakte Code-Mechanik, wenn das <CODE>capture_thought</CODE> Tool aufgerufen wird:</P>
 <OL>
 <LI><B>Payload-Validierung:</B> Zod validiert den eingehenden JSON-Payload (<CODE>{ content: string }</CODE>) streng.
-<LI><B>Prompt-Injektion:</B> Der Code f&uuml;hrt <CODE>Deno.readTextFileSync</CODE> auf der <CODE>metadata-prompt.txt</CODE> aus. Er h&auml;ngt den rohen User-Content an diesen Prompt an.
-<LI><B>Strukturierte Inferenz:</B> Ein HTTP POST Request geht an <CODE>LM_STUDIO_URL/v1/chat/completions</CODE>. Das LLM wird (meist im JSON-Modus) gezwungen, ausschlie&szlig;lich ein JSON-Objekt zur&uuml;ckzugeben, das dem <CODE>metadata-prompt</CODE> entspricht.
+<LI><B>Prompt-Injektion:</B> Der Code führt <CODE>Deno.readTextFileSync</CODE> auf der <CODE>metadata-prompt.txt</CODE> aus. Er hängt den rohen User-Content an diesen Prompt an.
+<LI><B>Strukturierte Inferenz:</B> Ein HTTP POST Request geht an <CODE>LM_STUDIO_URL/v1/chat/completions</CODE>. Das LLM wird (meist im JSON-Modus) gezwungen, ausschließlich ein JSON-Objekt zurückzugeben, das dem <CODE>metadata-prompt</CODE> entspricht.
 <LI><B>Tensor-Berechnung:</B> Parallel oder sequenziell geht ein Request an Ollama (<CODE>/api/embeddings</CODE>) um den 4096-Float Vektor zu generieren.
 <LI><B>PostgreSQL UPSERT:</B> Ein finaler Request geht an das PostgREST Gateway (<CODE>/rest/v1/rpc/upsert_thought</CODE>), der den Text, das generierte JSON-Objekt und das Float-Array transaktionssicher in die DB schreibt.</OL>
 
-<H3>8.3 Laufzeitumgebung: Deno</H3>
+<H3>8.2 Laufzeitumgebung: Deno</H3>
 <UL>
-<LI><B>Security First:</B> Deno l&auml;uft standardm&auml;&szlig;ig in einer Sandbox. Netzwerkzugriffe erfordern explizit <CODE>--allow-net</CODE>.
-<LI><B>Native TypeScript:</B> Kein Webpack, kein Babel. Zero-Config TypeScript-Ausf&uuml;hrung.
-<LI><B>Streamable HTTP (SSE):</B> Der Server nutzt <CODE>@hono/mcp</CODE> f&uuml;r Server-Sent Events. Dies erm&ouml;glicht Multi-Client-Support &uuml;ber Netzwerkgrenzen hinweg, im Gegensatz zur klassischen stdio-Kommunikation lokaler Skripte.</UL>
+<LI><B>Security First:</B> Deno läuft standardmäßig in einer Sandbox. Netzwerkzugriffe erfordern explizit <CODE>--allow-net</CODE>.
+<LI><B>Native TypeScript:</B> Kein Webpack, kein Babel. Zero-Config TypeScript-Ausführung.
+<LI><B>Streamable HTTP (SSE):</B> Der Server nutzt <CODE>@hono/mcp</CODE> für Server-Sent Events. Dies ermöglicht Multi-Client-Support über Netzwerkgrenzen hinweg, im Gegensatz zur klassischen stdio-Kommunikation lokaler Skripte.</UL>
 
-<H3>8.4 Zero-Config Agent Brains (Daten-Isolation)</H3>
-<P>Anstatt alle Agenten auf einen globalen Wissenspool zugreifen zu lassen, implementiert das System eine strikte Daten-Trennung ("Own Brain" Architektur) auf Metadaten-Ebene. Dies wird komplett ohne Code-&Auml;nderungen &uuml;ber die <CODE>docker-compose.yml</CODE> gesteuert:</P>
+<H3>8.3 Zero-Config Agent Brains (Daten-Isolation)</H3>
+<P>Anstatt alle Agenten auf einen globalen Wissenspool zugreifen zu lassen, implementiert das System eine strikte Daten-Trennung ("Own Brain" Architektur) auf Metadaten-Ebene. Dies wird komplett ohne Code-Änderungen über die <CODE>docker-compose.yml</CODE> gesteuert:</P>
 <UL>
-<LI><B>AGENT_ID:</B> Wird als Environment Variable an den MCP-Server &uuml;bergeben. Bei jedem <CODE>capture_thought</CODE> wird diese ID automatisch als <CODE>{"owner": "..."}</CODE> in die Metadaten injiziert.</LI>
-<LI><B>GLOBAL_BRAIN_ACCESS (false):</B> Der Standard. Der MCP-Server zwingt bei jedem Lesezugriff (Suche, Stats, List) den Filter <CODE>{"owner": AGENT_ID}</CODE> auf. Der Agent ist blind f&uuml;r das Wissen anderer Agenten und agiert v&ouml;llig isoliert.</LI>
-<LI><B>GLOBAL_BRAIN_ACCESS (true):</B> (Z.B. f&uuml;r den Executive Assistant). Der Filter-Zwang entf&auml;llt. Dem LLM wird in den Such-Tools stattdessen ein optionaler Parameter <CODE>owner</CODE> angeboten. Der Agent kann gezielt die Brains anderer Agenten durchsuchen oder globale Analysen &uuml;ber das gesamte Open Brain fahren.</LI>
+<LI><B>AGENT_ID:</B> Wird als Environment Variable an den MCP-Server übergeben. Bei jedem <CODE>capture_thought</CODE> wird diese ID automatisch als <CODE>{"owner": "..."}</CODE> in die Metadaten injiziert.</LI>
+<LI><B>GLOBAL_BRAIN_ACCESS (false):</B> Der Standard. Der MCP-Server zwingt bei jedem Lesezugriff (Suche, Stats, List) den Filter <CODE>{"owner": AGENT_ID}</CODE> auf. Der Agent ist blind für das Wissen anderer Agenten und agiert völlig isoliert.</LI>
+<LI><B>GLOBAL_BRAIN_ACCESS (true):</B> (Z.B. für den Executive Assistant). Der Filter-Zwang entfällt. Dem LLM wird in den Such-Tools stattdessen ein optionaler Parameter <CODE>owner</CODE> angeboten. Der Agent kann gezielt die Brains anderer Agenten durchsuchen oder globale Analysen über das gesamte Open Brain fahren.</LI>
 </UL>
 
-<H3>8.5 X-Integration: Asynchroner Sync & Zero-Duplicate Fetching</H3>
-<P>Der CCO (Chief Communications Officer) verf&uuml;gt &uuml;ber das spezialisierte Tool <CODE>sync_influencer_news</CODE>, welches eine hochperformante Anbindung an die X-API (v2) implementiert. Da der Abruf und die lokale Vektorisierung von bis zu 500 Posts extrem ressourcen- und zeitaufw&auml;ndig (LM Studio Inferenz) sind, nutzt das System eine entkoppelte Architektur:</P>
-<UL>
-<LI><B>Asynchroner Hintergrund-Job:</B> Das Tool best&auml;tigt dem Agenten sofort den Start des Syncs. Die tats&auml;chliche Paginierung, der Download und die Inferenz laufen entkoppelt im Hintergrund. Der Agent wird im Nexus Chat w&auml;hrenddessen nicht blockiert.</LI>
-<LI><B>In-Memory Locking:</B> Um zu verhindern, dass ein ungeduldiger Agent den Abruf f&uuml;r den selben Influencer parallel mehrfach startet, wird eine <CODE>activeSyncs</CODE>-Sperre im MCP-Server gehalten.</LI>
-<LI><B>Zero-Duplicate Fetching (`until_id` Trick):</B> Um X-API Kosten zu sparen, verf&uuml;gt der Sync &uuml;ber eine smarte L&uuml;ckenf&uuml;ller-Logik. Bei historischen Abfragen (via <CODE>start_time</CODE>) sucht das System zuerst den &auml;ltesten bereits gespeicherten Post in der Datenbank. Dieser wird als <CODE>until_id</CODE> an X gesendet, wodurch die X-API ausschlie&szlig;lich die fehlende L&uuml;cke zur&uuml;ckliefert. Duplikate werden zu 100% vor dem Download verhindert.</LI>
-<LI><B>Live-Telemetrie:</B> Der Hintergrund-Worker meldet via MQTT regelm&auml;&szlig;ig seinen Fortschritt (z.B. "20 Posts verarbeitet") in den Nexus Chat, bis der Sync abgeschlossen ist.</LI>
-<LI><B>Agenten-Aufweck-Trigger (Asynchrones Feedback):</B> Wenn der langlaufende Hintergrundprozess abschlie&szlig;t, steuert der MCP-Server das LLM nicht direkt auf API-Ebene. Stattdessen nutzt er die interne Nexus-REST-API, um eine gew&ouml;hnliche Chat-Nachricht (Absender: "system") auf das private MQTT-Topic des Agenten (z.B. <CODE>agents/cco/inbox</CODE>) zu publizieren. Der Agent konsumiert diese Systemnachricht (z.B. "Hintergrund-Sync abgeschlossen. Bitte erstelle die Zusammenfassung.") exakt so, als h&auml;tte der menschliche Admin sie im Chat geschrieben. Dies weckt den Agenten auf, f&uuml;gt den Trigger in seine RAG-Historie ein und startet einen autonomen ReAct-Zyklus zur Erf&uuml;llung der Aufgabe. Diese lose Kopplung ist ein massives Architektur-Pattern f&uuml;r lang laufende Agenten-Tasks.</LI>
-</UL>
-
-<H4>8.5.1 Influencer Management & Mass Sync</H4>
-<P>Die Verwaltung der X-Accounts erfolgt nicht &uuml;ber statische Listen, sondern &uuml;ber eine intelligente <CODE>x_influencers</CODE> Datenbank-Tabelle:</P>
-<UL>
-<LI><B>Dynamisches Hinzuf&uuml;gen:</B> &Uuml;ber das Tool <CODE>add_influencer</CODE> fragt der CCO die X-API nach der User-ID und dem Screen Name ab, vektorisiert die Metadaten und speichert den Account dauerhaft in der Datenbank.</LI>
-<LI><B>Fuzzy Search Sync:</B> Der Befehl <CODE>sync_influencer_news</CODE> nutzt die PL/pgSQL-Funktion <CODE>search_influencers</CODE>. Wenn ein Agent den Namen "sereni" &uuml;bergibt, durchsucht PostgreSQL per Vektor-&Auml;hnlichkeit und ILIKE die Datenbank, identifiziert <CODE>@aleabitoreddit</CODE> (Screen Name: "serenity") und startet den Sync vollautomatisch.</LI>
-<LI><B>Sequential Mass Sync:</B> Wird <CODE>sync_influencer_news</CODE> mit dem Parameter <CODE>username: "all"</CODE> aufgerufen, l&auml;dt der MCP-Server alle aktiven Accounts aus der Datenbank und arbeitet die Hintergrund-Syncs ressourcenschonend sequenziell (als Batch) ab.</LI>
-<LI><B>Entfernen ohne Datenverlust:</B> &Uuml;ber <CODE>remove_influencer</CODE> k&ouml;nnen Accounts aus der Beobachtungsliste gel&ouml;scht werden. Bereits abgerufene Posts im <CODE>agent_workspace</CODE> bleiben davon physisch unangetastet, da sie &uuml;ber eigene Metadaten-Zuordnungen persistiert sind.</LI>
-</UL>
-
-<H3>8.6 System-Telemetrie & Performance-Tracking</H3>
+<H3>8.5 System-Telemetrie & Performance-Tracking</H3>
 <P>Um die Auslastung der KI-Infrastruktur transparent zu machen, generiert jeder MCP-Server Telemetrie-Daten bei LLM- und Embedding-Aufrufen:</P>
 <UL>
 <LI><B>Metriken:</B> Es werden der exakte Modellname (z.B. <CODE>google/gemma-4-26b-a4b</CODE>), die Gesamtzeit der Generierung, die Anzahl der erzeugten Token und die Geschwindigkeit in <B>t/s (Tokens pro Sekunde)</B> gemessen.</LI>
 <LI><B>Echtzeit-Log:</B> Diese Daten werden als Nachricht vom Typ <CODE>telemetry</CODE> an den Nexus gesendet und erscheinen unmittelbar im Chat-Verlauf und im Dashboard.</LI>
 </UL>
 
-<H3>8.7 Direct-Dump: Umgehung der Inferenz bei List-Tasks</H3>
-<P>Ein wesentliches Architektur-Feature f&uuml;r eine effiziente UI/UX ist der <B>Direct-Dump Mechanismus</B>. Erkennt das System durch strenge Prompt-Direktiven (z.B. durch das Keyword "liste auf"), dass der Benutzer lediglich chronologische Rohdaten sehen will, triggert der MCP Server eine exakte Keyword-Suche (die bei leerem Suchbegriff rein chronologisch absteigend sortiert). Die formatierten Ergebnisse (inkl. Markdown-Escaping) leitet der MCP Server mittels <CODE>dumpToChat</CODE> <I>direkt</I> an den Nexus-Chat-Bus weiter. Das LLM erh&auml;lt daraufhin den systemseitigen <CODE>[STOP]</CODE>-Befehl und wird von der Aufgabe entbunden, die Daten selbst zu formatieren. Dies verhindert Halluzinationen und entlastet die Inferenz-Engine.</P>
-
-<A NAME="bot"></A>
-<H2>9. Der Executive Assistant: Bot-Logik, Historie & Agentik</H2>
-<P>Der <CODE>agent-ea-bot</CODE> ist das ausf&uuml;hrende Frontend der Intelligenz. Er subscribed seinen MQTT-Topic und steuert den ReAct-Loop.</P>
-
-<H3>9.1 Die Zwei-Prompt Strategie</H3>
-<P>Die Steuerung der Agenten basiert auf einer funktionalen Trennung der Prompts:</P>
-<UL>
-<LI><B>1. Der Agenten-Prompt (Das "Wann"):</B> Die <CODE>prompt.txt</CODE> im Bot-Container definiert die Pers&ouml;nlichkeit und den Trigger. Sie entscheidet, <B>ob</B> das Werkzeug <CODE>capture_thought</CODE> &uuml;berhaupt gerufen wird.
-<LI><B>2. Der Metadaten-Prompt (Das "Wie"):</B> Wie im MCP-Kapitel erkl&auml;rt, greift erst nach dem Tool-Aufruf die <CODE>metadata-prompt.txt</CODE> des MCP-Servers, um den Text strukturiert in JSONB zu formen.</UL>
-
-<P>Der Bot operiert in einem autonomen Zyklus: <B>Thought</B> (Tool-Auswahl) &rarr; <B>Action</B> (Tool-Aufruf) &rarr; <B>Observation</B> (Ergebnis-Analyse). Das System l&auml;dt beim Start die letzten 10 Nachrichten aus der <CODE>nexus_chat</CODE>-Tabelle, was einen RAG-Mechanismus f&uuml;r den Chat-Status realisiert.</P>
-
-<H3>9.3 Multi-Agenten Kommunikation: Tool-Based Delegation</H3>
-<P>Wenn mehrere Bots (z.B. EA und CCO) auf dem Nexus aktiv sind, muss die Delegation logisch und steuerbar sein. Open Brain nutzt <B>Tool-Based Delegation</B> &uuml;ber den MQTT-Bus:</P>
-<UL>
-<LI><B>Das 'message_agent' MCP-Tool:</B> Die Delegation erfolgt &uuml;ber das dedizierte MCP-Tool <CODE>message_agent</CODE>. Das LLM entscheidet durch Reasoning, ob eine Aufgabe delegiert werden muss. Das Tool &uuml;bermittelt die Nachricht &uuml;ber die Nexus REST-API in das korrekte Topic.</LI>
-<LI><B>Private Inboxes ohne Mention-Filter:</B> Jeder Agent lauscht exklusiv auf seiner privaten <CODE>agents/{id}/inbox</CODE>. Er verarbeitet bedingungslos jede Nachricht, die dort ankommt, da sie explizit an ihn delegiert wurde. Ein Namens-Filter (Mention-Routing) im Text ist nicht mehr n&ouml;tig.</LI>
-</UL>
-
-<H3>9.4 Vermeidung von Endlosschleifen (Loop Prevention)</H3>
-<P>In einem Multi-Agenten-System besteht die Gefahr von Feedback-Loops (Agent A sagt Danke, Agent B sagt Bitte, Agent A sagt Gerne...). Open Brain implementiert hierf&uuml;r eine strikte <B>Anti-Endlosschleifen-Regel</B> direkt im System-Prompt:</P>
-<UL>
-<LI><B>Terminierung:</B> Sobald eine Aufgabe erledigt oder eine Information geliefert wurde, muss der Agent die Konversation aktiv beenden, indem er keine weitere Nachricht sendet.</LI>
-<LI><B>Floskel-Filter:</B> Agenten sind angewiesen, nicht auf reine Best&auml;tigungen, H&ouml;flichkeitsfloskeln oder "Erledigt"-Meldungen anderer Agenten zu reagieren.</LI>
-</UL>
-<P>Dieses Paradigma erlaubt es, komplexe Agenten-Ketten zu bilden (Bot A delegiert an Bot B, der delegiert an Bot C), w&auml;hrend der Nutzer jeden einzelnen Delegationsschritt transparent im Nexus-Dashboard (Port 7733) verfolgen und eingreifen kann.</P>
-
-<H3>9.5 Intercompany Communication (Agent-to-Agent Prompts)</H3>
-<P>Die Kommunikation zwischen den Agenten (z.B. zwischen CCO und EA) funktioniert nicht auf Basis von Magie, sondern durch pr&auml;zise Prompt-Architektur. Es ist essenziell, dass Agenten ein klares Konzept haben, <B>an wen</B> sie berichten und <B>wann</B> sie schweigen m&uuml;ssen. Folgende Prompts steuern dieses Verhalten vollst&auml;ndig:</P>
-
-<H4>1. Die dynamische Delegations-Regel (Das "An wen")</H4>
-<P>Die Kommunikation zwischen Agenten erfolgt dynamisch basierend auf dem Absender der urspr&uuml;nglichen Nachricht. Dies wird durch eine instruktionsbasierte Logik im <CODE>prompt.txt</CODE> des Agenten sichergestellt:</P>
-<PRE><CODE class="language-text">
-**Teamwork & Delegation (IMPORTANT):**
-You are part of an agent team. If the 'boss' or the Executive Assistant ('ea') assigns you a task, answer professionally and precisely to the one who asked. 
-You MUST use the `message_agent` tool. Make sure to set `target_agent` to the correct agent who requested the task (e.g. "ea" or "boss").
-</CODE></PRE>
-<P><B>Zweck:</B> Dies lehrt das LLM, den Absender der urpr&uuml;nglichen Nachricht aus der RAG-Chat-Historie zu extrahieren und das Argument <CODE>target_agent</CODE> im Tool <CODE>message_agent</CODE> entsprechend auf <CODE>ea</CODE> oder <CODE>boss</CODE> zu setzen.</P>
-
-<H4>2. Die absolute Terminierungs-Regel (Das "Wann schweigen")</H4>
-<P>LLMs sind auf "Hilfsbereitschaft" trainiert. Sie m&ouml;chten das letzte Wort haben ("Gerne geschehen!", "Aufgabe erledigt!"). In einem MQTT-Bussystem f&uuml;hrt das zwingend zu Endlosschleifen, da jede ausgehende MQTT-Nachricht den Trigger f&uuml;r den RAG-Loop des anderen Agenten darstellt. Dies wird durch die <CODE>[STOP]</CODE>-Regel hart auf TypeScript-Ebene unterbunden:</P>
-<PRE><CODE class="language-text">
-**ANTI-INFINITE-LOOP RULE (EXTREMELY IMPORTANT):**
-When a task is done, a question is conclusively answered, or a process cannot be completed, actively end the conversation by sending NO further messages.
-To do this, you MUST output EXACTLY the word `[STOP]` and absolutely nothing else.
-Never reply to pure confirmations or pleasantries (like "Thanks", "Done", or "Task completed") from the other agents.
-</CODE></PRE>
-<P><B>Zweck:</B> Das LLM wird gezwungen, das explizite Token <CODE>[STOP]</CODE> auszugeben, anstatt sich H&ouml;flichkeiten auszudenken. Die <CODE>bot/index.ts</CODE> f&auml;ngt diesen String hart ab (<CODE>if (replyText.trim() === "[STOP]") return;</CODE>) und bricht die Ausf&uuml;hrung ab. Dadurch wird absolut nichts &uuml;ber MQTT publiziert, der Ping-Pong-Effekt stirbt ab und der Nexus-Bus wird wieder ruhig.</P>
-
-<A NAME="fluss"></A>
-<A NAME="pta"></A>
-<H2>9.6 Der Personal Trade Assistant (PTA): Architektur & Event-Sourcing</H2>
-<P>Der PTA repräsentiert eine spezialisierte Ausprägung des Agenten-Modells, fokussiert auf hochrobuste Exekution und Event-Sourcing anstelle von abstrakter Wissensverwaltung. Er ist das ausführende Organ (Der "Muskel") für den Smart Trade Manager (STM).</P>
-
-<H3>9.6.1 Event-Sourcing Datenmodell (Single Source of Truth)</H3>
-<P>Die Datenbank-Architektur des PTA weicht radikal von traditionellen State-Machines ab. Anstatt den Status eines Trades (OPEN, CLOSED) in der Datenbank zu aktualisieren, speichert die Tabelle <CODE>pta_execution_log</CODE> ausschließlich atomare, unveränderliche Events (z.B. <CODE>ORDER_SUBMITTED</CODE>, <CODE>FILL</CODE>, <CODE>CANCEL</CODE>).</P>
-<P>Der aktuelle Zustand eines Portfolios (Equity, Winrate, Active Positions) wird <B>on-the-fly</B> über aggregierende SQL-Views (<CODE>pta_active_positions</CODE>, <CODE>pta_portfolio_summary</CODE>) berechnet. Dieses Design garantiert mathematische Präzision und eliminiert "State-Drift" zwischen lokaler Datenbank und Broker.</P>
-
-<H3>9.6.2 Die "Dumb MCP" + "Background Sync" Architektur</H3>
-<P>Um das System für LLMs leicht wartbar und maximal ausfallsicher zu gestalten, ist die Ausführungslogik entkoppelt:</P>
-<UL>
-<LI><B>Das MCP Tool (<CODE>trade</CODE>):</B> Dient ausschließlich dazu, die "Absicht" (<CODE>ORDER_SUBMITTED</CODE>) in die Datenbank zu schreiben. Es kommuniziert <I>nicht</I> mit dem Broker. Dies hält den MCP-Server extrem schlank.</LI>
-<LI><B>Der IBKR-Sync Prozess (<CODE>ibkr_sync.ts</CODE>):</B> Ein minimalistisches Hintergrund-Skript, das im Bot-Container läuft. Es pollt die Datenbank nach ausstehenden Orders, sendet sie über eine TCP-Socket-Verbindung (Port 4002) an den IB Gateway Container und schreibt asynchron empfangene Ausführungen (Fills) zurück in die Datenbank.</LI>
-</UL>
-
-<H3>9.6.3 Robustheit durch Idempotenz</H3>
-<P>Der Sync-Prozess ist "Exactly-Once" garantiert. Jeder Fill vom Broker erhält eine eindeutige <CODE>broker_exec_id</CODE>. Durch einen <CODE>UNIQUE INDEX</CODE> in PostgreSQL kann das Sync-Skript bei einem Neustart blind historische Fills abfragen und in die Datenbank pushen, ohne dass es zu Duplikaten (Double-Counting) kommt.</P>
-
-<H3>9.6.4 Live-Portfolio-Synchronisation von Interactive Brokers</H3>
-<P>Wenn der Nutzer oder ein koordinierender Agent den Live-Status des Portfolios abfragt, wird das MCP-Tool <CODE>list_active_positions</CODE> aufgerufen. Um sicherzustellen, dass keine permanente Hintergrundlast oder ein ungewollter Live-Mirror läuft, wird das Portfolio rein auf Anfrage (On-Demand Snapshot) synchronisiert:</P>
-<OL>
-<LI><B>Refresh-Trigger:</B> Das MCP-Tool schreibt einen Kontroll-Event des Typs <CODE>REFRESH_REQUESTED</CODE> in das <CODE>pta_execution_log</CODE>.</LI>
-<LI><B>Sync-Reaktion:</B> Das Hintergrund-Skript <CODE>ibkr_sync.ts</CODE> erkennt diesen Request im nächsten Durchlauf, setzt die Sync-Kennzeichnung und stößt einmalig <CODE>ib.reqPositions()</CODE> an.</LI>
-<LI><B>Snapshot-Verarbeitung:</B> Eintreffende Positionen werden im Speicher gesammelt. Sobald das Event <CODE>EventName.positionEnd</CODE> signalisiert, dass der Snapshot vollständig ist, wird die Verbindung über <CODE>ib.cancelPositions()</CODE> sofort wieder beendet.</LI>
-<LI><B>Speicherung & Bericht:</B> Die alte Tabelle <CODE>pta_ibkr_positions</CODE> wird geleert und mit dem neuen Snapshot überschrieben. Das MCP-Tool liest diese Daten nach einer Wartezeit von 1,5 Sekunden aus und gibt einen konsolidierten Bericht (Live-Broker-Status + lokal getrackte Trades) zurück.</LI>
-</OL>
-
-<H3>9.6.5 Multi-W&auml;hrungs-Support & Live FX-Conversion</H3>
-<P>Um ein globales Portfolio sauber analysieren zu k&ouml;nnen, implementiert der PTA ein dynamisches Multi-W&auml;hrungs-Management:</P>
-<UL>
-<LI><B>Erfassung der Ursprungsw&auml;hrung:</B> Das Hintergrund-Skript <CODE>ibkr_sync.ts</CODE> liest beim Snapshot-Abruf die native W&auml;hrung (<CODE>currency</CODE>) jeder Aktie von Interactive Brokers aus und persistiert diese in der <CODE>pta_ibkr_positions</CODE> Tabelle.</LI>
-<LI><B>Dynamische Umrechnung (Frankfurter API):</B> Anstatt Wechselkurse aufw&auml;ndig intern zu cachen, f&uuml;hrt das <CODE>list_active_positions</CODE> MCP-Tool beim Aufruf einen On-the-fly Fetch zur <CODE>api.frankfurter.app</CODE> durch, um die tagesaktuellen Devisenkurse zu laden. Der Report listet anschlie&szlig;end sowohl den originalen Marktwert (z.B. USD) als auch das dynamisch berechnete &Auml;quivalent in Euro auf. Dies erh&auml;lt die Architektur schlank (kein Forex-Sync-Prozess n&ouml;tig) und garantiert punktgenaue Live-Berichte f&uuml;r den Agenten.</LI>
-</UL>
-
-<H3>9.6.6 Generische Trade-Historie (Flexible MCP Tools)</H3>
-<P>Das System-Design verhindert den Bau von spezialisierten "UI-Tools" f&uuml;r jede einzelne Tabellen-Anforderung. Stattdessen vertraut das Architekturmodell auf die Abstraktionsf&auml;higkeit des LLMs:</P>
-<UL>
-<LI><B>Das `get_trade_history` Tool:</B> Dieses Werkzeug wurde generisch gestaltet. Wird eine spezifische <CODE>trade_id</CODE> &uuml;bergeben, liefert es die atomaren Execution-Events dieses einen Trades. L&auml;sst der Agent den Parameter jedoch leer, fungiert das Tool als Bulk-Daten-Provider: Es fragt den <CODE>pta_trade_history</CODE> View ab und liefert eine strukturierte Rohdaten-Liste aller geschlossenen Trades (inklusive Laufnummer, kumulierter Winrate, PnL) zur&uuml;ck.</LI>
-<LI><B>Flexible Filterung:</B> Das Tool unterst&uuml;tzt optionale Zeit-Filter (<CODE>start_date</CODE>, <CODE>end_date</CODE>) sowie Index-Filter (<CODE>min_trade_index</CODE>, <CODE>max_trade_index</CODE>), um riesige Portfolios paginieren zu k&ouml;nnen. Dies bef&auml;higt den Agenten, exakt die gew&uuml;nschten Epochen abzurufen und auf Wunsch beliebig (z.B. zeilenweise als Tabelle) f&uuml;r den Nutzer zu formatieren, ohne dass hierf&uuml;r TypeScript-Code ge&auml;ndert werden muss.</LI>
-</UL>
-
-<H2>10. Detaillierte Szenarien des Informationsflusses</H2>
-
-<H3>10.1 Textuelles Beispiel: Eine Ausgabe speichern</H3>
-<P>Ein Trace f&uuml;r die Anfrage: <I>"Notier dir: Ich habe 50 Euro f&uuml;r Benzin ausgegeben."</I></P>
-<OL>
-<LI><B>MQTT/Nexus:</B> Boss publiziert Nachricht auf <CODE>agents/ea/inbox</CODE>. Nexus-Service empf&auml;ngt und loggt.
-<LI><B>Bot:</B> LLM erkennt Intent. Trigger: Rufe <CODE>capture_thought</CODE> auf.
-<LI><B>MCP-Server:</B> Nimmt Text, ruft LM Studio mit <CODE>metadata-prompt</CODE> auf &rarr; JSON <CODE>{type: "observation", amount: 50}</CODE> wird generiert.
-<LI><B>Ollama:</B> Berechnet Embedding-Vektor.
-<LI><B>PostgreSQL:</B> Speichert <CODE>thoughts</CODE> Datensatz und Nexus-Message synchron.
-<LI><B>Bot:</B> Erh&auml;lt Success-Code vom MCP, generiert Antwort und publiziert sie auf <CODE>agents/boss/inbox</CODE>. Nexus loggt die Antwort in <CODE>nexus_messages</CODE>.</OL>
-
-<H3>10.2 Sequenzdiagramm: Einen Gedanken erfassen</H3>
-<P>Das folgende Sequenzdiagramm visualisiert den exakten technischen Ablauf, wenn der Nutzer den Befehl <I>"merk dir diesen gedanken: mcp ist toll"</I> erteilt. Es belegt die asynchrone Trennung zwischen Bot-Intent und MCP-Anreicherung.</P>
-
-<div class="mermaid">
-sequenceDiagram
-    actor Admin
-    participant Nexus as Nexus Broker MQTT
-    participant Bot as EA Bot
-    participant MCP as MCP Server
-    participant LMStudio as LM Studio
-    participant Ollama as Ollama
-    participant Gateway as Nginx Gateway
-    participant DB as PostgreSQL via PostgREST
-
-    Admin->>Nexus: Publish agents/ea/inbox
-    Nexus->>Bot: MQTT Push inbox message
-    
-    rect rgb(240, 248, 255)
-        note right of Bot: 1. Intent Analyse
-        Bot->>LMStudio: Sende Chat-Historie und aktuelle Nachricht
-        LMStudio-->>Bot: LLM entscheidet: Rufe Tool capture_thought auf
-    end
-
-    Bot->>MCP: Tool Call: capture_thought(content: mcp ist toll)
-    
-    rect rgb(255, 240, 245)
-        note right of MCP: 2. Datenanreicherung (MCP Server)
-        MCP->>LMStudio: Prompt (metadata-prompt.txt): Extrahiere JSON
-        LMStudio-->>MCP: JSON type: observation, topics: mcp, tech
-        
-        MCP->>Ollama: POST /api/embeddings (Text)
-        Ollama-->>MCP: Generiertes Float-Array (4096-dim)
-    end
-
-    rect rgb(240, 255, 240)
-        note right of MCP: 3. DB-Transaktion
-        MCP->>Gateway: POST /rest/v1/rpc/upsert_thought
-        Gateway->>DB: Ausf&uuml;hrung UPSERT RPC
-        DB-->>Gateway: 201 Created
-        Gateway-->>MCP: Erfolg
-        
-        Bot->>Gateway: POST /rest/v1/chat_messages
-        Gateway->>DB: INSERT INTO chat_messages
-        DB-->>Bot: Erfolg
-    end
-    
-    MCP-->>Bot: Tool Result: Gedanke erfolgreich gespeichert
-    
-    Bot->>Nexus: Publish agents/boss/inbox reply
-    Nexus->>Admin: SSE Dashboard zeigt Antwort
-</div>
-
 <A NAME="sicherheit"></A>
-<H2>11. Tiefgreifendes Sicherheits- und Rollenkonzept</H2>
+<H2>9. Tiefgreifendes Sicherheits- und Rollenkonzept</H2>
 <P>Sicherheit ist bei einem digitalen RAG-System Fundament, kein Add-on. Wir applizieren strikt das Principle of Least Privilege.</P>
-<H3>11.1 Netzwerk-Isolation</H3>
-<P>Die PostgreSQL-Daten liegen raw im Docker-Volume (<CODE>openbrain_pgdata</CODE>). Ein Host-Angreifer ohne DB-Credentials kann diese Files nicht ohne Weiteres parsen. Zugriff erfolgt exklusiv &uuml;ber das Nginx-Gateway.</P>
-<H3>11.2 Explizite Filter-Logik (Code over Magic)</H3>
+<H3>9.1 Netzwerk-Isolation</H3>
+<P>Die PostgreSQL-Daten liegen raw im Docker-Volume (<CODE>openbrain_pgdata</CODE>). Ein Host-Angreifer ohne DB-Credentials kann diese Files nicht ohne Weiteres parsen. Zugriff erfolgt exklusiv über das Nginx-Gateway.</P>
+<H3>9.2 Explizite Filter-Logik (Code over Magic)</H3>
 <P>Das Open Brain verzichtet bewusst auf Datenbank-interne RLS-Policies. Stattdessen wird die Filterung hart im TypeScript-Code der MCP-Server implementiert.</P>
 <UL>
 <LI><B>Transparenz:</B> Die Abfragen enthalten explizite <CODE>.eq('agent_id', AGENT_ID)</CODE> Filter. Wer den Code liest, sieht die Sicherheitsschicht.
@@ -627,84 +457,84 @@ sequenceDiagram
 </UL>
 
 <A NAME="wartung"></A>
-<H2>12. Wartung: Backup & Wiederherstellung</H2>
+<H2>10. Wartung: Backup & Wiederherstellung</H2>
 <P>Ein verlustfreies Backup muss sowohl die Vektor-Daten als auch die JSONB-Metadaten konsistent einfrieren.</P>
-<H3>12.1 Logische Datenbank-Dumps</H3>
+<H3>10.1 Logische Datenbank-Dumps</H3>
 <P>Ein atomarer Dump der gesamten Instanz erfolgt per <CODE>pg_dumpall</CODE>:</P>
 <PRE>
 docker exec openbrain-db pg_dumpall -c -U postgres > backup_datum.sql
 </PRE>
-<P>Dieses Binary generiert rohe SQL-Inserts, die Vektoren, JSONB und Chat-Logs vollst&auml;ndig serialisieren.</P>
+<P>Dieses Binary generiert rohe SQL-Inserts, die Vektoren, JSONB und Chat-Logs vollständig serialisieren.</P>
 
-<H3>12.2 Disaster Recovery</H3>
+<H3>10.2 Disaster Recovery</H3>
 <P>Im Falle eines Hardware-Ausfalls wird das SQL-File per Pipe in einen frischen PostgreSQL-Container eingespielt, was das System bit-identisch rehydriert:</P>
 <PRE>
 cat backup_datum.sql | docker exec -i openbrain-db psql -U postgres
 </PRE>
 
 <A NAME="deployment"></A>
-<H2>13. Deployment & Setup: Vom GitHub Repo zum laufenden System</H2>
+<H2>11. Deployment & Setup: Vom GitHub Repo zum laufenden System</H2>
 <P>Dieses Kapitel ist der Step-by-Step Leitfaden, um das gesamte Projekt aus dem Quellcode hochzufahren und die Multi-Agenten-Architektur physisch zu deployen.</P>
 
-<H3>13.1 Voraussetzungen</H3>
+<H3>11.1 Voraussetzungen</H3>
 <UL>
 <LI>Ein Host-System (Linux, macOS, oder Windows mit WSL2).</LI>
 <LI><B>Docker</B> und <B>Docker Compose</B> installiert.</LI>
 <LI><B>LM Studio</B> lokal installiert und laufend (Inference Server auf Port 1234 aktiv).</LI>
 </UL>
 
-<H3>13.2 Initiales Setup (Das Fundament)</H3>
+<H3>11.2 Initiales Setup (Das Fundament)</H3>
 <P>Der Bootstrap-Prozess ist maximal automatisiert:</P>
 <OL>
 <LI><B>Repository klonen:</B> Lade den Code via <CODE>git clone</CODE> herunter.</LI>
-<LI><B>Umgebungsvariablen:</B> Kopiere <CODE>.env.example</CODE> zu <CODE>.env</CODE>. Ersetze die Platzhalter f&uuml;r <CODE>JWT_SECRET</CODE> und <CODE>SERVICE_ROLE_KEY</CODE> durch kryptografisch sichere Strings.</LI>
-<LI><B>System starten:</B> F&uuml;hre <CODE>docker compose up -d --build</CODE> aus. Docker zieht die Basis-Images, baut alle Container und spannt das <CODE>openbrain_default</CODE> Netzwerk auf.</LI>
-<LI><B>Datenbank-Initialisierung:</B> Der PostgreSQL-Container f&uuml;hrt beim initialen Start automatisch die Scripte im <CODE>./init</CODE> Ordner aus. Dies konfiguriert das Schema, die <CODE>pgvector</CODE> Extension, die RLS-Policies und die <CODE>nexus_messages</CODE>-Tabelle.</LI>
-<LI><B>Nexus-Dashboard:</B> &Ouml;ffne <CODE>http://localhost:7733</CODE>. Das Dashboard l&auml;dt automatisch alle bekannten Agenten als Checkboxes sobald die ersten Nachrichten eintreffen.</LI>
+<LI><B>Umgebungsvariablen:</B> Kopiere <CODE>.env.example</CODE> zu <CODE>.env</CODE>. Ersetze die Platzhalter für <CODE>JWT_SECRET</CODE> und <CODE>SERVICE_ROLE_KEY</CODE> durch kryptografisch sichere Strings.</LI>
+<LI><B>System starten:</B> Führe <CODE>docker compose up -d --build</CODE> aus. Docker zieht die Basis-Images, baut alle Container und spannt das <CODE>openbrain_default</CODE> Netzwerk auf.</LI>
+<LI><B>Datenbank-Initialisierung:</B> Der PostgreSQL-Container führt beim initialen Start automatisch die Scripte im <CODE>./init</CODE> Ordner aus. Dies konfiguriert das Schema, die <CODE>pgvector</CODE> Extension, die RLS-Policies und die <CODE>nexus_messages</CODE>-Tabelle.</LI>
+<LI><B>Nexus-Dashboard:</B> Öffne <CODE>http://localhost:7733</CODE>. Das Dashboard lädt automatisch alle bekannten Agenten als Checkboxes sobald die ersten Nachrichten eintreffen.</LI>
 </OL>
 
-<P><B>Infrastruktur-&Uuml;bersicht nach dem Start:</B></P>
+<P><B>Infrastruktur-Übersicht nach dem Start:</B></P>
 <TABLE BORDER="1" CELLPADDING="4">
 <TR><TH>Service</TH><TH>Port</TH><TH>Beschreibung</TH></TR>
 <TR><TD>Supabase Studio</TD><TD>3000</TD><TD>Datenbank-Admin UI</TD></TR>
 <TR><TD>PostgREST</TD><TD>3001</TD><TD>REST API</TD></TR>
 <TR><TD>Nginx Gateway</TD><TD>8001</TD><TD>Reverse Proxy</TD></TR>
 <TR><TD>Ollama</TD><TD>11434</TD><TD>Embedding Model</TD></TR>
-<TR><TD>MCP Server (EA)</TD><TD>8787</TD><TD>Tool-Server f&uuml;r EA</TD></TR>
-<TR><TD>MCP Server (CCO)</TD><TD>8788</TD><TD>Tool-Server f&uuml;r CCO</TD></TR>
+<TR><TD>MCP Server (EA)</TD><TD>8787</TD><TD>Tool-Server für EA</TD></TR>
+<TR><TD>MCP Server (CCO)</TD><TD>8788</TD><TD>Tool-Server für CCO</TD></TR>
 <TR><TD>MQTT Broker</TD><TD>1883 / 9001 WS</TD><TD>Nexus Agenten-Bus</TD></TR>
 <TR><TD><B>Nexus API</B></TD><TD><B>7734</B></TD><TD>REST + SSE Endpunkte</TD></TR>
 <TR><TD><B>Nexus Dashboard</B></TD><TD><B>7733</B></TD><TD>Admin Dashboard</TD></TR>
 </TABLE>
 
-<H3>13.3 Neuen Agenten deployen (Das Fork-Paradigma)</H3>
+<H3>11.3 Neuen Agenten deployen (Das Fork-Paradigma)</H3>
 <P>Die Instanziierung eines neuen Agenten (z.B. "Trading-Broker") erfordert exakt diesen pragmatischen Workflow:</P>
 <OL>
-<LI><B>Agent-Ordner forken:</B> <CODE>cp -r agent-ea agent-xyz</CODE>. Die Identit&auml;t wird ausschlie&szlig;lich &uuml;ber die <CODE>config.yaml</CODE> definiert.</LI>
-<LI><B>Den MCP-Server forken:</B> Kopiere den Ordner <CODE>agent-ea/mcp-server</CODE> zu <CODE>agent-broker/mcp-server</CODE>. F&uuml;ge dort deine dedizierte API-Logik f&uuml;r Drittsysteme (z.B. IB-Broker API) als neue Hono-Endpunkte hinzu. Dieser Server l&auml;uft netzwerkisoliert und enth&auml;lt keinerlei Chat-Logik.</LI>
-<LI><B>Prompt-Konfiguration als Volume mounten (KRITISCH):</B> Prompts geh&ouml;ren niemals hart in den Code oder als Environment Variables in die <CODE>docker-compose.yml</CODE>! Erstelle <CODE>prompt.txt</CODE> und <CODE>metadata-prompt.txt</CODE> und mounte sie via Docker Volumes als read-only (<CODE>:ro</CODE>) in die Bot- und MCP-Container. Das erm&ouml;glicht dir, die Prompts jederzeit on-the-fly im Host-Editor anzupassen, ohne Container neu bauen zu m&uuml;ssen.</LI>
-<LI><B>Container deklarieren:</B> Dupliziere in der <CODE>docker-compose.yml</CODE> die Bot- und MCP-Bl&ouml;cke. Mounte <CODE>config.yaml</CODE> als read-only Volume. Der Bot liest MCP-URLs, MQTT-Broker und Agenten-ID automatisch daraus.</LI>
+<LI><B>Agent-Ordner forken:</B> <CODE>cp -r agent-ea agent-xyz</CODE>. Die Identität wird ausschließlich über die <CODE>config.yaml</CODE> definiert.</LI>
+<LI><B>Den MCP-Server forken:</B> Kopiere den Ordner <CODE>agent-ea/mcp-server</CODE> zu <CODE>agent-broker/mcp-server</CODE>. Füge dort deine dedizierte API-Logik für Drittsysteme (z.B. IB-Broker API) als neue Hono-Endpunkte hinzu. Dieser Server läuft netzwerkisoliert und enthält keinerlei Chat-Logik.</LI>
+<LI><B>Prompt-Konfiguration als Volume mounten (KRITISCH):</B> Prompts gehören niemals hart in den Code oder als Environment Variables in die <CODE>docker-compose.yml</CODE>! Erstelle <CODE>prompt.txt</CODE> und <CODE>metadata-prompt.txt</CODE> und mounte sie via Docker Volumes als read-only (<CODE>:ro</CODE>) in die Bot- und MCP-Container. Das ermöglicht dir, die Prompts jederzeit on-the-fly im Host-Editor anzupassen, ohne Container neu bauen zu müssen.</LI>
+<LI><B>Container deklarieren:</B> Dupliziere in der <CODE>docker-compose.yml</CODE> die Bot- und MCP-Blöcke. Mounte <CODE>config.yaml</CODE> als read-only Volume. Der Bot liest MCP-URLs, MQTT-Broker und Agenten-ID automatisch daraus.</LI>
 <LI><B>Schema-Isolation:</B> Falls der Broker eigene relationale Daten braucht, quetsche sie nicht in die Core-Tabellen. Erstelle per Supabase Studio ein neues Schema (z.B. <CODE>CREATE SCHEMA broker;</CODE>). PostgREST spiegelt dieses Schema sofort in eine isolierte REST-API.</LI>
 <LI><B>Starten & Erkennung:</B> <CODE>docker compose up -d --build agent-xyz-bot</CODE>. Der neue Agent verbindet sich via MQTT, sendet sein Online-Signal und erscheint dank der automatischen MQTT-Discovery sofort als Checkbox im Dashboard, ohne dass vorher Nachrichten ausgetauscht werden müssen.</LI>
 </OL>
 
-<H3>13.4 Hot-Reloading via rebuild-agents.sh</H3>
-<P>Bei &Auml;nderungen an TypeScript-Dateien der MCP-Server oder Bots muss der Code neu kompiliert und die Container neugestartet werden. Daf&uuml;r existiert das Skript <CODE>rebuild-agents.sh</CODE> (auch per bash_alias <CODE>rebuild_agents</CODE> verf&uuml;gbar) im Root-Verzeichnis. Es baut die Deno-Images via Docker-Bake im Cache, startet die MCP-Server neu, l&auml;dt die Bot-Container neu und flushed den SQL-Schema-Cache von PostgREST. Dies erm&ouml;glicht einen Hot-Reload des Systems innerhalb weniger Sekunden, ohne Docker komplett herunterzufahren.</P>
+<H3>11.4 Hot-Reloading via rebuild-agents.sh</H3>
+<P>Bei Änderungen an TypeScript-Dateien der MCP-Server oder Bots muss der Code neu kompiliert und die Container neugestartet werden. Dafür existiert das Skript <CODE>rebuild-agents.sh</CODE> (auch per bash_alias <CODE>rebuild_agents</CODE> verfügbar) im Root-Verzeichnis. Es baut die Deno-Images via Docker-Bake im Cache, startet die MCP-Server neu, lädt die Bot-Container neu und flushed den SQL-Schema-Cache von PostgREST. Dies ermöglicht einen Hot-Reload des Systems innerhalb weniger Sekunden, ohne Docker komplett herunterzufahren.</P>
 
-<H3>13.5 Agenten-Instanziierung und Lifecycle</H3>
-<P>Dieses Kapitel dokumentiert den exakten, atomaren Prozess zur Instanziierung eines neuen Agenten am Beispiel von <CODE>agent-cco</CODE>. Jeder Befehl ist zwingend in dieser Reihenfolge auszuf&uuml;hren.</P>
+<H3>11.5 Agenten-Instanziierung und Lifecycle</H3>
+<P>Dieses Kapitel dokumentiert den exakten, atomaren Prozess zur Instanziierung eines neuen Agenten am Beispiel von <CODE>agent-cco</CODE>. Jeder Befehl ist zwingend in dieser Reihenfolge auszuführen.</P>
 
 <H4>Schritt 1: Das Fork-Paradigma (Dateisystem)</H4>
 <P>Wir nutzen <CODE>agent-ea</CODE> als stabiles Template. Kopiere den gesamten Ordner:</P>
 <PRE><B>Terminal:</B> cp -r agent-ea agent-cco</PRE>
-<P>L&ouml;sche alte State-Files, falls vorhanden, um einen sauberen Start zu garantieren:</P>
+<P>Lösche alte State-Files, falls vorhanden, um einen sauberen Start zu garantieren:</P>
 <PRE><B>Terminal:</B> rm -f agent-cco/bot/bot-storage.json</PRE>
 
 <H4>Schritt 2: Die semantische Programmierung (Prompts)</H4>
 <P>Passe die Textdateien im neuen Ordner an. Die <CODE>prompt.txt</CODE> definiert das Verhalten im Chat, die <CODE>metadata-prompt.txt</CODE> die Struktur in der Datenbank.</P>
 
-<H4>Schritt 3: Identit&auml;t in config.yaml deklarieren</H4>
-<P>Passe die <CODE>config.yaml</CODE> im Agenten-Verzeichnis an, um die Identit&auml;t und den MQTT-Broker zu definieren:</P>
+<H4>Schritt 3: Identität in config.yaml deklarieren</H4>
+<P>Passe die <CODE>config.yaml</CODE> im Agenten-Verzeichnis an, um die Identität und den MQTT-Broker zu definieren:</P>
 <PRE><CODE class="language-yaml">
 # agent-cco/config.yaml
 agent:
@@ -715,7 +545,7 @@ mqtt:
 </CODE></PRE>
 
 <H4>Schritt 4: Docker-Compose erweitern</H4>
-<P>F&uuml;ge Bot- und MCP-Bl&ouml;cke in die <CODE>docker-compose.yml</CODE> ein und starte die neuen Services:</P>
+<P>Füge Bot- und MCP-Blöcke in die <CODE>docker-compose.yml</CODE> ein und starte die neuen Services:</P>
 <PRE><CODE class="language-bash">
 # 1. Container bauen und im Hintergrund starten
 docker compose up -d --build agent-cco-bot mcp-cco
@@ -723,7 +553,7 @@ docker compose up -d --build agent-cco-bot mcp-cco
 
 
 <H4>Schritt 5: Die Infrastruktur erweitern (docker-compose.yml)</H4>
-<P>F&uuml;ge am Ende der <CODE>services</CODE>-Sektion die neuen Container hinzu. Achte auf den eindeutigen Port (<CODE>8788</CODE>) f&uuml;r den MCP-Server:</P>
+<P>Füge am Ende der <CODE>services</CODE>-Sektion die neuen Container hinzu. Achte auf den eindeutigen Port (<CODE>8788</CODE>) für den MCP-Server:</P>
 <PRE><CODE class="language-yaml">
   # --- CCO MCP Server ---
   mcp-cco:
@@ -761,15 +591,228 @@ docker compose up -d --build agent-cco-bot mcp-cco
       LM_STUDIO_URL: http://host.docker.internal:1234
 </CODE></PRE>
 
-<H4>Schritt 6: Z&uuml;ndung und Erfolgskontrolle</H4>
+<H4>Schritt 6: Zündung und Erfolgskontrolle</H4>
 <P>Baue und starte die neuen Services:</P>
 <PRE><B>Terminal:</B> docker compose up -d --build agent-cco-bot</PRE>
-<P>Pr&uuml;fe die Logs auf den "Ready"-State:</P>
+<P>Prüfe die Logs auf den "Ready"-State:</P>
 <PRE><B>Terminal:</B> docker logs -f openbrain-cco-bot</PRE>
 <P>Ergebnis: <CODE>✅ Chief Communications Officer (cco) is listening on The Nexus</CODE></P>
 
 <HR>
-<P ALIGN="CENTER"><I>Ende des Handbuchs. Wissen ist Macht &ndash; Lokales Wissen ist Freiheit.<BR>Erstellt von Antigravity (AI) f&uuml;r das Open Brain Projekt.</I></P>
+<P ALIGN="CENTER"><I>Ende des Handbuchs. Wissen ist Macht – Lokales Wissen ist Freiheit.<BR>Erstellt von Antigravity (AI) für das Open Brain Projekt.</I></P>
 
+<H1 style='color: #e65100; border-bottom: 2px solid #e65100;'>TEIL II: DIE AGENTEN</H1>
+<A NAME="bot"></A>
+<H2>12. Der Executive Assistant: Bot-Logik, Historie & Agentik</H2>
+<P>Der <CODE>agent-ea-bot</CODE> ist das ausführende Frontend der Intelligenz. Er subscribed seinen MQTT-Topic und steuert den ReAct-Loop.</P>
+
+<H3>12.1 Die Zwei-Prompt Strategie</H3>
+<P>Die Steuerung der Agenten basiert auf einer funktionalen Trennung der Prompts:</P>
+<UL>
+<LI><B>1. Der Agenten-Prompt (Das "Wann"):</B> Die <CODE>prompt.txt</CODE> im Bot-Container definiert die Persönlichkeit und den Trigger. Sie entscheidet, <B>ob</B> das Werkzeug <CODE>capture_thought</CODE> überhaupt gerufen wird.
+<LI><B>2. Der Metadaten-Prompt (Das "Wie"):</B> Wie im MCP-Kapitel erklärt, greift erst nach dem Tool-Aufruf die <CODE>metadata-prompt.txt</CODE> des MCP-Servers, um den Text strukturiert in JSONB zu formen.</UL>
+
+<P>Der Bot operiert in einem autonomen Zyklus: <B>Thought</B> (Tool-Auswahl) → <B>Action</B> (Tool-Aufruf) → <B>Observation</B> (Ergebnis-Analyse). Das System lädt beim Start die letzten 10 Nachrichten aus der <CODE>nexus_chat</CODE>-Tabelle, was einen RAG-Mechanismus für den Chat-Status realisiert.</P>
+
+<H3>12.2 Multi-Agenten Kommunikation: Tool-Based Delegation</H3>
+<P>Wenn mehrere Bots (z.B. EA und CCO) auf dem Nexus aktiv sind, muss die Delegation logisch und steuerbar sein. Open Brain nutzt <B>Tool-Based Delegation</B> über den MQTT-Bus:</P>
+<UL>
+<LI><B>Das 'message_agent' MCP-Tool:</B> Die Delegation erfolgt über das dedizierte MCP-Tool <CODE>message_agent</CODE>. Das LLM entscheidet durch Reasoning, ob eine Aufgabe delegiert werden muss. Das Tool übermittelt die Nachricht über die Nexus REST-API in das korrekte Topic.</LI>
+<LI><B>Private Inboxes ohne Mention-Filter:</B> Jeder Agent lauscht exklusiv auf seiner privaten <CODE>agents/{id}/inbox</CODE>. Er verarbeitet bedingungslos jede Nachricht, die dort ankommt, da sie explizit an ihn delegiert wurde. Ein Namens-Filter (Mention-Routing) im Text ist nicht mehr nötig.</LI>
+</UL>
+
+<H3>12.3 Vermeidung von Endlosschleifen (Loop Prevention)</H3>
+<P>In einem Multi-Agenten-System besteht die Gefahr von Feedback-Loops (Agent A sagt Danke, Agent B sagt Bitte, Agent A sagt Gerne...). Open Brain implementiert hierfür eine strikte <B>Anti-Endlosschleifen-Regel</B> direkt im System-Prompt:</P>
+<UL>
+<LI><B>Terminierung:</B> Sobald eine Aufgabe erledigt oder eine Information geliefert wurde, muss der Agent die Konversation aktiv beenden, indem er keine weitere Nachricht sendet.</LI>
+<LI><B>Floskel-Filter:</B> Agenten sind angewiesen, nicht auf reine Bestätigungen, Höflichkeitsfloskeln oder "Erledigt"-Meldungen anderer Agenten zu reagieren.</LI>
+</UL>
+<P>Dieses Paradigma erlaubt es, komplexe Agenten-Ketten zu bilden (Bot A delegiert an Bot B, der delegiert an Bot C), während der Nutzer jeden einzelnen Delegationsschritt transparent im Nexus-Dashboard (Port 7733) verfolgen und eingreifen kann.</P>
+
+<H3>12.4 Intercompany Communication (Agent-to-Agent Prompts)</H3>
+<P>Die Kommunikation zwischen den Agenten (z.B. zwischen CCO und EA) funktioniert nicht auf Basis von Magie, sondern durch präzise Prompt-Architektur. Es ist essenziell, dass Agenten ein klares Konzept haben, <B>an wen</B> sie berichten und <B>wann</B> sie schweigen müssen. Folgende Prompts steuern dieses Verhalten vollständig:</P>
+
+<H4>1. Die dynamische Delegations-Regel (Das "An wen")</H4>
+<P>Die Kommunikation zwischen Agenten erfolgt dynamisch basierend auf dem Absender der ursprünglichen Nachricht. Dies wird durch eine instruktionsbasierte Logik im <CODE>prompt.txt</CODE> des Agenten sichergestellt:</P>
+<PRE><CODE class="language-text">
+**Teamwork & Delegation (IMPORTANT):**
+You are part of an agent team. If the 'boss' or the Executive Assistant ('ea') assigns you a task, answer professionally and precisely to the one who asked. 
+You MUST use the `message_agent` tool. Make sure to set `target_agent` to the correct agent who requested the task (e.g. "ea" or "boss").
+</CODE></PRE>
+<P><B>Zweck:</B> Dies lehrt das LLM, den Absender der urprünglichen Nachricht aus der RAG-Chat-Historie zu extrahieren und das Argument <CODE>target_agent</CODE> im Tool <CODE>message_agent</CODE> entsprechend auf <CODE>ea</CODE> oder <CODE>boss</CODE> zu setzen.</P>
+
+<H4>2. Die absolute Terminierungs-Regel (Das "Wann schweigen")</H4>
+<P>LLMs sind auf "Hilfsbereitschaft" trainiert. Sie möchten das letzte Wort haben ("Gerne geschehen!", "Aufgabe erledigt!"). In einem MQTT-Bussystem führt das zwingend zu Endlosschleifen, da jede ausgehende MQTT-Nachricht den Trigger für den RAG-Loop des anderen Agenten darstellt. Dies wird durch die <CODE>[STOP]</CODE>-Regel hart auf TypeScript-Ebene unterbunden:</P>
+<PRE><CODE class="language-text">
+**ANTI-INFINITE-LOOP RULE (EXTREMELY IMPORTANT):**
+When a task is done, a question is conclusively answered, or a process cannot be completed, actively end the conversation by sending NO further messages.
+To do this, you MUST output EXACTLY the word `[STOP]` and absolutely nothing else.
+Never reply to pure confirmations or pleasantries (like "Thanks", "Done", or "Task completed") from the other agents.
+</CODE></PRE>
+<P><B>Zweck:</B> Das LLM wird gezwungen, das explizite Token <CODE>[STOP]</CODE> auszugeben, anstatt sich Höflichkeiten auszudenken. Die <CODE>bot/index.ts</CODE> fängt diesen String hart ab (<CODE>if (replyText.trim() === "[STOP]") return;</CODE>) und bricht die Ausführung ab. Dadurch wird absolut nichts über MQTT publiziert, der Ping-Pong-Effekt stirbt ab und der Nexus-Bus wird wieder ruhig.</P>
+
+<A NAME="fluss"></A>
+<A NAME="cco"></A>
+<H2>13. Der Chief Communications Officer (CCO)</H2>
+<P>Der CCO ist für die externe Informationsbeschaffung und Kommunikation zuständig. Er interagiert primär mit der X-API (ehemals Twitter) und liefert dem System Echtzeit-Nachrichten und Sentiment-Analysen.</P>
+<H3>13.1 X-Integration: Asynchroner Sync & Zero-Duplicate Fetching</H3>
+<P>Der CCO (Chief Communications Officer) verfügt über das spezialisierte Tool <CODE>sync_influencer_news</CODE>, welches eine hochperformante Anbindung an die X-API (v2) implementiert. Da der Abruf und die lokale Vektorisierung von bis zu 500 Posts extrem ressourcen- und zeitaufwändig (LM Studio Inferenz) sind, nutzt das System eine entkoppelte Architektur:</P>
+<UL>
+<LI><B>Asynchroner Hintergrund-Job:</B> Das Tool bestätigt dem Agenten sofort den Start des Syncs. Die tatsächliche Paginierung, der Download und die Inferenz laufen entkoppelt im Hintergrund. Der Agent wird im Nexus Chat währenddessen nicht blockiert.</LI>
+<LI><B>In-Memory Locking:</B> Um zu verhindern, dass ein ungeduldiger Agent den Abruf für den selben Influencer parallel mehrfach startet, wird eine <CODE>activeSyncs</CODE>-Sperre im MCP-Server gehalten.</LI>
+<LI><B>Zero-Duplicate Fetching (`until_id` Trick):</B> Um X-API Kosten zu sparen, verfügt der Sync über eine smarte Lückenfüller-Logik. Bei historischen Abfragen (via <CODE>start_time</CODE>) sucht das System zuerst den ältesten bereits gespeicherten Post in der Datenbank. Dieser wird als <CODE>until_id</CODE> an X gesendet, wodurch die X-API ausschließlich die fehlende Lücke zurückliefert. Duplikate werden zu 100% vor dem Download verhindert.</LI>
+<LI><B>Live-Telemetrie:</B> Der Hintergrund-Worker meldet via MQTT regelmäßig seinen Fortschritt (z.B. "20 Posts verarbeitet") in den Nexus Chat, bis der Sync abgeschlossen ist.</LI>
+<LI><B>Agenten-Aufweck-Trigger (Asynchrones Feedback):</B> Wenn der langlaufende Hintergrundprozess abschließt, steuert der MCP-Server das LLM nicht direkt auf API-Ebene. Stattdessen nutzt er die interne Nexus-REST-API, um eine gewöhnliche Chat-Nachricht (Absender: "system") auf das private MQTT-Topic des Agenten (z.B. <CODE>agents/cco/inbox</CODE>) zu publizieren. Der Agent konsumiert diese Systemnachricht (z.B. "Hintergrund-Sync abgeschlossen. Bitte erstelle die Zusammenfassung.") exakt so, als hätte der menschliche Admin sie im Chat geschrieben. Dies weckt den Agenten auf, fügt den Trigger in seine RAG-Historie ein und startet einen autonomen ReAct-Zyklus zur Erfüllung der Aufgabe. Diese lose Kopplung ist ein massives Architektur-Pattern für lang laufende Agenten-Tasks.</LI>
+</UL>
+
+<H4>13.1.1 Influencer Management & Mass Sync</H4>
+<P>Die Verwaltung der X-Accounts erfolgt nicht über statische Listen, sondern über eine intelligente <CODE>x_influencers</CODE> Datenbank-Tabelle:</P>
+<UL>
+<LI><B>Dynamisches Hinzufügen:</B> Über das Tool <CODE>add_influencer</CODE> fragt der CCO die X-API nach der User-ID und dem Screen Name ab, vektorisiert die Metadaten und speichert den Account dauerhaft in der Datenbank.</LI>
+<LI><B>Fuzzy Search Sync:</B> Der Befehl <CODE>sync_influencer_news</CODE> nutzt die PL/pgSQL-Funktion <CODE>search_influencers</CODE>. Wenn ein Agent den Namen "sereni" übergibt, durchsucht PostgreSQL per Vektor-Ähnlichkeit und ILIKE die Datenbank, identifiziert <CODE>@aleabitoreddit</CODE> (Screen Name: "serenity") und startet den Sync vollautomatisch.</LI>
+<LI><B>Sequential Mass Sync:</B> Wird <CODE>sync_influencer_news</CODE> mit dem Parameter <CODE>username: "all"</CODE> aufgerufen, lädt der MCP-Server alle aktiven Accounts aus der Datenbank und arbeitet die Hintergrund-Syncs ressourcenschonend sequenziell (als Batch) ab.</LI>
+<LI><B>Entfernen ohne Datenverlust:</B> Über <CODE>remove_influencer</CODE> können Accounts aus der Beobachtungsliste gelöscht werden. Bereits abgerufene Posts im <CODE>agent_workspace</CODE> bleiben davon physisch unangetastet, da sie über eigene Metadaten-Zuordnungen persistiert sind.</LI>
+</UL>
+
+
+<H3>13.2 Direct-Dump: Umgehung der Inferenz bei List-Tasks</H3>
+<P>Ein wesentliches Architektur-Feature für eine effiziente UI/UX ist der <B>Direct-Dump Mechanismus</B>. Erkennt das System durch strenge Prompt-Direktiven (z.B. durch das Keyword "liste auf"), dass der Benutzer lediglich chronologische Rohdaten sehen will, triggert der MCP Server eine exakte Keyword-Suche (die bei leerem Suchbegriff rein chronologisch absteigend sortiert). Die formatierten Ergebnisse (inkl. Markdown-Escaping) leitet der MCP Server mittels <CODE>dumpToChat</CODE> <I>direkt</I> an den Nexus-Chat-Bus weiter. Das LLM erhält daraufhin den systemseitigen <CODE>[STOP]</CODE>-Befehl und wird von der Aufgabe entbunden, die Daten selbst zu formatieren. Dies verhindert Halluzinationen und entlastet die Inferenz-Engine.</P>
+
+
+<A NAME="pta"></A>
+<A NAME="minervini"></A>
+<H2>14. Der Personal Trading Assistant (PTA)</H2>
+<P>Der PTA ist primär ein hochrobuster Exekutions-Agent für das Trading, der <b>ergänzend</b> mit den strengen Risikomanagement-Regeln von Mark Minervini ausgestattet ist. Er führt nicht nur abstrakte Risiko-Validierungen durch, sondern orchestriert über seine Trading-Tools (z.B. <CODE>trade</CODE>, <CODE>list_active_positions</CODE>, <CODE>get_trade_history</CODE>) den kompletten Lifecycle von Trades direkt über Interactive Brokers.</P>
+
+<H3>14.1 Event-Sourcing Datenmodell (Single Source of Truth)</H3>
+<P>Die Datenbank-Architektur des PTA weicht radikal von traditionellen State-Machines ab. Anstatt den Status eines Trades (OPEN, CLOSED) in der Datenbank zu aktualisieren, speichert die Tabelle <CODE>pta_execution_log</CODE> ausschließlich atomare, unveränderliche Events (z.B. <CODE>ORDER_SUBMITTED</CODE>, <CODE>FILL</CODE>, <CODE>CANCEL</CODE>).</P>
+<P>Der aktuelle Zustand eines Portfolios (Equity, Winrate, Active Positions) wird <B>on-the-fly</B> über aggregierende SQL-Views (<CODE>pta_active_positions</CODE>, <CODE>pta_portfolio_summary</CODE>) berechnet. Dieses Design garantiert mathematische Präzision und eliminiert "State-Drift" zwischen lokaler Datenbank und Broker.</P>
+
+<H3>14.2 Die "Dumb MCP" + "Background Sync" Architektur</H3>
+<P>Um das System für LLMs leicht wartbar und maximal ausfallsicher zu gestalten, ist die Ausführungslogik entkoppelt:</P>
+<UL>
+<LI><B>Das MCP Tool (<CODE>trade</CODE>):</B> Dient ausschließlich dazu, die "Absicht" (<CODE>ORDER_SUBMITTED</CODE>) in die Datenbank zu schreiben. Es kommuniziert <I>nicht</I> mit dem Broker. Dies hält den MCP-Server extrem schlank.</LI>
+<LI><B>Der IBKR-Sync Prozess (<CODE>ibkr_sync.ts</CODE>):</B> Ein minimalistisches Hintergrund-Skript, das im Bot-Container läuft. Es pollt die Datenbank nach ausstehenden Orders, sendet sie über eine TCP-Socket-Verbindung (Port 4002) an den IB Gateway Container und schreibt asynchron empfangene Ausführungen (Fills) zurück in die Datenbank.</LI>
+</UL>
+
+<H3>14.3 Robustheit durch Idempotenz</H3>
+<P>Der Sync-Prozess ist "Exactly-Once" garantiert. Jeder Fill vom Broker erhält eine eindeutige <CODE>broker_exec_id</CODE>. Durch einen <CODE>UNIQUE INDEX</CODE> in PostgreSQL kann das Sync-Skript bei einem Neustart blind historische Fills abfragen und in die Datenbank pushen, ohne dass es zu Duplikaten (Double-Counting) kommt.</P>
+
+<H3>14.4 Live-Portfolio-Synchronisation von Interactive Brokers</H3>
+<P>Wenn der Nutzer oder ein koordinierender Agent den Live-Status des Portfolios abfragt, wird das MCP-Tool <CODE>list_active_positions</CODE> aufgerufen. Um sicherzustellen, dass keine permanente Hintergrundlast oder ein ungewollter Live-Mirror läuft, wird das Portfolio rein auf Anfrage (On-Demand Snapshot) synchronisiert:</P>
+<OL>
+<LI><B>Refresh-Trigger:</B> Das MCP-Tool schreibt einen Kontroll-Event des Typs <CODE>REFRESH_REQUESTED</CODE> in das <CODE>pta_execution_log</CODE>.</LI>
+<LI><B>Sync-Reaktion:</B> Das Hintergrund-Skript <CODE>ibkr_sync.ts</CODE> erkennt diesen Request im nächsten Durchlauf, setzt die Sync-Kennzeichnung und stößt einmalig <CODE>ib.reqPositions()</CODE> an.</LI>
+<LI><B>Snapshot-Verarbeitung:</B> Eintreffende Positionen werden im Speicher gesammelt. Sobald das Event <CODE>EventName.positionEnd</CODE> signalisiert, dass der Snapshot vollständig ist, wird die Verbindung über <CODE>ib.cancelPositions()</CODE> sofort wieder beendet.</LI>
+<LI><B>Speicherung & Bericht:</B> Die alte Tabelle <CODE>pta_ibkr_positions</CODE> wird geleert und mit dem neuen Snapshot überschrieben. Das MCP-Tool liest diese Daten nach einer Wartezeit von 1,5 Sekunden aus und gibt einen konsolidierten Bericht (Live-Broker-Status + lokal getrackte Trades) zurück.</LI>
+</OL>
+
+<H3>14.5 Multi-Währungs-Support & Live FX-Conversion</H3>
+<P>Um ein globales Portfolio sauber analysieren zu können, implementiert der PTA ein dynamisches Multi-Währungs-Management:</P>
+<UL>
+<LI><B>Erfassung der Ursprungswährung:</B> Das Hintergrund-Skript <CODE>ibkr_sync.ts</CODE> liest beim Snapshot-Abruf die native Währung (<CODE>currency</CODE>) jeder Aktie von Interactive Brokers aus und persistiert diese in der <CODE>pta_ibkr_positions</CODE> Tabelle.</LI>
+<LI><B>Dynamische Umrechnung (Frankfurter API):</B> Anstatt Wechselkurse aufwändig intern zu cachen, führt das <CODE>list_active_positions</CODE> MCP-Tool beim Aufruf einen On-the-fly Fetch zur <CODE>api.frankfurter.app</CODE> durch, um die tagesaktuellen Devisenkurse zu laden. Der Report listet anschließend sowohl den originalen Marktwert (z.B. USD) als auch das dynamisch berechnete Äquivalent in Euro auf. Dies erhält die Architektur schlank (kein Forex-Sync-Prozess nötig) und garantiert punktgenaue Live-Berichte für den Agenten.</LI>
+</UL>
+
+<H3>14.6 Generische Trade-Historie (Flexible MCP Tools)</H3>
+<P>Das System-Design verhindert den Bau von spezialisierten "UI-Tools" für jede einzelne Tabellen-Anforderung. Stattdessen vertraut das Architekturmodell auf die Abstraktionsfähigkeit des LLMs:</P>
+<UL>
+<LI><B>Das `get_trade_history` Tool:</B> Dieses Werkzeug wurde generisch gestaltet. Wird eine spezifische <CODE>trade_id</CODE> übergeben, liefert es die atomaren Execution-Events dieses einen Trades. Lässt der Agent den Parameter jedoch leer, fungiert das Tool als Bulk-Daten-Provider: Es fragt den <CODE>pta_trade_history</CODE> View ab und liefert eine strukturierte Rohdaten-Liste aller geschlossenen Trades (inklusive Laufnummer, kumulierter Winrate, PnL) zurück.</LI>
+<LI><B>Flexible Filterung:</B> Das Tool unterstützt optionale Zeit-Filter (<CODE>start_date</CODE>, <CODE>end_date</CODE>) sowie Index-Filter (<CODE>min_trade_index</CODE>, <CODE>max_trade_index</CODE>), um riesige Portfolios paginieren zu können. Dies befähigt den Agenten, exakt die gewünschten Epochen abzurufen und auf Wunsch beliebig (z.B. zeilenweise als Tabelle) für den Nutzer zu formatieren, ohne dass hierfür TypeScript-Code geändert werden muss.</LI>
+</UL>
+
+<H3>14.7 Offline Queuing & Local Cancel (Ausfallsicherheit)</H3>
+<P>Der PTA ist so konzipiert, dass er auch bei Ausfällen des IB-Gateways voll funktionsfähig bleibt. Das System nutzt ein <B>Offline Queuing</B>:</P>
+<UL>
+<LI><B>Lokales Speichern:</B> Ist das IB-Gateway offline (Verbindungsabbruch zu Interactive Brokers), schlagen Order-Eingaben nicht hart fehl. Das Tool speichert die <CODE>ORDER_SUBMITTED</CODE>-Events lokal in <CODE>pta_execution_log</CODE> und weist den Agenten im Rückgabewert darauf hin, dass die Order "queued" ist und übermittelt wird, sobald das Gateway online geht.</LI>
+<LI><B>Erkennung unbestätigter Orders:</B> Der Agent warnt proaktiv, wenn für einen Ticker bereits Orders in der Warteschlange hängen, die vom Broker noch nicht durch eine ID bestätigt wurden (<CODE>broker_order_id IS NULL</CODE>).</LI>
+<LI><B>Lokales Stornieren (Local Cancel):</B> Wenn eine Order noch lokal gequeued ist (unbestätigt) und der Agent ein <CODE>CANCEL</CODE> ausführt, wird die Order <B>lokal in der Datenbank storniert</B> (<CODE>broker_order_id</CODE> wird zu <CODE>CANCELLED</CODE>). Sie wird aus der Warteschlange entfernt und bei Reconnection des Gateways nicht mehr an den Broker übermittelt, was riskante "Geister-Orders" verhindert.</LI>
+</UL>
+
+<H3>14.8 Automatisierte Lifecycle Validierung (`validate_mcp.ts`)</H3>
+<P>Um die Stabilität des Order-Lifecycles permanent zu gewährleisten, verfügt das System über das Deno-Skript <CODE>validate_mcp.ts</CODE>. Es testet den gesamten Flow auf MCP-Ebene:</P>
+<UL>
+<LI><B>Online Test:</B> Platziert eine Limit-Order weit unter dem Marktpreis, wartet auf den Sync-Bot, verifiziert die Order in den aktiven Broker-Positionen und storniert sie anschließend wieder sauber über die API.</LI>
+<LI><B>Offline Test:</B> Das Skript nutzt die Nexus-REST-API (<CODE>POST /api/settings/ib_gateway/stop</CODE>), um das Gateway physisch zu trennen. Anschließend testet es das lokale Queuing, verifiziert die Offline-Warnungen und das lokale Stornieren. Abschließend startet es das Gateway wieder per API, wobei der Nutzer aufgerufen wird, ein eventuell erforderliches 2FA (Two-Factor Authentication) auf dem Smartphone zu bestätigen.</LI>
+</UL>
+
+<H3>14.9 Minervini Risk Management (ask_minervini)</H3>
+
+<P>Das System implementiert ein striktes, in Skripten hart-codiertes Risikomanagement nach den Prinzipien von Mark Minervini. Der PTA (Personal Trade Assistant) nutzt das MCP-Tool <CODE>ask_minervini</CODE>, um Trade-Setups mathematisch zu validieren. Um Halluzinationen zu verhindern, liegt die gesamte Rechenlogik im TypeScript-Code des Tools und nicht im Prompt des LLM.</P>
+
+<H3>14.9.1 Die Datenbank-Parameter</H3>
+<P>Die Basis-Parameter liegen in der Tabelle <CODE>minervini_risk_parameters</CODE>:</P>
+<UL>
+<LI><B>base_risk_pct:</B> Das Standard-Risiko pro Trade in Prozent vom Gesamtkapital (Default: 1.00%).</LI>
+<LI><B>max_position_size_pct:</B> Die maximale Positionsgröße (Default: 25.00%).</LI>
+<LI><B>base_cash_quote_pct:</B> Gewünschte Basis-Cashquote (Default: 10.00%).</LI>
+</UL>
+
+<H3>14.9.2 Der Entscheidungsfluss (Solver-Logik)</H3>
+<P>Das <CODE>ask_minervini</CODE> Tool agiert als intelligenter "Solver". Es nimmt Teilinformationen des Nutzers entgegen und berechnet die fehlenden Parameter rückwärts, basierend auf dem <B>historischen Average Loss</B> (Default: 6%) und dem <B>Basis-Risiko</B> (Default: 1%). Die Leitwährung ist intern EUR, wobei fast ausschließlich normierte Prozentwerte genutzt werden.</P>
+
+<H4>Szenario A: Stop-Loss gegeben, Positionsgröße fehlt</H4>
+<div class="mermaid">
+graph TD
+    A[Input: Aktie + Stop-Loss Kurs] --> B{Ist Stop-Distanz % > Average Loss % * 1.5?}
+    B -- Ja zu weit --> C[REJECTED: Ruiniert Statistik]
+    B -- Nein --> D[Berechne max_shares via Risiko-Limit]
+    D --> E[Berechne max_shares via Positions-Limit]
+    E --> F[Nimm Minimum beider Werte]
+    F --> G[APPROVED: Gibt empfohlene Stückzahl aus]
+</div>
+<P><B>Beispielrechnung (Szenario A):</B><BR>
+Kapital = 10.000€, Risiko = 1% (100€). Kurs = 100€, Stop = 95€ (Abstand: 5%).<BR>
+Da 5% < Average Loss (6%), ist es okay. Risiko pro Aktie = 5€. 100€ / 5€ = 20 Aktien. Positionsgröße = 2.000€ (20%). Dies ist kleiner als das Limit von 25%. Ergebnis: 20 Aktien erlaubt.</P>
+
+<H4>Szenario B: Positionsgröße gegeben, Stop-Loss fehlt</H4>
+<div class="mermaid">
+graph TD
+    A[Input: Aktie + Wunschgröße in %] --> B{Ist Größe > 25% Limit?}
+    B -- Ja --> C[REJECTED: Zu große Position]
+    B -- Nein --> D[Berechne Stückzahl]
+    D --> E[Reverse-Engineer maximalen Stop-Loss]
+    E --> F{Ist berechneter Stop > Average Loss?}
+    F -- Ja zu weit --> G[SUGGESTION: Setze Stop enger auf Average Loss Level]
+    F -- Nein --> H[APPROVED: Gibt errechneten Stop-Loss aus]
+</div>
+<P><B>Beispielrechnung (Szenario B):</B><BR>
+Kapital = 10.000€, Risiko = 1% (100€). Kurs = 100€, Gewünschte Größe = 10% (1.000€ = 10 Aktien).<BR>
+Um 100€ Risiko bei 10 Aktien nicht zu überschreiten, darf jede Aktie max. 10€ fallen. Der Stop MUSS also bei 90€ liegen (-10%). Da -10% schlechter ist als der Average Loss (-6%), gibt das System eine Warnung und schlägt vor, den Stop bei 94€ (-6%) zu setzen, was das tatsächliche Risiko auf 0,6% reduziert.</P>
+
+<H4>Szenario C: Nur Aktie gegeben (Blindflug)</H4>
+<div class="mermaid">
+graph TD
+    A[Input: Nur Aktie] --> B[Lade Average Loss - max 8%]
+    B --> C[Setze Stop-Loss exakt auf Average Loss Level]
+    C --> D[Berechne Stückzahl basierend auf Basis-Risiko]
+    D --> E[SUGGESTION: Perfektes Setup ausgeben]
+</div>
+
+<H4>Szenario D: Stop-Loss UND Positionsgröße gegeben (Voll-Validierung)</H4>
+<div class="mermaid">
+graph TD
+    A[Input: Wunschgröße + Stop-Loss] --> B[Berechne Reales Risiko in %]
+    B --> C{Risiko > Limit?}
+    C -- Ja --> D[REJECTED: Risiko zu hoch]
+    C -- Nein --> E{Stop-Distanz > Average Loss?}
+    E -- Ja (weit drüber) --> F[REJECTED: Ruiniert Statistik massiv]
+    E -- Leicht drüber --> G[WARNING: Verschlechtert Statistik]
+    E -- Nein --> H[APPROVED: Perfektes Setup!]
+</div>
+<P><B>Beispielrechnung (Szenario D):</B><BR>
+Kapital = 10.000€, Risiko = 1%. Kurs = 150€, Gewünschte Größe = 2% (200€ = 1 Aktie), Stop = 138€.<BR>
+Risiko pro Aktie = 12€. Reales Risiko = 12€ / 10.000€ = 0,12%. Das ist weit unter dem 1% Limit. Abstand ist 8%, was leicht schlechter ist als 6% Average Loss (Warning), aber das absolute Risiko ist exzellent. Das System gibt eine Warnung bezüglich der Statistik, erlaubt den Trade aber.</P>
+
+<H3>14.9.3 Live-Kurse via IBKR & Yahoo Finance</H3>
+<P>Falls der Nutzer keinen Preis für ein Asset nennt, ruft der PTA diesen eigenständig über das Tool <CODE>get_quote</CODE> ab. Der Abruf ist ausfallsicher konzipiert:</P>
+<UL>
+<LI><B>Primary (Interactive Brokers):</B> Der MCP-Server schreibt ein <CODE>QUOTE_REQUESTED</CODE> Event in die <CODE>pta_execution_log</CODE> Datenbank. Das Hintergrund-Skript <CODE>ibkr_sync.ts</CODE> fängt dieses ab und abonniert den Preis bei IBKR (inkl. Fallback auf Delayed-Frozen Data, falls Live-Abos fehlen).</LI>
+<LI><B>Fallback (Yahoo Finance):</B> Wenn IBKR die Anfrage wegen fehlender Abos ablehnt (Code 10089) oder innerhalb von 10 Sekunden nicht antwortet, zündet das MCP-Tool einen automatischen Fallback und holt den Kurs nahtlos über die (versteckte) öffentliche API von Yahoo Finance.</LI>
+</UL>
+
+<H3>14.9.4 EU-Nummernformate</H3>
+<P>Das System verarbeitet deutsche Nummernformate robust. Eingaben wie <CODE>1.500,50€</CODE> oder <CODE>5,5%</CODE> werden im TypeScript-Parser (RegEx) zuverlässig in systemkonforme Floats (1500.50) übersetzt.</P>
 </BODY>
 </HTML>
+<H1 style='color: #2e7d32; border-bottom: 2px solid #2e7d32;'>TEIL III: ABSCHLUSS</H1>
