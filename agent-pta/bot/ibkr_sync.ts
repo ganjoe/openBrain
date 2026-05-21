@@ -314,16 +314,63 @@ async function syncLoop() {
     for (const po of pendingOrders || []) {
        if (po.action === "DEPOSIT" || po.action === "WITHDRAW") continue; // Skip cash
 
-       const currentOrderId = orderIdCounter++;
-       console.log(`[IBKR Sync] Submitting Pending Order: DB-ID ${po.id} -> Broker-ID ${currentOrderId}`);
+       // Determine Order Type, Limit Price, and Stop/Aux Price
+       let orderType: "MKT" | "LMT" | "STP" | "STP LMT" = "MKT";
+       let lmtPrice: number | undefined = undefined;
+       let auxPrice: number | undefined = undefined;
 
-       // Build Contract
-       const contract: Contract = {
-         symbol: po.ticker,
-         secType: "STK" as any,
-         exchange: "SMART",
-         currency: po.currency || "USD"
-       };
+       if (po.price && po.stop_price) {
+         orderType = "STP LMT";
+         lmtPrice = po.price;
+         auxPrice = po.stop_price;
+       } else if (po.stop_price) {
+         const isLimit = po.notes && po.notes.toLowerCase().includes("limit");
+         if (isLimit) {
+           orderType = "STP LMT";
+           lmtPrice = po.stop_price;
+           auxPrice = po.stop_price;
+         } else {
+           orderType = "STP";
+           auxPrice = po.stop_price;
+         }
+       } else if (po.price) {
+         orderType = "LMT";
+         lmtPrice = po.price;
+       }
+
+       // Handle UPDATE logic: Find existing order to modify
+       let currentOrderId = orderIdCounter;
+       let isUpdateModify = false;
+       
+       if (po.action === "UPDATE") {
+           const { data: openOrders } = await supabase
+             .from("pta_ibkr_open_orders")
+             .select("*")
+             .eq("ticker", po.ticker);
+           
+           if (openOrders && openOrders.length > 0) {
+               // Try to match by order type roughly
+               let targetOrder = openOrders.find((o: any) => o.order_type === orderType);
+               if (!targetOrder && orderType.includes("STP")) {
+                   targetOrder = openOrders.find((o: any) => o.order_type && o.order_type.includes("STP"));
+               }
+               if (!targetOrder && orderType.includes("LMT")) {
+                   targetOrder = openOrders.find((o: any) => o.order_type && o.order_type.includes("LMT"));
+               }
+               if (!targetOrder) targetOrder = openOrders[0]; // fallback
+               
+               if (targetOrder && targetOrder.order_id) {
+                   currentOrderId = targetOrder.order_id;
+                   isUpdateModify = true;
+               }
+           }
+       }
+
+       if (!isUpdateModify) {
+           orderIdCounter++; // Consume the ID only if we are creating a new order
+       }
+
+       console.log(`[IBKR Sync] Submitting ${po.action} Order: DB-ID ${po.id} -> Broker-ID ${currentOrderId} (Modify: ${isUpdateModify})`);
 
        // Determine Action: map BUY -> BUY, SELL -> SELL. For UPDATE, check current position.
        let orderAction: "BUY" | "SELL" = "BUY";
@@ -350,29 +397,13 @@ async function syncLoop() {
          }
        }
 
-       // Determine Order Type, Limit Price, and Stop/Aux Price
-       let orderType: "MKT" | "LMT" | "STP" | "STP LMT" = "MKT";
-       let lmtPrice: number | undefined = undefined;
-       let auxPrice: number | undefined = undefined;
-
-       if (po.price && po.stop_price) {
-         orderType = "STP LMT";
-         lmtPrice = po.price;
-         auxPrice = po.stop_price;
-       } else if (po.stop_price) {
-         const isLimit = po.notes && po.notes.toLowerCase().includes("limit");
-         if (isLimit) {
-           orderType = "STP LMT";
-           lmtPrice = po.stop_price;
-           auxPrice = po.stop_price;
-         } else {
-           orderType = "STP";
-           auxPrice = po.stop_price;
-         }
-       } else if (po.price) {
-         orderType = "LMT";
-         lmtPrice = po.price;
-       }
+       // Build Contract
+       const contract: Contract = {
+         symbol: po.ticker,
+         secType: "STK" as any,
+         exchange: "SMART",
+         currency: po.currency || "USD"
+       };
 
        // Build Order
        const order: Order = {

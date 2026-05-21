@@ -202,6 +202,97 @@ async function runTests() {
     console.error("[Fehler beim Verifizieren]:", err);
   }
 
+  // ============================================================
+  // OFFLINE QUEUING & LOCAL CANCEL TEST
+  // ============================================================
+  console.log("\n\n========================================");
+  console.log("  OFFLINE QUEUING & LOCAL CANCEL TEST");
+  console.log("========================================\n");
+
+  // --- Step 9: Disconnect Broker ---
+  console.log("--- 9. Trenne IB-Gateway via Nexus API ---");
+  try {
+    const res = await fetch("http://localhost:7734/api/settings/ib_gateway/stop", { method: "POST" });
+    if (res.ok) {
+      console.log("✅ Gateway erfolgreich gestoppt.");
+    } else {
+      console.log(`⚠️ Fehler beim Stoppen des Gateways: ${res.statusText}`);
+    }
+  } catch (err) {
+    console.error("[Fehler beim Nexus API Call]:", err);
+  }
+
+  console.log("\n--- Warte 5s auf Verbindungsabbau ---");
+  await new Promise(r => setTimeout(r, 5000));
+
+  const OFFLINE_TRADE_ID = `VALIDATE-OFF-${Date.now()}`;
+
+  // --- Step 10: Create offline order ---
+  console.log("--- 10. Erstelle Order im Offline-Modus (AAPL @ $145) ---");
+  try {
+    const res = await ptaClient.callTool({
+      name: "trade",
+      arguments: {
+        action: "ENTER",
+        trade_id: OFFLINE_TRADE_ID,
+        ticker: TEST_TICKER,
+        quantity: 1,
+        limit_price: 145.00,
+        currency: "USD",
+        notes: "validate_mcp.ts offline test"
+      }
+    });
+    const text = (res.content[0] as any).text;
+    console.log(`[Ergebnis]: ${text}`);
+    if (text.includes("offline")) {
+      console.log("✅ Offline-Warnung erfolgreich erkannt!");
+    } else {
+      console.log("❌ Keine Offline-Warnung in der Rückgabe!");
+    }
+  } catch (err) {
+    console.error("[Fehler beim Order-Erstellen]:", err);
+  }
+
+  // --- Step 11: Cancel offline order ---
+  console.log("\n--- 11. Storniere die Offline-Order lokal ---");
+  try {
+    const res = await ptaClient.callTool({
+      name: "trade",
+      arguments: {
+        action: "CANCEL",
+        trade_id: OFFLINE_TRADE_ID,
+        ticker: TEST_TICKER,
+        notes: "validate_mcp.ts offline cancel"
+      }
+    });
+    const text = (res.content[0] as any).text;
+    console.log(`[Ergebnis]: ${text}`);
+    if (text.includes("successfully cancelled locally")) {
+      console.log("✅ Lokales Cancel erfolgreich erkannt!");
+    } else {
+      console.log("❌ Lokales Cancel wurde nicht bestätigt!");
+    }
+  } catch (err) {
+    console.error("[Fehler beim Stornieren]:", err);
+  }
+
+  // --- Step 12: Reconnect Broker ---
+  console.log("\n--- 12. Verbinde IB-Gateway wieder via Nexus API ---");
+  console.log("🚨 ACHTUNG: Bitte halte dich bereit, das 2FA auf deinem Smartphone zu bestätigen! 🚨");
+  try {
+    const res = await fetch("http://localhost:7734/api/settings/ib_gateway/start", { method: "POST" });
+    if (res.ok) {
+      console.log("✅ Gateway-Startsignal gesendet.");
+    } else {
+      console.log(`⚠️ Fehler beim Starten des Gateways: ${res.statusText}`);
+    }
+  } catch (err) {
+    console.error("[Fehler beim Nexus API Call]:", err);
+  }
+
+  console.log("\n--- Warte 15s für 2FA und Gateway Boot ---");
+  await new Promise(r => setTimeout(r, 15000));
+
   console.log("\n========================================");
   console.log("  PTA ORDER LIFECYCLE TEST ABGESCHLOSSEN");
   console.log("========================================\n");

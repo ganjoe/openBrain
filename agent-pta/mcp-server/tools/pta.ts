@@ -29,6 +29,31 @@ export function registerPtaTools(server: McpServer) {
         let action = params.action;
 
         if (params.action === "CANCEL") {
+            // First check if there is an unconfirmed order with this trade_id
+            const { data: unconfirmed, error: unconfirmedErr } = await supabase
+                .from("pta_execution_log")
+                .select("id")
+                .eq("trade_id", params.trade_id)
+                .is("broker_order_id", null)
+                .eq("event_type", "ORDER_SUBMITTED");
+                
+            if (unconfirmedErr) throw unconfirmedErr;
+            if (unconfirmed && unconfirmed.length > 0) {
+                // Locally cancel them by marking broker_order_id as CANCELLED
+                const { error: updateErr } = await supabase
+                    .from("pta_execution_log")
+                    .update({ broker_order_id: "CANCELLED", notes: "Cancelled locally by agent before submission" })
+                    .in("id", unconfirmed.map(u => u.id));
+                if (updateErr) throw updateErr;
+                
+                return { 
+                  content: [{ 
+                    type: "text", 
+                    text: `Unconfirmed order(s) for Trade-ID ${params.trade_id} successfully cancelled locally. They will not be sent to the broker.` 
+                  }] 
+                };
+            }
+
             eventType = "CANCEL_REQUESTED";
             action = "CANCEL";
         } else if (params.action === "CASH") {
@@ -57,10 +82,62 @@ export function registerPtaTools(server: McpServer) {
 
         if (error) throw error;
 
+        let gatewayWarning = "";
+        if (eventType !== "REFRESH_REQUESTED" && eventType !== "CASH_TRANSFER") {
+            const { data: sysData } = await supabase
+                .from("system_settings")
+                .select("value")
+                .eq("key", "ib_gateway_status")
+                .single();
+            if (sysData && sysData.value && sysData.value.connected === false) {
+                gatewayWarning = "\nHINWEIS: Order wurde lokal gespeichert, aber das IB-Gateway ist offline. Die Order wird an den Broker übermittelt, sobald es wieder online ist.";
+            }
+        }
+
+        let unconfirmedWarning = "";
+        if (eventType === "ORDER_SUBMITTED") {
+            const { data: unconfirmedList } = await supabase
+                .from("pta_execution_log")
+                .select("trade_id")
+                .eq("ticker", params.ticker)
+                .is("broker_order_id", null)
+                .eq("event_type", "ORDER_SUBMITTED")
+                .neq("id", data);
+                
+            if (unconfirmedList && unconfirmedList.length > 0) {
+                const ids = unconfirmedList.map(u => u.trade_id).join(", ");
+                unconfirmedWarning = `\nWARNUNG: Es gibt noch ${unconfirmedList.length} weitere unbestätigte Order(s) für diesen Ticker in der lokalen Warteschlange. (Trade-IDs: ${ids})`;
+            }
+        }
+
+        // Poll for up to 5 seconds to wait for broker confirmation
+        if (eventType === "ORDER_SUBMITTED" || eventType === "CANCEL_REQUESTED") {
+            let attempts = 0;
+            while (attempts < 10) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                const { data: updatedEvent } = await supabase
+                    .from("pta_execution_log")
+                    .select("broker_order_id, notes")
+                    .eq("id", data)
+                    .single();
+                
+                if (updatedEvent && updatedEvent.broker_order_id) {
+                    if (updatedEvent.broker_order_id === "CANCELLED") {
+                         return { content: [{ type: "text", text: `Event logged successfully (ID: ${data}). ${updatedEvent.notes || 'Order cancelled successfully.'}${gatewayWarning}${unconfirmedWarning}` }] };
+                    } else if (updatedEvent.broker_order_id === "NONE_FOUND") {
+                         return { content: [{ type: "text", text: `Event logged (ID: ${data}), but no matching order was found to cancel at the broker.${gatewayWarning}${unconfirmedWarning}` }] };
+                    }
+                    return { content: [{ type: "text", text: `Event logged successfully (ID: ${data}). Broker Order ID: ${updatedEvent.broker_order_id}. Action: ${params.action} for ${params.ticker} (Trade: ${params.trade_id})${gatewayWarning}${unconfirmedWarning}` }] };
+                }
+                attempts++;
+            }
+            return { content: [{ type: "text", text: `Event logged in database (ID: ${data}), but no immediate confirmation received from IB Gateway. The order is queued and will be processed soon.${gatewayWarning}${unconfirmedWarning}` }] };
+        }
+
         return { 
           content: [{ 
             type: "text", 
-            text: `Event logged successfully (ID: ${data}). Action: ${params.action} for ${params.ticker} (Trade: ${params.trade_id})` 
+            text: `Event logged successfully (ID: ${data}). Action: ${params.action} for ${params.ticker} (Trade: ${params.trade_id})${gatewayWarning}${unconfirmedWarning}` 
           }] 
         };
       } catch (err: any) {
@@ -114,6 +191,15 @@ export function registerPtaTools(server: McpServer) {
         if (ticker) ordersQuery = ordersQuery.eq("ticker", ticker.toUpperCase());
         const { data: ordersData, error: ordersErr } = await ordersQuery;
         if (ordersErr) throw ordersErr;
+
+        // 6.5 Fetch unconfirmed local orders
+        let unconfirmedQuery = supabase.from("pta_execution_log")
+          .select("*")
+          .is("broker_order_id", null)
+          .in("event_type", ["ORDER_SUBMITTED", "CANCEL_REQUESTED"]);
+        if (ticker) unconfirmedQuery = unconfirmedQuery.eq("ticker", ticker.toUpperCase());
+        const { data: unconfirmedData, error: unconfirmedErr } = await unconfirmedQuery;
+        if (unconfirmedErr) throw unconfirmedErr;
 
         // 7. Fetch exchange rates
         let rates: Record<string, number> = { "EUR": 1.0 };
@@ -191,6 +277,17 @@ export function registerPtaTools(server: McpServer) {
               : (o.stop_price ? ` | Stop Price: ${o.stop_price.toFixed(2)}` : "");
             return `- Ticker: ${o.ticker} | Action: ${o.action} | Qty: ${o.quantity} | Type: ${o.order_type}${priceStr} | Status: ${o.status} | Account: ${o.account}`;
           }).join("\n") + "\n\n";
+        }
+
+        // Format unconfirmed orders
+        if (unconfirmedData && unconfirmedData.length > 0) {
+          responseText += "=== UNCONFIRMED / QUEUED ORDERS (LOCAL DB) ===\n";
+          responseText += "WARNING: These orders are saved locally but not yet confirmed by the broker. You can cancel them using their Trade-ID.\n";
+          responseText += unconfirmedData.map((o: any) => 
+            `- [Trade-ID: ${o.trade_id}] ${o.ticker} | Action: ${o.action} | Qty: ${o.quantity} | Event: ${o.event_type} | Limit: ${o.price || 'N/A'} | Stop: ${o.stop_price || 'N/A'}`
+          ).join("\n") + "\n\n";
+        } else {
+          responseText += "=== UNCONFIRMED / QUEUED ORDERS (LOCAL DB) ===\nNo unconfirmed orders pending.\n\n";
         }
 
         // Format active tracked trades
