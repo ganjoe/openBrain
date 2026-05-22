@@ -708,11 +708,12 @@ Never reply to pure confirmations or pleasantries (like "Thanks", "Done", or "Ta
 <LI><B>Speicherung & Bericht:</B> Die alte Tabelle <CODE>pta_ibkr_positions</CODE> wird geleert und mit dem neuen Snapshot überschrieben. Das MCP-Tool liest diese Daten nach einer Wartezeit von 1,5 Sekunden aus und gibt einen konsolidierten Bericht (Live-Broker-Status + lokal getrackte Trades) zurück.</LI>
 </OL>
 
-<H3>14.5 Multi-Währungs-Support & Live FX-Conversion</H3>
-<P>Um ein globales Portfolio sauber analysieren zu können, implementiert der PTA ein dynamisches Multi-Währungs-Management:</P>
+<H3>14.5 Multi-Währungs-Support & Historische Wechselkurs-Datenbank</H3>
+<P>Um ein globales Portfolio sauber analysieren zu können, implementiert der PTA ein robustes Multi-Währungs-Management basierend auf einer historischen "Ground Truth"-Datenbasis:</P>
 <UL>
 <LI><B>Erfassung der Ursprungswährung:</B> Das Hintergrund-Skript <CODE>ibkr_sync.ts</CODE> liest beim Snapshot-Abruf die native Währung (<CODE>currency</CODE>) jeder Aktie von Interactive Brokers aus und persistiert diese in der <CODE>pta_ibkr_positions</CODE> Tabelle.</LI>
-<LI><B>Dynamische Umrechnung (Frankfurter API):</B> Anstatt Wechselkurse aufwändig intern zu cachen, führt das <CODE>list_active_positions</CODE> MCP-Tool beim Aufruf einen On-the-fly Fetch zur <CODE>api.frankfurter.app</CODE> durch, um die tagesaktuellen Devisenkurse zu laden. Der Report listet anschließend sowohl den originalen Marktwert (z.B. USD) als auch das dynamisch berechnete Äquivalent in Euro auf. Dies erhält die Architektur schlank (kein Forex-Sync-Prozess nötig) und garantiert punktgenaue Live-Berichte für den Agenten.</LI>
+<LI><B>Historische Wechselkurs-Datenbank:</B> Um Trades langfristig und korrekt auszuwerten, verfügt das System über die Tabelle <CODE>exchange_rates</CODE>. Diese speichert eine 2-Jahres-Historie an täglichen Referenzkursen der EZB (Leitwährung: EUR) für alle gehandelten Fremdwährungen (USD, JPY, SEK, CAD, CHF, GBP etc.). Jeder historische Trade kann somit exakt dem Wechselkurs des jeweiligen Handelstages zugeordnet werden.</LI>
+<LI><B>Automatisierter Cron-Import (Upsert):</B> Ein dediziertes Deno-Skript (<CODE>fetch_exchange_rates.ts</CODE>) fragt täglich um 0:00 Uhr die <CODE>api.frankfurter.app</CODE> ab. Die neuen Kurse werden atomar per PostgreSQL-Upsert (<CODE>ON CONFLICT DO UPDATE</CODE>) importiert, wodurch Tabellen-Sperren (Locks) vermieden und andere Agenten nicht blockiert werden.</LI>
 </UL>
 
 <H3>14.6 Generische Trade-Historie (Flexible MCP Tools)</H3>
