@@ -48,7 +48,8 @@ WITH fill_aggregation AS (
             END
         ) as net_quantity,
         SUM(commission) as total_commission,
-        SUM(slippage) as total_slippage
+        SUM(slippage) as total_slippage,
+        MIN(created_at) as open_time
     FROM pta_execution_log
     WHERE event_type IN ('FILL', 'CASH_TRANSFER')
     GROUP BY trade_id, ticker, currency
@@ -69,6 +70,7 @@ SELECT
     f.net_quantity,
     f.total_commission,
     f.total_slippage,
+    f.open_time,
     s.current_stop_loss,
     CASE 
         WHEN f.net_quantity > 0 THEN 'LONG'

@@ -201,28 +201,49 @@ export function registerPtaTools(server: McpServer) {
         const { data: unconfirmedData, error: unconfirmedErr } = await unconfirmedQuery;
         if (unconfirmedErr) throw unconfirmedErr;
 
-        // 7. Fetch exchange rates
+        // 7. Fetch exchange rates from DB
         let rates: Record<string, number> = { "EUR": 1.0 };
         try {
           const currencies = new Set((liveData || []).map((p: any) => p.currency));
           const nonEur = Array.from(currencies).filter(c => c && c !== "EUR");
           
           if (nonEur.length > 0) {
-            const res = await fetch("https://api.frankfurter.app/latest");
-            if (res.ok) {
-              const json = await res.json();
-              if (json && json.rates) {
-                for (const curr of nonEur as string[]) {
-                  if (json.rates[curr]) {
-                    rates[curr] = 1.0 / json.rates[curr];
-                  }
+            const { data: fxData, error: fxErr } = await supabase
+              .from('exchange_rates')
+              .select('*')
+              .in('target_currency', nonEur)
+              .eq('base_currency', 'EUR')
+              .order('date', { ascending: false });
+
+            if (!fxErr && fxData) {
+              const seen = new Set();
+              for (const row of fxData) {
+                if (!seen.has(row.target_currency)) {
+                  rates[row.target_currency] = 1.0 / row.rate;
+                  seen.add(row.target_currency);
                 }
               }
             }
           }
         } catch (e) {
-          console.error("Failed to fetch exchange rates", e);
+          console.error("Failed to fetch exchange rates from DB", e);
         }
+
+        // Map open times from local tracked trades
+        const openTimesByTicker: Record<string, string> = {};
+        for (const p of activeData || []) {
+            if (p.open_time) {
+                openTimesByTicker[p.ticker] = p.open_time;
+            }
+        }
+        
+        // Helper to calculate days out
+        const calculateDaysOut = (openTimeIso: string) => {
+            if (!openTimeIso) return null;
+            const openTime = new Date(openTimeIso).getTime();
+            const now = new Date().getTime();
+            return ((now - openTime) / (1000 * 3600 * 24)).toFixed(1);
+        };
 
         let responseText = "";
 
@@ -249,8 +270,9 @@ export function registerPtaTools(server: McpServer) {
             const curr = p.currency || "USD";
             const rate = rates[curr] || 1.0;
             const mktValueEur = (p.market_value || 0) * rate;
+            const daysOutStr = openTimesByTicker[p.ticker] ? ` | Days Out: ${calculateDaysOut(openTimesByTicker[p.ticker])}` : "";
 
-            let line = `- Ticker: ${p.ticker} | Qty: ${p.quantity} | Avg Cost: ${p.avg_cost?.toFixed(2) || '0.00'} ${curr} | Mkt Price: ${p.market_price?.toFixed(2) || '0.00'} ${curr} | Mkt Value: ${p.market_value?.toFixed(2) || '0.00'} ${curr} (~${mktValueEur.toFixed(2)} EUR) | Unrlz PnL: ${p.unrealized_pnl?.toFixed(2) || '0.00'} ${curr} | Rlz PnL: ${p.realized_pnl?.toFixed(2) || '0.00'} ${curr} | Weight: ${p.position_pct?.toFixed(2) || '0.00'}% | Account: ${p.account}`;
+            let line = `- Ticker: ${p.ticker} | Qty: ${p.quantity} | Avg Cost: ${p.avg_cost?.toFixed(2) || '0.00'} ${curr} | Mkt Price: ${p.market_price?.toFixed(2) || '0.00'} ${curr} | Mkt Value: ${p.market_value?.toFixed(2) || '0.00'} ${curr} (~${mktValueEur.toFixed(2)} EUR) | Unrlz PnL: ${p.unrealized_pnl?.toFixed(2) || '0.00'} ${curr} | Rlz PnL: ${p.realized_pnl?.toFixed(2) || '0.00'} ${curr} | Weight: ${p.position_pct?.toFixed(2) || '0.00'}% | Account: ${p.account}${daysOutStr}`;
             
             const tickerOrders = ordersByTicker[p.ticker] || [];
             if (tickerOrders.length > 0) {
@@ -293,9 +315,10 @@ export function registerPtaTools(server: McpServer) {
         // Format active tracked trades
         if (activeData && activeData.length > 0) {
           responseText += "=== TRACKED TRADES (LOCAL DB) ===\n";
-          responseText += activeData.map((p: any) => 
-            `- [${p.trade_id}] ${p.ticker}: ${p.net_quantity} @ ${p.position_type} (SL: ${p.current_stop_loss || 'NONE'})`
-          ).join("\n");
+          responseText += activeData.map((p: any) => {
+            const daysOutStr = p.open_time ? ` | Days Out: ${calculateDaysOut(p.open_time)}` : "";
+            return `- [${p.trade_id}] ${p.ticker}: ${p.net_quantity} @ ${p.position_type} (SL: ${p.current_stop_loss || 'NONE'})${daysOutStr}`;
+          }).join("\n");
         } else {
           responseText += "=== TRACKED TRADES (LOCAL DB) ===\nNo active tracked trades in local database.";
         }
@@ -358,9 +381,10 @@ export function registerPtaTools(server: McpServer) {
             return { content: [{ type: "text", text: `No closed trades found in history.` }] };
           }
 
-          const history = data.map((t: any) => 
-            `#${t.trade_index} | [${t.trade_id}] ${new Date(t.close_time).toLocaleDateString()} | ${t.ticker} | ${t.is_winner ? 'WIN' : 'LOSS'} | PnL: ${t.net_pnl} | Winrate: ${parseFloat(t.running_winrate).toFixed(1)}%`
-          ).join("\n");
+          const history = data.map((t: any) => {
+            const daysOutStr = t.days_out !== null && t.days_out !== undefined ? ` | Days Out: ${Number(t.days_out).toFixed(1)}` : "";
+            return `#${t.trade_index} | [${t.trade_id}] ${new Date(t.close_time).toLocaleDateString()} | ${t.ticker} | ${t.is_winner ? 'WIN' : 'LOSS'} | PnL: ${t.net_pnl} | Winrate: ${parseFloat(t.running_winrate).toFixed(1)}%${daysOutStr}`;
+          }).join("\n");
 
           return { content: [{ type: "text", text: `Recent ${data.length} Closed Trades:\n\n${history}` }] };
         }
@@ -389,18 +413,36 @@ export function registerPtaTools(server: McpServer) {
             ? ((data.winning_trades / data.closed_trades) * 100).toFixed(1) 
             : "0.0";
 
+        const avgAll = data.avg_days_out !== null ? Number(data.avg_days_out).toFixed(1) : "N/A";
+        const medAll = data.median_days_out !== null ? Number(data.median_days_out).toFixed(1) : "N/A";
+        const avgWin = data.avg_days_out_winners !== null ? Number(data.avg_days_out_winners).toFixed(1) : "N/A";
+        const medWin = data.median_days_out_winners !== null ? Number(data.median_days_out_winners).toFixed(1) : "N/A";
+        const avgLoss = data.avg_days_out_losers !== null ? Number(data.avg_days_out_losers).toFixed(1) : "N/A";
+        const medLoss = data.median_days_out_losers !== null ? Number(data.median_days_out_losers).toFixed(1) : "N/A";
+
+        const avgRAll = data.avg_r_multiple !== null ? Number(data.avg_r_multiple).toFixed(2) : "N/A";
+        const maxDrawdown = data.max_drawdown_eur !== null ? Number(data.max_drawdown_eur).toFixed(2) : "N/A";
+
         const report = `
 === PORTFOLIO METRICS (Aggregate Log Based) ===
-Calculated Cash Balance: ${data.calculated_cash_balance}
-Cash Injected: ${data.cash_injected}
+Calculated Cash Balance (EUR): ${data.calculated_cash_balance_eur?.toFixed(2)}
+Cash Injected (EUR): ${data.cash_injected_eur?.toFixed(2)}
 
-Total Realized PnL: ${data.total_realized_pnl}
-Total Commissions Paid: ${data.total_commissions_paid}
+Total Realized PnL (EUR): ${data.total_realized_pnl_eur?.toFixed(2)}
+Max Drawdown (EUR): ${maxDrawdown}
+Total Commissions Paid (EUR): ${data.total_commissions_paid_eur?.toFixed(2)}
 
 Total Trades: ${data.total_trades}
 Closed Trades: ${data.closed_trades}
 Winning Trades: ${data.winning_trades}
 Winrate: ${winrate}%
+
+Average R-Multiple: ${avgRAll}R
+
+Hold Time (Days Out):
+- Overall: Avg ${avgAll} | Median ${medAll}
+- Winners: Avg ${avgWin} | Median ${medWin}
+- Losers:  Avg ${avgLoss} | Median ${medLoss}
 ===========================================`;
 
         return { content: [{ type: "text", text: report }] };
@@ -447,15 +489,34 @@ Winrate: ${winrate}%
         let losingCount = 0;
         let totalRealizedPnl = 0;
         let totalCommissions = 0;
+        
+        let daysOutAll: number[] = [];
+        let daysOutWinners: number[] = [];
+        let daysOutLosers: number[] = [];
+        let rMultAll: number[] = [];
+        let rMultWinners: number[] = [];
+        let rMultLosers: number[] = [];
 
         for (const t of closedTrades || []) {
-          totalRealizedPnl += t.net_pnl;
+          totalRealizedPnl += t.net_pnl_eur;
           totalCommissions += t.total_commission;
+          if (t.days_out !== null && t.days_out !== undefined) {
+              const d = Number(t.days_out);
+              daysOutAll.push(d);
+              if (t.is_winner) daysOutWinners.push(d);
+              else daysOutLosers.push(d);
+          }
+          if (t.r_multiple !== null && t.r_multiple !== undefined) {
+              const r = Number(t.r_multiple);
+              rMultAll.push(r);
+              if (t.is_winner) rMultWinners.push(r);
+              else rMultLosers.push(r);
+          }
           if (t.is_winner) {
-            grossProfit += t.net_pnl;
+            grossProfit += t.net_pnl_eur;
             winningCount++;
           } else {
-            grossLoss += Math.abs(t.net_pnl);
+            grossLoss += Math.abs(t.net_pnl_eur);
             losingCount++;
           }
         }
@@ -466,6 +527,25 @@ Winrate: ${winrate}%
         const avgWin = winningCount > 0 ? grossProfit / winningCount : 0;
         const avgLoss = losingCount > 0 ? grossLoss / losingCount : 0;
         const expectancy = (winrate / 100 * avgWin) - ((1 - winrate / 100) * avgLoss);
+        
+        const getMedian = (arr: number[]) => {
+            if (arr.length === 0) return 0;
+            const sorted = [...arr].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        };
+        const getAvg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+        const avgDaysAll = getAvg(daysOutAll);
+        const medianDaysAll = getMedian(daysOutAll);
+        const avgDaysWin = getAvg(daysOutWinners);
+        const medianDaysWin = getMedian(daysOutWinners);
+        const avgDaysLoss = getAvg(daysOutLosers);
+        const medianDaysLoss = getMedian(daysOutLosers);
+        
+        const avgRAll = getAvg(rMultAll);
+        const avgRWin = getAvg(rMultWinners);
+        const avgRLoss = getAvg(rMultLosers);
 
         let report = `=== PORTFOLIO ANALYTICS ===\n\n`;
         if (days) report += `Timeframe: Last ${days} days\n`;
@@ -484,11 +564,21 @@ Winrate: ${winrate}%
         report += `- Profit Factor: ${profitFactor.toFixed(2)}\n`;
         report += `- Expectancy (Net): ${expectancy.toFixed(2)} per trade\n\n`;
 
-        report += `== AVERAGES ==\n`;
+        report += `== AVERAGES (EUR) ==\n`;
         report += `- Average Win: ${avgWin.toFixed(2)}\n`;
         report += `- Average Loss: ${avgLoss.toFixed(2)}\n`;
         report += `- Gross Profit: ${grossProfit.toFixed(2)}\n`;
-        report += `- Gross Loss: ${grossLoss.toFixed(2)}\n`;
+        report += `- Gross Loss: ${grossLoss.toFixed(2)}\n\n`;
+        
+        report += `== R-MULTIPLE ==\n`;
+        report += `- Overall: Avg ${avgRAll.toFixed(2)}R\n`;
+        report += `- Winners: Avg ${avgRWin.toFixed(2)}R\n`;
+        report += `- Losers:  Avg ${avgRLoss.toFixed(2)}R\n\n`;
+        
+        report += `== HOLD TIME (Days Out) ==\n`;
+        report += `- Overall: Avg ${avgDaysAll.toFixed(1)} | Median ${medianDaysAll.toFixed(1)}\n`;
+        report += `- Winners: Avg ${avgDaysWin.toFixed(1)} | Median ${medianDaysWin.toFixed(1)}\n`;
+        report += `- Losers:  Avg ${avgDaysLoss.toFixed(1)} | Median ${medianDaysLoss.toFixed(1)}\n`;
 
         return { content: [{ type: "text", text: report }] };
       } catch (err: any) {

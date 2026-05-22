@@ -120,15 +120,6 @@ function appendMessage(msg) {
     state.lastSeenUnix = unix;
     localStorage.setItem("nexus_last_seen", unix);
   }
-
-  // Auto-register new agents from chat headers
-  [p.from, p.to].forEach(id => {
-    if (id && id !== "nexus" && id !== "?" && !state.agents[id]) {
-      state.agents[id] = { online: true }; // Assume online if chatting
-      renderAgentCheckboxes();
-      renderProviders();
-    }
-  });
 }
 
 // ── Filter Logic ──────────────────────────────────────────────
