@@ -159,17 +159,35 @@ export function registerPtaTools(server: McpServer) {
     async ({ ticker }: any) => {
       try {
         // 1. Trigger live position refresh from IBKR by logging a REFRESH_REQUESTED event
-        await supabase.from("pta_execution_log").insert({
+        const { data: refreshData, error: insertErr } = await supabase.from("pta_execution_log").insert({
           trade_id: "SYSTEM",
           ticker: "SYSTEM",
           event_type: "REFRESH_REQUESTED",
           action: "REFRESH",
           quantity: 0,
           price: 0
-        });
+        }).select("id").single();
 
-        // 2. Wait for 4 seconds to let ibkr_sync fetch and save live positions to pta_ibkr_positions
-        await new Promise(resolve => setTimeout(resolve, 4000));
+        if (insertErr || !refreshData) throw new Error("Failed to create REFRESH_REQUESTED event");
+        const refreshId = refreshData.id;
+
+        // 2. Poll up to 10 seconds for the sync to complete (notes == 'COMPLETED')
+        let attempts = 0;
+        while (attempts < 20) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const { data: checkData } = await supabase
+                .from("pta_execution_log")
+                .select("notes")
+                .eq("id", refreshId)
+                .single();
+            if (checkData && checkData.notes === "COMPLETED") {
+                break;
+            }
+            attempts++;
+        }
+        
+        // Clean up the event
+        await supabase.from("pta_execution_log").delete().eq("id", refreshId);
 
         // 3. Fetch local active positions
         let activeQuery = supabase.from("pta_active_positions").select("*");

@@ -48,6 +48,7 @@ let activePositionsTemp: Array<{ account: string; ticker: string; currency: stri
 let activeAccountMetrics: Record<string, { totalCashBalance: number; netLiquidation: number; availableFunds: number }> = {};
 let isSyncingOrders = false;
 let activeOpenOrdersTemp: Array<{ account: string; permId: number; orderId: number; ticker: string; action: string; quantity: number; orderType: string; limitPrice?: number; stopPrice?: number; status: string }> = [];
+let pendingRefreshIds: number[] = [];
 
 // --- Quote Request State ---
 let tickerIdCounter = 100000;
@@ -124,14 +125,24 @@ ib.on(EventName.updateAccountValue, (key: string, value: string, currency: strin
     activeAccountMetrics[account] = { totalCashBalance: 0, netLiquidation: 0, availableFunds: 0 };
   }
   
-  if (currency === "EUR") {
-    const numVal = parseFloat(value) || 0;
-    if (key === "TotalCashBalance") {
-      activeAccountMetrics[account].totalCashBalance = numVal;
-    } else if (key === "NetLiquidation") {
+  const numVal = parseFloat(value) || 0;
+
+  // NetLiquidation and AvailableFunds are typically sent in the base currency (e.g., EUR)
+  if (currency === "EUR" || currency === "BASE") {
+    if (key === "NetLiquidation") {
       activeAccountMetrics[account].netLiquidation = numVal;
     } else if (key === "AvailableFunds") {
       activeAccountMetrics[account].availableFunds = numVal;
+    }
+  }
+
+  // Cash is sent per currency AND as an aggregate with currency "BASE"
+  if (key === "TotalCashBalance" || key === "TotalCashValue" || key === "CashBalance") {
+    if (currency === "BASE") {
+      activeAccountMetrics[account].totalCashBalance = numVal;
+    } else if (currency === "EUR" && activeAccountMetrics[account].totalCashBalance === 0) {
+      // Fallback if BASE is missed
+      activeAccountMetrics[account].totalCashBalance = numVal;
     }
   }
 });
@@ -191,6 +202,7 @@ ib.on(EventName.accountDownloadEnd, async (accountName: string) => {
   } finally {
     activePositionsTemp = [];
     activeAccountMetrics = {};
+    checkSyncComplete();
   }
 });
 
@@ -246,6 +258,7 @@ ib.on(EventName.openOrderEnd, async () => {
     console.error("[IBKR Sync] Exception during open orders snapshot write:", err);
   } finally {
     activeOpenOrdersTemp = [];
+    checkSyncComplete();
   }
 });
 
@@ -314,6 +327,18 @@ ib.on(EventName.tickPrice, async (tickerId: number, field: number, price: number
 });
 
 
+async function checkSyncComplete() {
+    if (!isSyncingPositions && !isSyncingOrders && pendingRefreshIds.length > 0) {
+        console.log(`[IBKR Sync] Both syncs complete. Marking refresh requests as COMPLETED...`);
+        const { error } = await supabase
+            .from("pta_execution_log")
+            .update({ notes: "COMPLETED" })
+            .in("id", pendingRefreshIds);
+        if (error) console.error("[IBKR Sync] Error updating refresh requests:", error);
+        pendingRefreshIds = [];
+    }
+}
+
 // --- Main Sync Loop ---
 async function syncLoop() {
   if (!isConnected || orderIdCounter < 0) return;
@@ -327,23 +352,24 @@ async function syncLoop() {
 
     if (refreshErr) {
       console.error("[IBKR Sync] Database error while fetching refresh requests:", refreshErr.message);
-    } else if (refreshReqs && refreshReqs.length > 0) {
-      console.log(`[IBKR Sync] Received ${refreshReqs.length} refresh request(s). Triggering reqAccountUpdates() snapshot...`);
-      isSyncingPositions = true;
-      isSyncingOrders = true;
-      activePositionsTemp = [];
-      activeOpenOrdersTemp = [];
-      ib.reqAccountUpdates(true, "");
-      ib.reqAllOpenOrders();
-      
-      // Delete the processed refresh requests
-      const { error: deleteErr } = await supabase
-        .from("pta_execution_log")
-        .delete()
-        .eq("event_type", "REFRESH_REQUESTED");
-
-      if (deleteErr) {
-        console.error("[IBKR Sync] Failed to delete processed refresh requests:", deleteErr.message);
+    } else if (refreshReqs && refreshReqs.length > 0 && !isSyncingPositions && !isSyncingOrders) {
+      const unprocessedReqs = refreshReqs.filter(r => r.notes !== "PROCESSING");
+      if (unprocessedReqs.length > 0) {
+        console.log(`[IBKR Sync] Received ${unprocessedReqs.length} new refresh request(s). Triggering reqAccountUpdates() snapshot...`);
+        isSyncingPositions = true;
+        isSyncingOrders = true;
+        activePositionsTemp = [];
+        activeOpenOrdersTemp = [];
+        
+        pendingRefreshIds.push(...unprocessedReqs.map(r => r.id));
+        
+        ib.reqAccountUpdates(true, "");
+        ib.reqAllOpenOrders();
+        
+        await supabase
+          .from("pta_execution_log")
+          .update({ notes: "PROCESSING" })
+          .in("id", unprocessedReqs.map(r => r.id));
       }
     }
 

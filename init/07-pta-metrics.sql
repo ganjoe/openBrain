@@ -170,7 +170,7 @@ SELECT
     (SELECT COALESCE(SUM(CASE WHEN action = 'DEPOSIT' THEN quantity WHEN action = 'WITHDRAW' THEN -quantity ELSE 0 END / COALESCE((SELECT rate FROM exchange_rates er WHERE er.target_currency = currency AND er.base_currency = 'EUR' AND er.date <= DATE(created_at) ORDER BY er.date DESC LIMIT 1), 1.0)), 0) FROM pta_execution_log WHERE event_type = 'CASH_TRANSFER') + SUM(CASE WHEN is_closed THEN net_pnl_eur ELSE 0 END) as calculated_cash_balance_eur
 FROM pta_trade_performance;
 
-GRANT SELECT ON public.pta_cash_flow TO anon;
-GRANT SELECT ON public.pta_trade_performance TO anon;
-GRANT SELECT ON public.pta_portfolio_summary TO anon;
-GRANT SELECT ON public.pta_trade_history TO anon;
+GRANT SELECT ON public.pta_cash_flow TO anon, service_role;
+GRANT SELECT ON public.pta_trade_performance TO anon, service_role;
+GRANT SELECT ON public.pta_portfolio_summary TO anon, service_role;
+GRANT SELECT ON public.pta_trade_history TO anon, service_role;

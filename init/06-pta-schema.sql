@@ -51,7 +51,7 @@ WITH fill_aggregation AS (
         SUM(slippage) as total_slippage,
         MIN(created_at) as open_time
     FROM pta_execution_log
-    WHERE event_type IN ('FILL', 'CASH_TRANSFER')
+    WHERE event_type = 'FILL'
     GROUP BY trade_id, ticker, currency
 ),
 latest_stops AS (
@@ -120,7 +120,7 @@ $$ LANGUAGE plpgsql;
 -- ─────────────────────────────────────────────────────────────
 -- GRANTS
 -- ─────────────────────────────────────────────────────────────
-GRANT ALL ON TABLE public.pta_execution_log TO anon;
-GRANT ALL ON SEQUENCE pta_execution_log_id_seq TO anon;
-GRANT SELECT ON public.pta_active_positions TO anon;
-GRANT EXECUTE ON FUNCTION pta_log_event TO anon;
+GRANT ALL ON TABLE public.pta_execution_log TO anon, service_role;
+GRANT ALL ON SEQUENCE pta_execution_log_id_seq TO anon, service_role;
+GRANT SELECT ON public.pta_active_positions TO anon, service_role;
+GRANT EXECUTE ON FUNCTION pta_log_event TO anon, service_role;

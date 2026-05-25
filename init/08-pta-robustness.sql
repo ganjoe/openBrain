@@ -16,6 +16,9 @@ WHERE event_type = 'FILL' AND broker_exec_id IS NOT NULL;
 ALTER TABLE pta_execution_log ADD COLUMN IF NOT EXISTS order_ref TEXT;
 
 -- Update pta_log_event function to handle the new fields
+-- Drop the old signature (13 parameters) to prevent 'Could not choose best candidate function' errors
+DROP FUNCTION IF EXISTS pta_log_event(TEXT, TEXT, TEXT, TEXT, NUMERIC, NUMERIC, NUMERIC, TEXT, NUMERIC, TEXT, TEXT, NUMERIC, TEXT);
+
 CREATE OR REPLACE FUNCTION pta_log_event(
   p_trade_id TEXT,
   p_ticker TEXT,
