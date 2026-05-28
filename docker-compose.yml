@@ -337,8 +337,77 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # --- agent-pca-service (FastAPI + DuckDB + WebSocket + MQTT) ---
+  agent-pca-service:
+    build:
+      context: ./agent-pca/service
+      dockerfile: Dockerfile
+    container_name: openbrain-pca-service
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+      nexus-broker:
+        condition: service_started
+    environment:
+      SUPABASE_URL: http://gateway:80
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      MQTT_BROKER_HOST: nexus-broker
+      MQTT_BROKER_PORT: "1883"
+      PARQUET_BASE_PATH: /parquet
+      PORT: "8791"
+    volumes:
+      - /home/daniel/stock-data-node/data/parquet:/parquet:ro
+    ports:
+      - "8791:8791"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # --- chart-frontend (Nginx static file server) ---
+  chart-frontend:
+    build:
+      context: ./agent-pca/frontend
+      dockerfile: Dockerfile
+    container_name: openbrain-chart-frontend
+    restart: unless-stopped
+    depends_on:
+      - agent-pca-service
+    ports:
+      - "8792:80"
+
+  # --- MCP Server: PCA agent endpoint ---
+  mcp-pca:
+    build:
+      context: ./agent-pca/mcp-server
+      dockerfile: Dockerfile
+    container_name: openbrain-mcp-pca
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+      agent-pca-service:
+        condition: service_started
+    environment:
+      SUPABASE_URL: http://gateway:80
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      PCA_SERVICE_URL: http://agent-pca-service:8791
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_EMBED_MODEL: qwen3-embedding:8b
+      LM_STUDIO_URL: http://host.docker.internal:1234
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      PORT: "8790"
+      AGENT_ID: "pca"
+    ports:
+      - "8790:8790"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   openbrain_pgdata:
   openbrain_ollama:
   openbrain_mqtt:
-

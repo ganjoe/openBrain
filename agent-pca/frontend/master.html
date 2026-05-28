@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PCA Master</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0f;
+      color: #e2e8f0;
+      font-family: 'Inter', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 1.5rem;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.85rem;
+      color: #64748b;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      transition: background 0.3s;
+    }
+    .dot.connected { background: #22c55e; }
+    h1 { font-size: 1.1rem; color: #475569; letter-spacing: 0.05em; }
+    .btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 0.6rem 1.4rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.15s;
+    }
+    .btn:hover { background: #334155; color: #e2e8f0; }
+    .log {
+      font-size: 0.75rem;
+      color: #475569;
+      font-family: monospace;
+      max-width: 400px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>PCA · Master Coordinator</h1>
+  <div class="status">
+    <div class="dot" id="dot"></div>
+    <span id="status-text">Connecting…</span>
+  </div>
+  <button class="btn" onclick="openLayout('desktop')">Open Desktop Layout</button>
+  <div class="log" id="log">Waiting for commands…</div>
+
+  <script>
+    const PCA_WS = `ws://${location.hostname}:8791/ws?master=true`;
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('status-text');
+    const logEl = document.getElementById('log');
+
+    // Child window tracking: view_id -> window ref
+    const childWindows = {};
+
+    let ws;
+
+    function log(msg) {
+      logEl.textContent = msg;
+      console.log('[Master]', msg);
+    }
+
+    function connect() {
+      ws = new WebSocket(PCA_WS);
+
+      ws.onopen = () => {
+        dot.classList.add('connected');
+        statusText.textContent = 'Connected to PCA Service';
+        log('Ready. Waiting for layout commands.');
+      };
+
+      ws.onclose = () => {
+        dot.classList.remove('connected');
+        statusText.textContent = 'Disconnected — reconnecting in 3s…';
+        setTimeout(connect, 3000);
+      };
+
+      ws.onerror = () => {
+        statusText.textContent = 'Connection error';
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          handleMessage(msg);
+        } catch (e) {
+          console.error('Invalid message:', event.data);
+        }
+      };
+    }
+
+    function handleMessage(msg) {
+      log(`Received: ${msg.action}`);
+
+      if (msg.action === 'open_layout') {
+        openLayoutFromConfig(msg.layout_name, msg.config);
+      } else if (msg.action === 'load_ticker') {
+        // Forward to all child windows via BroadcastChannel
+        const bc = new BroadcastChannel('pca_sync');
+        bc.postMessage({ action: 'load_ticker', symbol: msg.symbol });
+        bc.close();
+      }
+    }
+
+    function openLayout(layoutName) {
+      // Manual button: fetch layout config from the service, then open windows
+      fetch(`http://${location.hostname}:8791/api/layouts/${layoutName}`)
+        .then(r => r.json())
+        .then(layout => openLayoutFromConfig(layoutName, layout.config))
+        .catch(e => log(`Error fetching layout: ${e.message}`));
+    }
+
+    function openLayoutFromConfig(layoutName, config) {
+      if (!config || !config.views) {
+        log(`Invalid layout config for: ${layoutName}`);
+        return;
+      }
+
+      log(`Opening layout: ${layoutName} (${config.views.length} views)`);
+
+      // Calculate window positions based on grid and screen size
+      const cols = config.grid?.cols || 2;
+      const rows = config.grid?.rows || 2;
+      const winW = Math.floor(screen.availWidth / cols);
+      const winH = Math.floor(screen.availHeight / rows);
+
+      config.views.forEach(view => {
+        const col = view.grid_pos?.col ?? 0;
+        const row = view.grid_pos?.row ?? 0;
+        const left = col * winW;
+        const top = row * winH;
+
+        const params = new URLSearchParams({
+          layout: layoutName,
+          view_id: view.view_id,
+          type: view.type,
+        });
+        const url = `/chart.html?${params}`;
+        const features = `width=${winW},height=${winH},left=${left},top=${top},menubar=no,toolbar=no,location=no`;
+
+        // Reuse existing window if already open
+        const existing = childWindows[view.view_id];
+        if (existing && !existing.closed) {
+          existing.focus();
+        } else {
+          childWindows[view.view_id] = window.open(url, `pca_${view.view_id}`, features);
+        }
+      });
+    }
+
+    connect();
+  </script>
+</body>
+</html>

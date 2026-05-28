@@ -1,0 +1,17 @@
+# PCA — Chart & View Manager — Agent Configuration
+# Agent identity is defined ONLY here. Never hardcode IDs in source code.
+
+agent:
+  id: "pca"
+  name: "Chart & View Manager"
+  display_name: "PCA"
+
+mqtt:
+  broker_url: "mqtt://nexus-broker:1883"
+  lwt_topic: "agents/status"
+  lwt_payload: '{"agent":"pca","status":"offline","unix":0}'
+
+mcp:
+  local_servers:
+    - url: "http://mcp-pca:8790"
+      label: "openbrain-pca-charts"

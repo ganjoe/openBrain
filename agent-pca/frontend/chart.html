@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PCA Chart</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d1117;
+      color: #e2e8f0;
+      font-family: 'Inter', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 6px 12px;
+      background: #0a0a0f;
+      border-bottom: 1px solid #1e293b;
+      flex-shrink: 0;
+    }
+    #ticker-label {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: #f1f5f9;
+    }
+    #view-label {
+      font-size: 0.75rem;
+      color: #475569;
+    }
+    #ws-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #ef4444;
+      margin-left: auto;
+      transition: background 0.3s;
+    }
+    #ws-dot.connected { background: #22c55e; }
+    #stats-bar {
+      display: flex;
+      gap: 1.5rem;
+      padding: 4px 12px;
+      background: #0a0a0f;
+      border-bottom: 1px solid #1a2133;
+      flex-shrink: 0;
+      font-size: 0.75rem;
+      color: #64748b;
+      font-family: monospace;
+    }
+    .stat { display: flex; gap: 0.4rem; }
+    .stat-v { color: #94a3b8; }
+    #canvas-wrap {
+      flex: 1;
+      position: relative;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    /* Watchlist table view */
+    #table-view {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    thead th {
+      background: #0a0a0f;
+      color: #64748b;
+      padding: 8px 12px;
+      text-align: right;
+      font-weight: 500;
+      border-bottom: 1px solid #1e293b;
+      position: sticky; top: 0;
+    }
+    thead th:first-child { text-align: left; }
+    tbody tr {
+      cursor: pointer;
+      border-bottom: 1px solid #0f172a;
+      transition: background 0.1s;
+    }
+    tbody tr:hover { background: #1e293b; }
+    tbody tr.active { background: #1e3a5f; }
+    tbody td {
+      padding: 7px 12px;
+      text-align: right;
+      color: #94a3b8;
+    }
+    tbody td:first-child { text-align: left; color: #e2e8f0; font-weight: 600; }
+    .badge-green { color: #22c55e; }
+    .badge-red   { color: #ef4444; }
+    /* Stats panel view */
+    #stats-view {
+      display: none;
+      flex: 1;
+      padding: 1.5rem;
+      gap: 1rem;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .kv {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid #1e293b;
+      font-size: 0.85rem;
+    }
+    .kv-k { color: #64748b; }
+    .kv-v { color: #e2e8f0; font-family: monospace; font-weight: 600; }
+    .kv-v.green { color: #22c55e; }
+    .kv-v.red   { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <span id="ticker-label">—</span>
+    <span id="view-label"></span>
+    <div id="ws-dot"></div>
+  </div>
+  <div id="stats-bar"></div>
+
+  <!-- Canvas chart view (candle_volume / bar_chart) -->
+  <div id="canvas-wrap">
+    <canvas id="chart"></canvas>
+  </div>
+
+  <!-- Watchlist table view -->
+  <div id="table-view">
+    <table>
+      <thead id="table-head"></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Stats panel view -->
+  <div id="stats-view" id="stats-panel"></div>
+
+  <script src="/js/canvas_renderer.js"></script>
+  <script src="/js/ws_client.js"></script>
+  <script>
+    // ─── URL parameters ──────────────────────────────────────
+    const params    = new URLSearchParams(location.search);
+    const LAYOUT    = params.get('layout')  || 'desktop';
+    const VIEW_ID   = params.get('view_id') || 'v1';
+    const VIEW_TYPE = params.get('type')    || 'candle_volume';
+
+    const PCA_API   = `http://${location.hostname}:8791`;
+
+    // ─── UI refs ─────────────────────────────────────────────
+    const tickerLabel = document.getElementById('ticker-label');
+    const viewLabel   = document.getElementById('view-label');
+    const statsBar    = document.getElementById('stats-bar');
+    const wsDot       = document.getElementById('ws-dot');
+    const canvasWrap  = document.getElementById('canvas-wrap');
+    const tableView   = document.getElementById('table-view');
+    const statsView   = document.getElementById('stats-view');
+
+    viewLabel.textContent = `[${VIEW_ID} · ${VIEW_TYPE}]`;
+
+    // ─── State ───────────────────────────────────────────────
+    let viewConfig   = null;
+    let renderer     = null;
+    let currentSymbol = null;
+
+    // ─── Layout config fetch ─────────────────────────────────
+    async function fetchLayoutConfig() {
+      const r = await fetch(`${PCA_API}/api/layouts/${LAYOUT}`);
+      const layout = await r.json();
+      viewConfig = layout.config.views.find(v => v.view_id === VIEW_ID);
+      return viewConfig;
+    }
+
+    // ─── Data load ───────────────────────────────────────────
+    async function loadTicker(symbol) {
+      if (!symbol) return;
+      currentSymbol = symbol.toUpperCase();
+      tickerLabel.textContent = currentSymbol;
+
+      if (VIEW_TYPE === 'watchlist_table') {
+        await loadWatchlistTable(viewConfig);
+        return;
+      }
+      if (VIEW_TYPE === 'stats_panel') {
+        await loadStatsPanel(currentSymbol, viewConfig);
+        return;
+      }
+
+      // Chart types: candle_volume | bar_chart
+      const tf    = viewConfig?.timeframe ?? '1D';
+      const limit = viewConfig?.bar_count ?? 250;
+
+      try {
+        const r   = await fetch(`${PCA_API}/api/chartdata?symbol=${currentSymbol}&timeframe=${tf}&limit=${limit}`);
+        const data = await r.json();
+        if (!renderer) initRenderer();
+        renderer.loadData(data);
+        updateStatsBar(data);
+      } catch (e) {
+        console.error('Data load failed:', e);
+      }
+    }
+
+    // ─── Canvas renderer init ────────────────────────────────
+    function initRenderer() {
+      const canvas = document.getElementById('chart');
+      renderer = new ChartRenderer(canvas, viewConfig || { type: VIEW_TYPE, indicators: [], volume: { enabled: false } });
+      new ResizeObserver(() => renderer.resize()).observe(canvas.parentElement);
+    }
+
+    // ─── Watchlist table ─────────────────────────────────────
+    async function loadWatchlistTable(cfg) {
+      canvasWrap.style.display = 'none';
+      tableView.style.display  = 'block';
+      const cols = cfg?.columns ?? [{ key: 'ticker', label: 'Ticker' }];
+      const watchlist = cfg?.watchlist ?? LAYOUT;
+
+      const r    = await fetch(`${PCA_API}/api/watchlists/${watchlist}`);
+      const data = await r.json();
+
+      document.getElementById('table-head').innerHTML =
+        `<tr>${cols.map(c => `<th>${c.label}</th>`).join('')}</tr>`;
+
+      const rows = await Promise.all(data.tickers.map(async ({ ticker }) => {
+        // Get latest close and feature values from chart data (last 1 bar)
+        try {
+          const cr = await fetch(`${PCA_API}/api/chartdata?symbol=${ticker}&timeframe=1D&limit=1`);
+          const cd = await cr.json();
+          const ci = Object.fromEntries(cd.columns.map((c, i) => [c, i]));
+          const row = cd.data[0] ?? [];
+          return { ticker, row, ci };
+        } catch { return { ticker, row: [], ci: {} }; }
+      }));
+
+      document.getElementById('table-body').innerHTML = rows.map(({ ticker, row, ci }) => {
+        const cells = cols.map(c => {
+          if (c.key === 'ticker') return `<td>${ticker}</td>`;
+          const i = ci[c.key];
+          let v = i !== undefined ? row[i] : '—';
+          if (c.key === 'minervini_trend_template') {
+            v = v ? '<span class="badge-green">✓</span>' : '<span class="badge-red">✗</span>';
+          } else if (typeof v === 'number') {
+            v = v.toFixed(c.key === 'close' ? 2 : 0);
+          }
+          return `<td>${v ?? '—'}</td>`;
+        });
+        return `<tr onclick="loadTickerCmd('${ticker}')">${cells.join('')}</tr>`;
+      }).join('');
+    }
+
+    // ─── Stats panel ─────────────────────────────────────────
+    async function loadStatsPanel(symbol, cfg) {
+      canvasWrap.style.display = 'none';
+      statsView.style.display  = 'flex';
+      const fields = cfg?.fields ?? [];
+      try {
+        const r  = await fetch(`${PCA_API}/api/chartdata?symbol=${symbol}&timeframe=1D&limit=1`);
+        const cd = await r.json();
+        const ci = Object.fromEntries(cd.columns.map((c, i) => [c, i]));
+        const row = cd.data[0] ?? [];
+        statsView.innerHTML = fields.map(f => {
+          let v = ci[f] !== undefined ? row[ci[f]] : '—';
+          let cls = '';
+          if (f === 'minervini_trend_template') {
+            cls = v ? 'green' : 'red';
+            v   = v ? '✓ Trend Template' : '✗ kein Template';
+          } else if (typeof v === 'number') {
+            v = v.toFixed(2);
+          }
+          return `<div class="kv"><span class="kv-k">${f}</span><span class="kv-v ${cls}">${v}</span></div>`;
+        }).join('');
+      } catch (e) {
+        statsView.innerHTML = `<div style="color:#ef4444">Fehler: ${e.message}</div>`;
+      }
+    }
+
+    // ─── Stats bar (top) ─────────────────────────────────────
+    function updateStatsBar(data) {
+      const ci  = Object.fromEntries(data.columns.map((c, i) => [c, i]));
+      const row = data.data[data.data.length - 1];
+      if (!row) return;
+      const fmt = (k, dec = 2) => ci[k] !== undefined ? (+row[ci[k]]).toFixed(dec) : '—';
+      statsBar.innerHTML = [
+        ['Close', fmt('close')],
+        ['O', fmt('open')],
+        ['H', fmt('high')],
+        ['L', fmt('low')],
+        ['Vol', ci['volume'] !== undefined ? Math.round(row[ci['volume']]).toLocaleString() : '—'],
+        ['RS', fmt('ibd_rs', 0)],
+        ['M', fmt('minervini_score', 0)],
+      ].map(([k, v]) => `<div class="stat"><span>${k}</span><span class="stat-v">${v}</span></div>`).join('');
+    }
+
+    // ─── Crosshair sync ──────────────────────────────────────
+    document.addEventListener('pca:crosshair', (e) => {
+      wsClient?.broadcastCrosshair(e.detail.barIndex);
+    });
+
+    // ─── WS client ───────────────────────────────────────────
+    let wsClient;
+
+    async function init() {
+      await fetchLayoutConfig();
+      // Load default first ticker
+      const defaultSymbol = 'NVDA';
+      await loadTicker(defaultSymbol);
+
+      wsClient = new PcaWsClient(
+        (symbol) => loadTicker(symbol),            // on ticker change
+        (idx)    => renderer?.setCrosshairBar(idx) // on crosshair sync
+      );
+
+      document.addEventListener('pca:ws:connected',    () => wsDot.classList.add('connected'));
+      document.addEventListener('pca:ws:disconnected', () => wsDot.classList.remove('connected'));
+    }
+
+    // Helper for watchlist table click
+    function loadTickerCmd(symbol) {
+      wsClient?.sendCommand('load_ticker', { symbol });
+      loadTicker(symbol);
+    }
+
+    init().catch(console.error);
+  </script>
+</body>
+</html>
