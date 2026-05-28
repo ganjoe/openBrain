@@ -312,6 +312,12 @@
       wsClient?.broadcastCrosshair(e.detail.barIndex, e.detail.price);
     });
 
+    // ─── Touch-Swipe: Ticker-Navigation ──────────────────────
+    document.addEventListener('pca:ticker_swipe', (e) => {
+      const cmd = e.detail.dir === 'next' ? 'next_in_watchlist' : 'prev_in_watchlist';
+      wsClient?.sendCommand(cmd);
+    });
+
     // ─── WS client ───────────────────────────────────────────
     let wsClient;
 
