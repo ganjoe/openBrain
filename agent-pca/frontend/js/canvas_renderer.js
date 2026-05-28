@@ -34,8 +34,10 @@ class ChartRenderer {
     this.VOLUME_R   = viewConfig.volume?.pane_ratio ?? 0.22;
 
     // Interaction state
-    this.crosshairX = -1;
-    this.crosshairBar = -1;
+    this.crosshairX     = -1;
+    this.crosshairBar   = -1;
+    this.crosshairY     = -1;   // CSS pixel Y (local mouse)
+    this.crosshairPrice = null; // price value (from remote broadcast)
 
     this._setupHiDPI();
     this._bindEvents();
@@ -124,6 +126,11 @@ class ChartRenderer {
 
     const toY = (price) =>
       priceArea.y + priceArea.h - ((price - minP) / (maxP - minP)) * priceArea.h;
+
+    // Store for crosshair price lookup
+    this._priceArea = priceArea;
+    this._minP      = minP;
+    this._maxP      = maxP;
 
     // Grid lines
     this._drawGrid(ctx, priceArea, minP, maxP);
@@ -306,19 +313,75 @@ class ChartRenderer {
   _drawCrosshair(ctx, area, barW) {
     const i = this.crosshairBar;
     if (i < 0 || i >= this.rows.length) return;
+
     const x = area.x + i * barW + barW / 2;
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+
+    // Resolve Y: local mouse pixel OR price→Y from remote broadcast
+    let y = this.crosshairY;
+    if ((y < 0 || y === undefined) && this.crosshairPrice !== null && this._minP !== undefined) {
+      const minP  = this._minP;
+      const maxP  = this._maxP;
+      y = area.y + area.h - ((this.crosshairPrice - minP) / (maxP - minP)) * area.h;
+    }
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
     ctx.lineWidth   = 1;
     ctx.setLineDash([4, 4]);
+
+    // Vertical line
     ctx.beginPath();
     ctx.moveTo(x, area.y);
     ctx.lineTo(x, area.y + area.h);
     ctx.stroke();
+
+    // Horizontal line (only within price area)
+    if (y >= area.y && y <= area.y + area.h) {
+      ctx.beginPath();
+      ctx.moveTo(area.x, y);
+      ctx.lineTo(area.x + area.w, y);
+      ctx.stroke();
+
+      // Price label on Y-axis
+      ctx.setLineDash([]);
+      const minP  = this._minP;
+      const maxP  = this._maxP;
+      const price = minP + (1 - (y - area.y) / area.h) * (maxP - minP);
+      const lbl   = price.toFixed(2);
+      const lblW  = 52;
+      const lblH  = 16;
+      const lblX  = area.x - lblW - 2;
+      const lblY  = y - lblH / 2;
+
+      // Background pill
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      ctx.roundRect(lblX, lblY, lblW, lblH, 3);
+      ctx.fill();
+
+      // Price text
+      ctx.fillStyle  = '#f1f5f9';
+      ctx.font       = 'bold 10px monospace';
+      ctx.textAlign  = 'right';
+      ctx.fillText(lbl, area.x - 6, y + 4);
+    }
+
     ctx.setLineDash([]);
   }
 
   setCrosshairBar(barIndex) {
-    this.crosshairBar = barIndex;
+    this.crosshairBar   = barIndex;
+    this.crosshairPrice = null; // local-only, no remote price
+    this.draw();
+  }
+
+  /**
+   * Called by sibling tabs via BroadcastChannel.
+   * Uses the broadcast price to compute Y locally (scale-independent).
+   */
+  setCrosshairFromRemote(barIndex, price) {
+    this.crosshairBar   = barIndex;
+    this.crosshairPrice = price;  // will be converted to Y in _drawCrosshair
+    this.crosshairY     = -1;     // no local Y
     this.draw();
   }
 
@@ -326,20 +389,36 @@ class ChartRenderer {
 
   _bindEvents() {
     this.canvas.addEventListener('mousemove', (e) => {
-      const rect = this.canvas.getBoundingClientRect();
-      const x    = e.clientX - rect.left - this.PAD_L;
-      const n    = this.rows.length;
-      const barW = (this._cssW - this.PAD_L - this.PAD_R) / Math.max(n, 1);
-      const idx  = Math.floor(x / barW);
-      if (idx >= 0 && idx < n && idx !== this.crosshairBar) {
-        this.crosshairBar = idx;
+      const rect   = this.canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const x      = mouseX - this.PAD_L;
+      const n      = this.rows.length;
+      const barW   = (this._cssW - this.PAD_L - this.PAD_R) / Math.max(n, 1);
+      const idx    = Math.floor(x / barW);
+
+      if (idx >= 0 && idx < n) {
+        this.crosshairBar   = idx;
+        this.crosshairY     = mouseY;
+        this.crosshairPrice = null; // local mouse, no remote price needed
         this.draw();
-        // Broadcast to sibling tabs
-        document.dispatchEvent(new CustomEvent('pca:crosshair', { detail: { barIndex: idx } }));
+
+        // Compute price at cursor Y and broadcast to sibling tabs
+        let price = null;
+        if (this._priceArea && this._minP !== undefined) {
+          const area  = this._priceArea;
+          const ratio = 1 - (mouseY - area.y) / area.h;
+          price = this._minP + ratio * (this._maxP - this._minP);
+        }
+        document.dispatchEvent(new CustomEvent('pca:crosshair', {
+          detail: { barIndex: idx, price }
+        }));
       }
     });
     this.canvas.addEventListener('mouseleave', () => {
-      this.crosshairBar = -1;
+      this.crosshairBar   = -1;
+      this.crosshairY     = -1;
+      this.crosshairPrice = null;
       this.draw();
     });
   }

@@ -193,6 +193,7 @@
         return;
       }
       if (VIEW_TYPE === 'stats_panel') {
+        if (!viewConfig) return;
         await loadStatsPanel(currentSymbol, viewConfig);
         return;
       }
@@ -236,7 +237,9 @@
         // Get latest close and feature values from chart data (last 1 bar)
         try {
           const cr = await fetch(`${PCA_API}/api/chartdata?symbol=${ticker}&timeframe=1D&limit=1`);
+          if (!cr.ok) return { ticker, row: [], ci: {} };
           const cd = await cr.json();
+          if (!cd || !cd.columns || !cd.data || !cd.data.length) return { ticker, row: [], ci: {} };
           const ci = Object.fromEntries(cd.columns.map((c, i) => [c, i]));
           const row = cd.data[0] ?? [];
           return { ticker, row, ci };
@@ -266,7 +269,9 @@
       const fields = cfg?.fields ?? [];
       try {
         const r  = await fetch(`${PCA_API}/api/chartdata?symbol=${symbol}&timeframe=1D&limit=1`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const cd = await r.json();
+        if (!cd || !cd.columns || !cd.data || !cd.data.length) throw new Error('No data returned');
         const ci = Object.fromEntries(cd.columns.map((c, i) => [c, i]));
         const row = cd.data[0] ?? [];
         statsView.innerHTML = fields.map(f => {
@@ -304,7 +309,7 @@
 
     // ─── Crosshair sync ──────────────────────────────────────
     document.addEventListener('pca:crosshair', (e) => {
-      wsClient?.broadcastCrosshair(e.detail.barIndex);
+      wsClient?.broadcastCrosshair(e.detail.barIndex, e.detail.price);
     });
 
     // ─── WS client ───────────────────────────────────────────
@@ -317,8 +322,8 @@
       await loadTicker(defaultSymbol);
 
       wsClient = new PcaWsClient(
-        (symbol) => loadTicker(symbol),            // on ticker change
-        (idx)    => renderer?.setCrosshairBar(idx) // on crosshair sync
+        (symbol) => loadTicker(symbol),                           // on ticker change
+        (idx, price) => renderer?.setCrosshairFromRemote(idx, price) // on crosshair sync from sibling
       );
 
       document.addEventListener('pca:ws:connected',    () => wsDot.classList.add('connected'));

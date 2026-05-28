@@ -59,7 +59,7 @@ class PcaWsClient {
 
       case 'crosshair_move':
         if (this._onCrosshair && msg.barIndex !== undefined) {
-          this._onCrosshair(msg.barIndex);
+          this._onCrosshair(msg.barIndex, msg.price ?? null);
         }
         break;
 
@@ -69,10 +69,10 @@ class PcaWsClient {
   }
 
   /**
-   * Broadcast crosshair position to all sibling tabs (BroadcastChannel only, no server round-trip).
+   * Broadcast crosshair position + price to all sibling tabs (BroadcastChannel only, no server round-trip).
    */
-  broadcastCrosshair(barIndex) {
-    this._bc.postMessage({ action: 'crosshair_move', barIndex });
+  broadcastCrosshair(barIndex, price) {
+    this._bc.postMessage({ action: 'crosshair_move', barIndex, price });
   }
 
   /**

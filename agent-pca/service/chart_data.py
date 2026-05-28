@@ -26,7 +26,7 @@ def _parquet_path(symbol: str, timeframe: str, features: bool = False) -> Path:
 async def get_chart_data(
     symbol: str = Query(..., description="Ticker symbol, e.g. AAPL"),
     timeframe: str = Query(default="1D", description="Timeframe, e.g. 1D, 1H"),
-    limit: int = Query(default=500, ge=10, le=5000, description="Number of bars to return (newest N)"),
+    limit: int = Query(default=500, ge=1, le=5000, description="Number of bars to return (newest N)"),
     features: bool = Query(default=True, description="Include pre-computed feature columns if available"),
 ):
     """
