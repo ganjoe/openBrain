@@ -1,0 +1,19 @@
+{
+  "name": "openbrain-agent-bot",
+  "version": "2.0.0",
+  "description": "Generic Nexus agent bot — identity from config.yaml",
+  "main": "index.ts",
+  "scripts": {
+    "start": "ts-node index.ts"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.4",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/js-yaml": "^4.0.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.0"
+  }
+}

@@ -11,6 +11,7 @@ import logging
 import asyncio
 
 import paho.mqtt.client as mqtt
+import time
 
 logger = logging.getLogger("pca.mqtt")
 
@@ -27,6 +28,13 @@ def _on_connect(client: mqtt.Client, userdata, flags, rc, properties=None):
         logger.info("MQTT connected to %s:%d", MQTT_HOST, MQTT_PORT)
         client.subscribe(f"agents/{AGENT_ID}/commands")
         client.subscribe("agents/pta/events")
+        # Publish online status
+        online_payload = json.dumps({
+            "agent": AGENT_ID,
+            "status": "online",
+            "unix": int(time.time())
+        })
+        client.publish("agents/status", online_payload, qos=1, retain=True)
     else:
         logger.error("MQTT connection failed, rc=%d", rc)
 

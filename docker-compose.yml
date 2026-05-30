@@ -377,6 +377,28 @@ services:
     ports:
       - "8792:80"
 
+  # --- PCA Bot: Chart & View Manager ---
+  agent-pca-bot:
+    build:
+      context: ./agent-pca/bot
+      dockerfile: Dockerfile
+    container_name: openbrain-pca-bot
+    restart: unless-stopped
+    depends_on:
+      - nexus-broker
+      - mcp-pca
+    volumes:
+      - ./agent-pca/prompt.txt:/app/prompt.txt:ro
+      - ./agent-pca/config.yaml:/app/config.yaml:ro
+    environment:
+      CONFIG_PATH: /app/config.yaml
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      LM_STUDIO_URL: http://host.docker.internal:1234
+      POSTGREST_URL: http://postgrest:3000
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   # --- MCP Server: PCA agent endpoint ---
   mcp-pca:
     build:

@@ -25,7 +25,7 @@ EXECUTE FUNCTION update_system_settings_updated_at();
 
 -- Initial Data: Default all agents to local
 INSERT INTO system_settings (key, value) 
-VALUES ('provider_config', '{"ea": "local", "cco": "local"}'::jsonb)
+VALUES ('provider_config', '{"ea": "local", "cco": "local", "pca": "local"}'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
 -- Grants

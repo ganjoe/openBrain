@@ -40,6 +40,7 @@
 <LI><A HREF="#bot">Der Executive Assistant: Bot-Logik, Historie & Agentik</A></LI>
 <LI><A HREF="#cco">Der Chief Communications Officer (CCO)</A></LI>
 <LI><A HREF="#pta">Der Personal Trading Assistant (PTA)</A></LI>
+<LI><A HREF="#pca">Der Portfolio & Chart Analyzer (PCA)</A></LI>
 </OL>
 <H3>TEIL III: BACKEND</H3>
 <OL>
@@ -815,12 +816,76 @@ Risiko pro Aktie = 12€. Reales Risiko = 12€ / 10.000€ = 0,12%. Das ist wei
 
 <H3>14.9.4 EU-Nummernformate</H3>
 <P>Das System verarbeitet deutsche Nummernformate robust. Eingaben wie <CODE>1.500,50€</CODE> oder <CODE>5,5%</CODE> werden im TypeScript-Parser (RegEx) zuverlässig in systemkonforme Floats (1500.50) übersetzt.</P>
-</BODY>
-</HTML>
+
+<A NAME="pca"></A>
+<H2>15. Der Portfolio & Chart Analyzer (PCA)</H2>
+<P>Der PCA-Agent ist die visuelle Schnittstelle des Open Brain Systems. Seine Hauptaufgabe besteht darin, hochperformante, browserbasierte Chart-Umgebungen zu instanziieren, zu steuern und zu synchronisieren. Im Gegensatz zum PTA analysiert der PCA keine Märkte und führt keine Trades aus; er fungiert als spezialisierter "Visualisierungs-Operator" für das Frontend.</P>
+
+<H3>15.1 Die Anwender-Perspektive (User Experience)</H3>
+<P>Aus Sicht des Anwenders dient der PCA der vollautomatisierten Steuerung seines Trading-Desks durch natürliche Sprache. Im Zentrum stehen folgende Features:</P>
+<UL>
+<LI><B>Automatisierte Layout-Orchestrierung:</B> Durch Befehle wie <I>"Öffne das Desktop-Layout"</I> öffnet der PCA ein vordefiniertes Raster aus mehreren Chart-Fenstern auf dem Bildschirm des Nutzers (z.B. Daily-Chart, Weekly-Chart und eine Watchlist-Tabelle).</LI>
+<LI><B>Synchroner Ticker-Wechsel:</B> Wird ein neuer Ticker geladen (z.B. durch <I>"Zeige Apple"</I> oder einen Klick auf eine Watchlist-Zeile), wechseln alle geöffneten Chart-Fenster synchron auf das gewünschte Symbol.</LI>
+<LI><B>Watchlisten-Steuerung:</B> Der Nutzer kann per Sprache Ticker hinzufügen, entfernen und watchlistenweise durchblättern (<I>"Nächster Ticker"</I> oder per Wischgeste).</LI>
+<LI><B>Integrierte Ansichten:</B> Neben klassischen Kerzencharts (<CODE>candle_volume</CODE>) unterstützt das Frontend tabellarische Watchlisten (<CODE>watchlist_table</CODE> mit Echtzeit-Indikatoren wie dem Minervini Trend Template) sowie kompakte Statistik-Panels (<CODE>stats_panel</CODE>).</LI>
+</UL>
+<P><B>WICHTIGER ANWENDER-HINWEIS:</B> Da das Spawnen der Chart-Fenster über den Browser-Befehl <CODE>window.open()</CODE> erfolgt, blockieren die meisten Browser standardmäßig diese Popups. Für die Domain <CODE>http://localhost:8792</CODE> müssen Popups zwingend in den Browsereinstellungen erlaubt werden, damit Layouts geladen werden können.</P>
+
+<H3>15.2 Die Entwickler-Perspektive (Unter der Haube)</H3>
+<P>Technisch gesehen ist das PCA-Subsystem als entkoppelte, ereignisgesteuerte Drei-Container-Architektur aufgebaut:</P>
+
+<H4>15.2.1 Das Container-Layout</H4>
+<UL>
+<LI><B>chart-frontend (Port 8792):</B> Ein schlanker Nginx-Server, der statische Dateien (<CODE>chart.html</CODE>, <CODE>master.html</CODE>, clientseitiges JS und Canvas-Renderer) ausliefert.</LI>
+<LI><B>agent-pca-service (Port 8791):</B> Ein FastAPI-Backend, das die WebSocket-Verbindungen hält, die API-Schnittstelle zur Datenbank bedient und über DuckDB lokale Daten verarbeitet.</LI>
+<LI><B>mcp-pca (Port 8790):</B> Der Deno-basierte Model Context Protocol (MCP) Server. Er übersetzt die Absichten des LLMs in REST-Befehle an den Service.</LI>
+</UL>
+
+<H4>15.2.2 DuckDB-powered Chart Data Engine</H4>
+<P>Um Chart-Kerzen und berechnete Features mit maximaler Performance und ohne API-Overhead zu laden, nutzt der <CODE>agent-pca-service</CODE> eine embedded DuckDB-Instanz:</P>
+<UL>
+<LI><B>Shared Volume Mount:</B> Das Verzeichnis mit den Parquet-Dateien aus dem <CODE>stock-data-node</CODE> ist als Read-Only-Volume unter <CODE>/parquet</CODE> gemountet.</LI>
+<LI><B>On-the-fly Aggregation & Join:</B> Bei Abfrage des Endpunkts <CODE>/api/chartdata</CODE> liest DuckDB die OHLCV-Rohdaten und die vorberechneten Features (wie EMAs, RS-Line und Minervini-Scores) direkt aus den Parquet-Dateien und joint sie über einen hocheffizienten <CODE>LEFT JOIN</CODE> auf dem Timestamp in Millisekunden:</LI>
+</UL>
+<PRE><CODE class="language-sql">
+SELECT o.timestamp, o.open, o.high, o.low, o.close, o.volume,
+       f.ma_sma_50, f.ma_sma_150, f.ma_sma_200,
+       f.ibd_rs, f.minervini_score, f.minervini_trend_template
+FROM read_parquet('OHLCV.parquet') o
+LEFT JOIN read_parquet('FEATURES.parquet') f ON o.timestamp = f.timestamp
+ORDER BY o.timestamp ASC LIMIT 250
+</CODE></PRE>
+<UL>
+<LI>Dieses Design erfordert keinen laufenden Datenbank-Server für historische Kursdaten und arbeitet mit rein lokaler Datei-Geschwindigkeit.</LI>
+</UL>
+
+<H4>15.2.3 WebSocket-Routing & Master-Tab-Orchestrierung</H4>
+<P>Die Kommunikation zwischen Backend, Master-Tab und Chart-Fenstern läuft über bidirektionale WebSockets:</P>
+<UL>
+<LI><B>Die Master-Rolle:</B> Das Dashboard unter <CODE>master.html</CODE> verbindet sich mit dem Parameter <CODE>?master=true</CODE>. Der WebSocket-Manager im Backend registriert diese Verbindung gesondert. Geht ein MCP-Befehl zum Öffnen eines Layouts ein, wird dieser über <CODE>broadcast_to_masters</CODE> exklusiv an die Master-Verbindungen gesendet.</LI>
+<LI><B>Relative Fensterplatzierung:</B> Nach Empfang des Layout-JSONs berechnet der Master die Pixelmaße basierend auf der tatsächlichen Bildschirmauflösung (<CODE>screen.availWidth / cols</CODE>) und positioniert jedes Chart-Fenster präzise im Raster (mittels <CODE>left</CODE> und <CODE>top</CODE> Parametern in <CODE>window.open()</CODE>).</LI>
+</UL>
+
+<H4>15.2.4 Clientseitige Crosshair-Synchronisation (Zero-Server Latency)</H4>
+<P>Eine Besonderheit ist die Synchronisation der Fadenkreuze (Crosshairs) und Kursindikatoren über mehrere Fenster hinweg:</P>
+<UL>
+<LI>Befindet sich die Maus im Fenster A, wird die Bar-Position permanent erfasst.</LI>
+<LI>Anstatt diese schnellen Events (oft 60/s) über den Server zu schleifen, nutzt der Client die browsernative <CODE>BroadcastChannel</CODE> API (Kanal: <CODE>'pca_sync'</CODE>).</LI>
+<LI>Die Nachbarfenster lauschen auf diesem Kanal und verschieben ihr Fadenkreuz synchron ohne jegliche Netzwerkverzögerung oder Serverlast.</LI>
+</UL>
+
+<H4>15.2.5 Cross-Agent Event Listening (PTA Auto-Focus)</H4>
+<P>Im Hintergrund-Thread des <CODE>agent-pca-service</CODE> läuft ein autonomer Paho-MQTT-Client. Dieser abonniert den Nexus-Topic-Zweig <CODE>agents/pta/events</CODE>:</P>
+<UL>
+<LI>Führt der PTA-Trading-Agent einen Kauf aus (<CODE>BUY</CODE> Order gefüllt oder platziert), sendet er ein Event an den Nexus.</LI>
+<LI>Der PCA-MQTT-Listener fängt diese Nachricht auf, extrahiert das Ticker-Symbol und initiiert einen globalen WebSocket-Broadcast.</LI>
+<LI>Alle geöffneten Chart-Fenster fokussieren sich sofort auf den gehandelten Ticker, sodass der menschliche Nutzer die Ausführung visuell mitverfolgen kann.</LI>
+</UL>
+
 <H1 style='color: #2e7d32; border-bottom: 2px solid #2e7d32;'>TEIL III: BACKEND</H1>
 
 <A NAME="stockdatanode"></A>
-<H2>15. Stock-Data-Node (IBKR Data Engine)</H2>
+<H2>16. Stock-Data-Node (IBKR Data Engine)</H2>
 <P>Das <CODE>stock-data-node</CODE> Projekt (lokalisiert in <CODE>/home/daniel/stock-data-node</CODE>) fungiert als autarkes Backend für den massenhaften Download und die Verarbeitung von historischen und Live-Aktienkursen über das Interactive Brokers (IBKR) Gateway. Es speichert Marktdaten hochperformant im Parquet-Format.</P>
 
 <H3>15.1 Architektur & Datei-Watcher</H3>
@@ -850,4 +915,6 @@ Risiko pro Aktie = 12€. Reales Risiko = 12€ / 10.000€ = 0,12%. Das ist wei
 <LI><B>Dynamic Semaphore Throttling:</B> Die Parallelität (<CODE>delayed_max_concurrent</CODE>, <CODE>live_max_concurrent</CODE>) in der <CODE>settings.json</CODE> reguliert die gleichzeitigen Requests. Bei Pacing-Fehlern durch IBKR drosselt der Node die Semaphoren selbstständig.</LI>
 <LI><B>JVM Heap:</B> Für große Datenmengen wird vorausgesetzt, dass das IB Gateway mit mindestens 4 GB Heap (<CODE>JAVA_HEAP_SIZE=4096</CODE>) gestartet wird.</LI>
 </UL>
+</BODY>
+</HTML>
 
