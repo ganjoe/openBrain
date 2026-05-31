@@ -86,7 +86,14 @@ INSERT INTO pca_watchlists (list_name, ticker, position) VALUES
     ('growth_stocks', 'CELH',  4),
     ('growth_stocks', 'VIST',  5),
     ('growth_stocks', 'PLTR',  6),
-    ('growth_stocks', 'GEV',   7)
+    ('growth_stocks', 'GEV',   7),
+    ('trading_stats', '$STATS.PNL', 0),
+    ('trading_stats', '$STATS.RMULTIPLE', 1),
+    ('trading_stats', '$STATS.DRAWDOWN', 2),
+    ('trading_stats', '$STATS.WINRATE', 3),
+    ('trading_stats', '$STATS.PROFIT_FACTOR', 4),
+    ('trading_stats', '$STATS.WINRATE_PF', 5),
+    ('trading_stats', '$STATS.CASH_QUOTE', 6)
 ON CONFLICT (list_name, ticker) DO NOTHING;
 
 
@@ -201,7 +208,68 @@ INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
         is_default  = EXCLUDED.is_default,
         updated_at  = NOW();
 
-
+-- ─────────────────────────────────────────────────────────────
+-- Layout: trading_journal
+-- Trading Stats Layout (PnL, R-Multiple)
+-- ─────────────────────────────────────────────────────────────
+INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
+    'trading_journal',
+    'Trading Stats Layout mit PnL und R-Multiple',
+    FALSE,
+    '{
+        "watchlist": "trading_stats",
+        "grid": { "cols": 2, "rows": 2 },
+        "views": [
+            {
+                "view_id": "v1",
+                "type": "line",
+                "label": "Cumulative PnL",
+                "grid_pos": { "col": 0, "row": 0 },
+                "timeframe": "1D",
+                "bar_count": 2000,
+                "symbol": "$STATS.PNL",
+                "indicators": [],
+                "volume": { "enabled": true }
+            },
+            {
+                "view_id": "v2",
+                "type": "line",
+                "label": "Winrate & Profit Factor",
+                "grid_pos": { "col": 1, "row": 0 },
+                "timeframe": "1D",
+                "bar_count": 2000,
+                "symbol": "$STATS.WINRATE_PF",
+                "indicators": [],
+                "volume": { "enabled": true }
+            },
+            {
+                "view_id": "v3",
+                "type": "line",
+                "label": "Cash Quote & Active Positions",
+                "grid_pos": { "col": 0, "row": 1 },
+                "timeframe": "1D",
+                "bar_count": 2000,
+                "symbol": "$STATS.CASH_QUOTE",
+                "indicators": [],
+                "volume": { "enabled": true }
+            },
+            {
+                "view_id": "v4",
+                "type": "watchlist_table",
+                "label": "Available Stats",
+                "grid_pos": { "col": 1, "row": 1 },
+                "columns": [
+                    { "key": "ticker", "label": "Statistic" },
+                    { "key": "close",  "label": "Value" }
+                ]
+            }
+        ]
+    }'::jsonb
+) ON CONFLICT (name) DO UPDATE
+    SET config     = EXCLUDED.config,
+        description = EXCLUDED.description,
+        is_default  = EXCLUDED.is_default,
+        updated_at  = NOW();
 -- ─────────────────────────────────────────────────────────────
 -- Layout: qmaggi
 -- 4-window 2x2 grid. Custom traders setup.

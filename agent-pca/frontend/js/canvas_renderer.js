@@ -235,6 +235,12 @@ class ChartRenderer {
         this._drawCandle(ctx, bx, barW, o, h, l, c, bull, toY);
       } else if (this.type === 'bar_chart') {
         this._drawOHLCBar(ctx, bx, barW, o, h, l, c, bull, toY);
+      } else if (this.type === 'histogram') {
+        const y0 = toY(0);
+        const yC = toY(c);
+        ctx.fillStyle = c >= 0 ? '#22c55e' : '#ef4444';
+        const bw = Math.max(1, barW * 0.8);
+        ctx.fillRect(bx - bw/2, Math.min(y0, yC), bw, Math.abs(y0 - yC) || 1);
       }
 
       if (volArea && vI >= 0) {
@@ -243,6 +249,29 @@ class ChartRenderer {
     }
 
     this._drawIndicators(ctx, area, toY, barW);
+
+    if (this.type === 'line') {
+      ctx.beginPath();
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 2;
+      let first = true;
+      for (let vi = 0; vi < vb; vi++) {
+        const di = vs + vi;
+        if (di < 0 || di >= this.rows.length) continue;
+        const row = this.rows[di];
+        if (!row) continue;
+        const bx = area.x + vi * barW;
+        const c  = this._val(row, cI);
+        if (c === undefined || c === null) continue;
+        if (first) {
+          ctx.moveTo(bx, toY(c));
+          first = false;
+        } else {
+          ctx.lineTo(bx, toY(c));
+        }
+      }
+      ctx.stroke();
+    }
 
     // Achsen zuerst zeichnen, Crosshair-Labels kommen darüber
     this._drawPriceAxis(ctx, area, minP, maxP);

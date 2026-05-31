@@ -118,7 +118,7 @@ SELECT
     SUM(CASE WHEN NOT is_winner THEN ABS(net_pnl_eur) ELSE 0 END) OVER w as running_gross_loss_eur,
     CASE 
         WHEN SUM(CASE WHEN NOT is_winner THEN ABS(net_pnl_eur) ELSE 0 END) OVER w = 0 
-        THEN 999 
+        THEN NULL 
         ELSE SUM(CASE WHEN is_winner THEN net_pnl_eur ELSE 0 END) OVER w / SUM(CASE WHEN NOT is_winner THEN ABS(net_pnl_eur) ELSE 0 END) OVER w 
     END as running_profit_factor,
     CASE 

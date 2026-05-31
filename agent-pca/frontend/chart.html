@@ -1,11 +1,17 @@
 <!DOCTYPE html>
 <html lang="de">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PCA Chart</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
       background: #0d1117;
       color: #e2e8f0;
@@ -15,6 +21,7 @@
       height: 100vh;
       overflow: hidden;
     }
+
     #header {
       display: flex;
       align-items: center;
@@ -24,24 +31,32 @@
       border-bottom: 1px solid #1e293b;
       flex-shrink: 0;
     }
+
     #ticker-label {
       font-size: 1rem;
       font-weight: 600;
       letter-spacing: 0.05em;
       color: #f1f5f9;
     }
+
     #view-label {
       font-size: 0.75rem;
       color: #475569;
     }
+
     #ws-dot {
-      width: 7px; height: 7px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: #ef4444;
       margin-left: auto;
       transition: background 0.3s;
     }
-    #ws-dot.connected { background: #22c55e; }
+
+    #ws-dot.connected {
+      background: #22c55e;
+    }
+
     #stats-bar {
       display: flex;
       gap: 1.5rem;
@@ -53,14 +68,23 @@
       color: #64748b;
       font-family: monospace;
     }
-    .stat { display: flex; gap: 0.4rem; }
-    .stat-v { color: #94a3b8; }
+
+    .stat {
+      display: flex;
+      gap: 0.4rem;
+    }
+
+    .stat-v {
+      color: #94a3b8;
+    }
+
     #canvas-wrap {
       flex: 1;
       position: relative;
       min-width: 0;
       min-height: 0;
     }
+
     canvas {
       position: absolute;
       top: 0;
@@ -68,17 +92,20 @@
       width: 100%;
       height: 100%;
     }
+
     /* Watchlist table view */
     #table-view {
       display: none;
       flex: 1;
       overflow-y: auto;
     }
+
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 0.82rem;
     }
+
     thead th {
       background: #0a0a0f;
       color: #64748b;
@@ -86,24 +113,48 @@
       text-align: right;
       font-weight: 500;
       border-bottom: 1px solid #1e293b;
-      position: sticky; top: 0;
+      position: sticky;
+      top: 0;
     }
-    thead th:first-child { text-align: left; }
+
+    thead th:first-child {
+      text-align: left;
+    }
+
     tbody tr {
       cursor: pointer;
       border-bottom: 1px solid #0f172a;
       transition: background 0.1s;
     }
-    tbody tr:hover { background: #1e293b; }
-    tbody tr.active { background: #1e3a5f; }
+
+    tbody tr:hover {
+      background: #1e293b;
+    }
+
+    tbody tr.active {
+      background: #1e3a5f;
+    }
+
     tbody td {
       padding: 7px 12px;
       text-align: right;
       color: #94a3b8;
     }
-    tbody td:first-child { text-align: left; color: #e2e8f0; font-weight: 600; }
-    .badge-green { color: #22c55e; }
-    .badge-red   { color: #ef4444; }
+
+    tbody td:first-child {
+      text-align: left;
+      color: #e2e8f0;
+      font-weight: 600;
+    }
+
+    .badge-green {
+      color: #22c55e;
+    }
+
+    .badge-red {
+      color: #ef4444;
+    }
+
     /* Stats panel view */
     #stats-view {
       display: none;
@@ -113,6 +164,7 @@
       flex-direction: column;
       overflow-y: auto;
     }
+
     .kv {
       display: flex;
       justify-content: space-between;
@@ -121,12 +173,27 @@
       border-bottom: 1px solid #1e293b;
       font-size: 0.85rem;
     }
-    .kv-k { color: #64748b; }
-    .kv-v { color: #e2e8f0; font-family: monospace; font-weight: 600; }
-    .kv-v.green { color: #22c55e; }
-    .kv-v.red   { color: #ef4444; }
+
+    .kv-k {
+      color: #64748b;
+    }
+
+    .kv-v {
+      color: #e2e8f0;
+      font-family: monospace;
+      font-weight: 600;
+    }
+
+    .kv-v.green {
+      color: #22c55e;
+    }
+
+    .kv-v.red {
+      color: #ef4444;
+    }
   </style>
 </head>
+
 <body>
   <div id="header">
     <span id="ticker-label">—</span>
@@ -154,29 +221,31 @@
   <script src="/js/ws_client.js?v=qmaggi-v1"></script>
   <script>
     // ─── URL parameters ──────────────────────────────────────
-    const params    = new URLSearchParams(location.search);
-    const LAYOUT    = params.get('layout')  || 'desktop';
-    const VIEW_ID   = params.get('view_id') || 'v1';
-    const VIEW_TYPE = params.get('type')    || 'candle_volume';
+    const params = new URLSearchParams(location.search);
+    const LAYOUT = params.get('layout') || 'desktop';
+    const VIEW_ID = params.get('view_id') || 'v1';
+    const VIEW_TYPE = params.get('type') || 'candle_volume';
 
-    const PCA_API   = `http://${location.hostname}:8791`;
+    const PCA_API = `http://${location.hostname}:8791`;
 
     // ─── UI refs ─────────────────────────────────────────────
     const tickerLabel = document.getElementById('ticker-label');
-    const viewLabel   = document.getElementById('view-label');
-    const statsBar    = document.getElementById('stats-bar');
-    const wsDot       = document.getElementById('ws-dot');
-    const canvasWrap  = document.getElementById('canvas-wrap');
-    const tableView   = document.getElementById('table-view');
-    const statsView   = document.getElementById('stats-view');
+    const viewLabel = document.getElementById('view-label');
+    const statsBar = document.getElementById('stats-bar');
+    const wsDot = document.getElementById('ws-dot');
+    const canvasWrap = document.getElementById('canvas-wrap');
+    const tableView = document.getElementById('table-view');
+    const statsView = document.getElementById('stats-view');
 
     viewLabel.textContent = `[${VIEW_ID} · ${VIEW_TYPE}]`;
 
     // ─── State ───────────────────────────────────────────────
     let layoutConfig = null;
-    let viewConfig   = null;
-    let renderer     = null;
+    let viewConfig = null;
+    let renderer = null;
     let currentSymbol = null;
+    let hasInitializedSymbol = false;
+    let cachedWatchlistTickers = [];
 
     // ─── Layout config fetch ─────────────────────────────────
     async function fetchLayoutConfig() {
@@ -189,8 +258,20 @@
 
     // ─── Data load ───────────────────────────────────────────
     async function loadTicker(symbol) {
+      if (!hasInitializedSymbol && viewConfig?.symbol) {
+        symbol = viewConfig.symbol;
+        hasInitializedSymbol = true;
+      } else if (hasInitializedSymbol && viewConfig?.symbol) {
+        // Allow the ticker to change dynamically after initial load
+        // instead of staying hardcoded.
+      } else if (!hasInitializedSymbol) {
+        hasInitializedSymbol = true;
+      }
+
       if (!symbol) return;
-      currentSymbol = symbol.toUpperCase();
+      const upperSymbol = symbol.toUpperCase();
+      if (currentSymbol === upperSymbol) return;
+      currentSymbol = upperSymbol;
       tickerLabel.textContent = currentSymbol;
 
       if (VIEW_TYPE === 'watchlist_table') {
@@ -204,55 +285,58 @@
       }
 
       // Chart types: candle_volume | bar_chart
-      const tf    = viewConfig?.timeframe ?? '1D';
+      const tf = viewConfig?.timeframe ?? '1D';
       const limit = viewConfig?.bar_count ?? 2000;
 
       try {
-        const r   = await fetch(`${PCA_API}/api/chartdata?symbol=${currentSymbol}&timeframe=${tf}&limit=${limit}`);
-        let data = await r.json();
-
-        // ─── Fetch dynamic API indicators (Option 3 SSOT) ─────────
-        if (viewConfig && viewConfig.indicators) {
-          const apiInds = viewConfig.indicators.filter(i => i.source === 'api');
-          if (apiInds.length > 0) {
-            const FEATURES_API = `http://${location.hostname}:8003/features`;
-            for (const ind of apiInds) {
-              if (ind.type === 'ma') {
-                try {
-                  const reqBody = {
-                    ticker: currentSymbol,
-                    chart_timeframe: tf,
-                    ma_type: ind.params.ma_type.toUpperCase(),
-                    ma_window: ind.params.window
-                  };
-                  const res = await fetch(`${FEATURES_API}/ma`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(reqBody)
-                  });
-                  if (res.ok) {
-                    const featureData = await res.json();
-                    const label = featureData.ma_label;
-                    
-                    data.columns.push(label);
-                    ind.column = label; // tell renderer which column to use
-                    
-                    const featDict = {};
-                    featureData.timestamps.forEach((ts, idx) => {
-                      featDict[ts] = featureData.values[idx];
-                    });
-                    
-                    const tsIndex = data.columns.indexOf('timestamp');
-                    data.data.forEach(row => {
-                      const ts = row[tsIndex];
-                      row.push(featDict[ts] ?? null);
-                    });
-                  }
-                } catch (e) {
-                  console.error('Failed to fetch dynamic feature:', ind, e);
-                }
-              }
+        const chartPromise = fetch(`${PCA_API}/api/chartdata?symbol=${currentSymbol}&timeframe=${tf}&limit=${limit}`).then(r => r.json());
+        const indicatorPromises = [];
+        const apiInds = (viewConfig && viewConfig.indicators) ? viewConfig.indicators.filter(i => i.source === 'api') : [];
+        
+        if (apiInds.length > 0) {
+          const FEATURES_API = `http://${location.hostname}:8003/features`;
+          for (const ind of apiInds) {
+            if (ind.type === 'ma') {
+              const reqBody = {
+                ticker: currentSymbol,
+                chart_timeframe: tf,
+                ma_type: ind.params.ma_type.toUpperCase(),
+                ma_window: ind.params.window
+              };
+              const p = fetch(`${FEATURES_API}/ma`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reqBody)
+              }).then(r => r.ok ? r.json() : null).then(featureData => ({ ind, featureData })).catch(e => {
+                console.error('Failed to fetch dynamic feature:', ind, e);
+                return null;
+              });
+              indicatorPromises.push(p);
             }
+          }
+        }
+
+        const [data, ...indResults] = await Promise.all([chartPromise, ...indicatorPromises]);
+
+        if (indResults.length > 0) {
+          for (const res of indResults) {
+            if (!res || !res.featureData) continue;
+            const { ind, featureData } = res;
+            const label = featureData.ma_label;
+            
+            data.columns.push(label);
+            ind.column = label; // tell renderer which column to use
+            
+            const featDict = {};
+            featureData.timestamps.forEach((ts, idx) => {
+              featDict[ts] = featureData.values[idx];
+            });
+            
+            const tsIndex = data.columns.indexOf('timestamp');
+            data.data.forEach(row => {
+              const ts = row[tsIndex];
+              row.push(featDict[ts] ?? null);
+            });
           }
         }
 
@@ -274,12 +358,16 @@
     // ─── Watchlist table ─────────────────────────────────────
     async function loadWatchlistTable(cfg) {
       canvasWrap.style.display = 'none';
-      tableView.style.display  = 'block';
+      tableView.style.display = 'block';
       const cols = cfg?.columns ?? [{ key: 'ticker', label: 'Ticker' }];
       const watchlist = layoutConfig?.watchlist ?? LAYOUT;
 
-      const r    = await fetch(`${PCA_API}/api/watchlists/${watchlist}`);
+      const r = await fetch(`${PCA_API}/api/watchlists/${watchlist}`);
       const data = await r.json();
+
+      if (data.tickers) {
+        cachedWatchlistTickers = data.tickers.map(t => t.ticker);
+      }
 
       document.getElementById('table-head').innerHTML =
         `<tr>${cols.map(c => `<th>${c.label}</th>`).join('')}</tr>`;
@@ -316,10 +404,10 @@
     // ─── Stats panel ─────────────────────────────────────────
     async function loadStatsPanel(symbol, cfg) {
       canvasWrap.style.display = 'none';
-      statsView.style.display  = 'flex';
+      statsView.style.display = 'flex';
       const fields = cfg?.fields ?? [];
       try {
-        const r  = await fetch(`${PCA_API}/api/chartdata?symbol=${symbol}&timeframe=1D&limit=1`);
+        const r = await fetch(`${PCA_API}/api/chartdata?symbol=${symbol}&timeframe=1D&limit=1`);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const cd = await r.json();
         if (!cd || !cd.columns || !cd.data || !cd.data.length) throw new Error('No data returned');
@@ -330,7 +418,7 @@
           let cls = '';
           if (f === 'minervini_trend_template') {
             cls = v ? 'green' : 'red';
-            v   = v ? '✓ Trend Template' : '✗ kein Template';
+            v = v ? '✓ Trend Template' : '✗ kein Template';
           } else if (typeof v === 'number') {
             v = v.toFixed(2);
           }
@@ -343,7 +431,7 @@
 
     // ─── Stats bar (top) ─────────────────────────────────────
     function updateStatsBar(data) {
-      const ci  = Object.fromEntries(data.columns.map((c, i) => [c, i]));
+      const ci = Object.fromEntries(data.columns.map((c, i) => [c, i]));
       const row = data.data[data.data.length - 1];
       if (!row) return;
       const fmt = (k, dec = 2) => ci[k] !== undefined ? (+row[ci[k]]).toFixed(dec) : '—';
@@ -366,9 +454,22 @@
     // ─── Keyboard & Swipe: Ticker-Navigation ─────────────────
     function navigateWatchlist(dir) {
       if (!currentSymbol) return;
-      const cmd = dir === 'next' ? 'next_in_watchlist' : 'prev_in_watchlist';
-      const watchlist = layoutConfig?.watchlist || LAYOUT;
-      wsClient?.sendCommand(cmd, { current_ticker: currentSymbol, watchlist: watchlist });
+      if (cachedWatchlistTickers.length > 0) {
+        let idx = cachedWatchlistTickers.indexOf(currentSymbol);
+        if (idx === -1) idx = 0;
+        else {
+          idx += (dir === 'next' ? 1 : -1);
+          if (idx < 0) idx = cachedWatchlistTickers.length - 1;
+          if (idx >= cachedWatchlistTickers.length) idx = 0;
+        }
+        const nextSymbol = cachedWatchlistTickers[idx];
+        loadTicker(nextSymbol);
+        wsClient?.sendCommand('load_ticker', { symbol: nextSymbol });
+      } else {
+        const cmd = dir === 'next' ? 'next_in_watchlist' : 'prev_in_watchlist';
+        const watchlist = layoutConfig?.watchlist || LAYOUT;
+        wsClient?.sendCommand(cmd, { current_ticker: currentSymbol, watchlist: watchlist });
+      }
     }
 
     document.addEventListener('pca:ticker_swipe', (e) => navigateWatchlist(e.detail.dir));
@@ -391,8 +492,20 @@
 
     async function init() {
       await fetchLayoutConfig();
-      // Load default first ticker
-      const defaultSymbol = 'NVDA';
+      // Load default first ticker from watchlist
+      let defaultSymbol = 'NVDA';
+      if (layoutConfig && layoutConfig.watchlist) {
+        try {
+          const r = await fetch(`${PCA_API}/api/watchlists/${layoutConfig.watchlist}`);
+          const wl = await r.json();
+          if (wl.tickers && wl.tickers.length > 0) {
+            cachedWatchlistTickers = wl.tickers.map(t => t.ticker);
+            defaultSymbol = wl.tickers[0].ticker;
+          }
+        } catch (e) {
+          console.warn("Failed to load layout watchlist, falling back to NVDA");
+        }
+      }
       await loadTicker(defaultSymbol);
 
       wsClient = new PcaWsClient(
@@ -406,7 +519,7 @@
         }
       );
 
-      document.addEventListener('pca:ws:connected',    () => wsDot.classList.add('connected'));
+      document.addEventListener('pca:ws:connected', () => wsDot.classList.add('connected'));
       document.addEventListener('pca:ws:disconnected', () => wsDot.classList.remove('connected'));
     }
 
@@ -419,4 +532,5 @@
     init().catch(console.error);
   </script>
 </body>
+
 </html>
