@@ -429,6 +429,21 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # --- Features Service (stock-data-features migration) ---
+  features-service:
+    build:
+      context: ./features-service
+      dockerfile: Dockerfile
+    container_name: openbrain-features-service
+    restart: unless-stopped
+    volumes:
+      - ./features-service/config:/app/config
+      - /home/daniel/stock-data-node/data:/app/data
+    ports:
+      - "8003:8003"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   openbrain_pgdata:
   openbrain_ollama:

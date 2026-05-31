@@ -882,6 +882,50 @@ ORDER BY o.timestamp ASC LIMIT 250
 <LI>Alle geöffneten Chart-Fenster fokussieren sich sofort auf den gehandelten Ticker, sodass der menschliche Nutzer die Ausführung visuell mitverfolgen kann.</LI>
 </UL>
 
+<H4>15.2.6 Single Source of Truth (SSOT) & Dynamischer Datenfluss</H4>
+<P>Eine Kern-Herausforderung bei der Darstellung von Finanzdaten ist die Verwaltung von Indikatoren, die on-the-fly modifiziert werden können (z.B. Wechsel von EMA 9 auf EMA 20). Um das Laden performant zu halten und "Stale Data" zu vermeiden, implementiert der PCA eine strikte SSOT-Trennung:</P>
+<UL>
+<LI><B>Parquet (Offline SSOT):</B> Rohe OHLCV-Preisdaten und rechenintensive, globale Metriken (z.B. Minervini Score, IBD RS-Rating) werden durch die nächtliche Batch-Verarbeitung berechnet und im Parquet-Format abgelegt. Diese werden beim Laden des Charts als statische <I>Base-Data</I> über DuckDB gelesen.</LI>
+<LI><B>Features-Service API (Live SSOT):</B> Alle dynamischen Chart-Overlays (Gleitende Durchschnitte, Bollinger Bänder etc.) werden live vom <CODE>features-service</CODE> (Port 8003) angefragt.</LI>
+</UL>
+
+<P><B>Der Fetch- und Merge-Prozess (Client-Side):</B></P>
+<P>Die Entscheidung, woher ein Indikator bezogen wird, obliegt exklusiv der <CODE>viewConfig</CODE> (Layout JSON). Das Frontend arbeitet dieses Konfigurationsobjekt wie eine Checkliste ab:</P>
+<OL>
+<LI>Das Frontend ruft <CODE>/api/chartdata</CODE> auf und lädt die Parquet-Basisdaten in ein lokales Array.</LI>
+<LI>Es iteriert über das <CODE>indicators</CODE> Array im Layout. Entdeckt es einen Indikator mit der Eigenschaft <CODE>source: "api"</CODE>, sendet der Client asynchron einen REST-POST an <CODE>http://${location.hostname}:8003/features/...</CODE>.</LI>
+<LI>Die Antwort der API (Timestamps und berechnete Werte) wird durch das Frontend zeitachsen-genau (<I>Time-Series-Merge</I>) in die bereits geladenen Basisdaten eingefügt.</LI>
+<LI>Erst wenn alle asynchronen API-Requests erfolgreich aufgelöst wurden, übergibt das Frontend das fertig zusammengesetzte Daten-Array an den Canvas-Renderer.</LI>
+</OL>
+
+<P>Das folgende Mermaid-Diagramm visualisiert diesen streng asynchronen, client-basierten Datenfluss:</P>
+
+<div class="mermaid">
+sequenceDiagram
+    participant Browser as PCA Frontend (Browser)
+    participant PCA as PCA Service (DuckDB)
+    participant Feat as Features Service (FastAPI)
+    participant Disk as Parquet Files
+
+    Browser->>PCA: GET /api/chartdata?symbol=AAPL
+    PCA->>Disk: SELECT OHLCV, minervini_score
+    Disk-->>PCA: Parquet Bytes
+    PCA-->>Browser: JSON {columns: [...], data: [...]}
+
+    Note over Browser: Loop over viewConfig.indicators
+    
+    opt source == "api"
+        Browser->>Feat: POST /features/ma {ticker: "AAPL", ma_type: "EMA", window: 9}
+        Feat->>Disk: Load OHLCV for calculation
+        Disk-->>Feat: Parquet Bytes
+        Note right of Feat: Calculate EMA 9 on-the-fly
+        Feat-->>Browser: JSON {timestamps: [...], values: [...]}
+    end
+
+    Note over Browser: Client-Side Merge: Align values by timestamp
+    Note over Browser: renderer.loadData(mergedData)
+</div>
+
 <H1 style='color: #2e7d32; border-bottom: 2px solid #2e7d32;'>TEIL III: BACKEND</H1>
 
 <A NAME="stockdatanode"></A>

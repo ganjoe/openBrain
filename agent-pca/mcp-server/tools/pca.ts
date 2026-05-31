@@ -183,42 +183,6 @@ export function registerPcaTools(server: McpServer) {
       }
     }
   );
-
-  // ── save_layout ──────────────────────────────────────────────
-  server.registerTool(
-    "save_layout",
-    {
-      title: "Save Layout",
-      description: "Create or update a chart layout configuration in the database.",
-      inputSchema: {
-        name: z.string().describe("Layout name, e.g. 'mobile'"),
-        description: z.string().optional().describe("Short description"),
-        config: z.string().describe("Layout config as a JSON string"),
-        is_default: z.boolean().optional().default(false),
-      },
-    },
-    async ({ name, description, config, is_default }: any) => {
-      try {
-        let parsedConfig: any;
-        try {
-          parsedConfig = JSON.parse(config);
-        } catch {
-          return { content: [{ type: "text", text: "Error: config is not valid JSON." }], isError: true };
-        }
-        const { error } = await supabase
-          .from("pca_layouts")
-          .upsert(
-            { name, description: description ?? "", config: parsedConfig, is_default: is_default ?? false },
-            { onConflict: "name" }
-          );
-        if (error) throw error;
-        return { content: [{ type: "text", text: `Layout '${name}' saved successfully.` }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
   // ── next_ticker / prev_ticker ────────────────────────────────
   server.registerTool(
     "next_ticker",
@@ -247,6 +211,58 @@ export function registerPcaTools(server: McpServer) {
     },
     async ({ list_name, current_ticker }: any) => {
       return _navigateWatchlist(list_name, current_ticker, -1);
+    }
+  );
+
+  // ── Technical Indicators (On-the-fly) ────────────────────────
+  server.registerTool(
+    "get_technical_indicator",
+    {
+      title: "Get Technical Indicator",
+      description: "Calculate and retrieve technical indicators (MA, RS Rating, Minervini) on-the-fly.",
+      inputSchema: {
+        indicator: z.enum(["ma", "rs", "minervini"]).describe("Which indicator to calculate"),
+        ticker: z.string().describe("Ticker symbol (e.g. AAPL)"),
+        chart_timeframe: z.string().optional().default("1D").describe("Data timeframe"),
+        ma_type: z.enum(["sma", "ema"]).optional().describe("For 'ma' only: type of moving average"),
+        ma_window: z.number().optional().describe("For 'ma' only: window period (e.g. 50, 150, 200)"),
+        benchmark: z.string().optional().describe("For 'rs' only: benchmark ticker (e.g. SPX)"),
+      },
+    },
+    async ({ indicator, ticker, chart_timeframe, ma_type, ma_window, benchmark }: any) => {
+      try {
+        const FEATURES_URL = "http://features-service:8003/features";
+        let endpoint = "";
+        let body: any = { ticker: ticker.toUpperCase(), chart_timeframe };
+
+        if (indicator === "ma") {
+          if (!ma_type || !ma_window) throw new Error("ma_type and ma_window are required for 'ma' indicator.");
+          endpoint = `${FEATURES_URL}/ma`;
+          body.ma_type = ma_type.toUpperCase();
+          body.ma_window = ma_window;
+        } else if (indicator === "rs") {
+          endpoint = `${FEATURES_URL}/rs`;
+          if (benchmark) body.benchmark = benchmark.toUpperCase();
+        } else if (indicator === "minervini") {
+          endpoint = `${FEATURES_URL}/minervini`;
+        }
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`Features API error ${res.status}: ${err}`);
+        }
+
+        const data = await res.json();
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+      }
     }
   );
 }

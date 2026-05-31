@@ -1,0 +1,177 @@
+{
+    "features": {
+        "ma_sma_10": {
+            "window": 10,
+            "period": "D",
+            "type": "SMA",
+            "color": "red",
+            "mode": "absolute",
+            "style": "solid",
+            "pane": "price",
+            "chart_type": "line",
+            "thickness": 1
+        },
+        "ma_sma_20": {
+            "window": 20,
+            "period": "D",
+            "type": "SMA",
+            "color": "yellow",
+            "mode": "absolute",
+            "style": "solid",
+            "pane": "price",
+            "chart_type": "line",
+            "thickness": 1
+        },
+        "ma_sma_50": {
+            "window": 50,
+            "period": "D",
+            "type": "SMA",
+            "color": "green",
+            "mode": "absolute",
+            "style": "solid",
+            "pane": "price",
+            "chart_type": "line",
+            "thickness": 1
+        },
+        "ma_sma_100": {
+            "window": 100,
+            "period": "D",
+            "type": "SMA",
+            "color": "blue",
+            "mode": "absolute",
+            "style": "solid",
+            "pane": "price",
+            "chart_type": "line",
+            "thickness": 1
+        },
+        "ma_sma_150": {
+            "window": 150,
+            "period": "D",
+            "type": "SMA",
+            "color": "purple",
+            "mode": "absolute",
+            "style": "solid",
+            "pane": "price",
+            "chart_type": "line",
+            "thickness": 1
+        },
+        "ma_sma_200": {
+            "window": 200,
+            "period": "D",
+            "type": "SMA",
+            "color": "orange",
+            "mode": "absolute",
+            "style": "solid",
+            "pane": "price",
+            "chart_type": "line",
+            "thickness": 1
+        },
+        "stock_10_1": {
+            "window": 10,
+            "period": "D",
+            "type": "STOCHASTIC",
+            "color": "red",
+            "style": "solid",
+            "pane": "pct",
+            "chart_type": "line",
+            "thickness": 1,
+            "d": {
+                "window": 1,
+                "period": "D",
+                "type": "SMA",
+                "color": "green",
+                "style": "solid",
+                "pane": "pct",
+                "chart_type": "line",
+                "thickness": 2
+            }
+        },
+        "bb_20": {
+            "window": 20,
+            "period": "D",
+            "type": "BOLLINGER_BAND",
+            "color": "white",
+            "style": "solid",
+            "pane": "price",
+            "chart_type": "line",
+            "thickness": 2,
+            "upper": {
+                "color": "white",
+                "style": "solid",
+                "thickness": 2
+            },
+            "lower": {
+                "color": "white",
+                "style": "solid",
+                "thickness": 2
+            },
+            "avg": {
+                "color": "yellow",
+                "style": "dashed",
+                "thickness": 2
+            },
+            "bandwidth": {
+                "color": "green",
+                "style": "solid",
+                "pane": "price",
+                "thickness": 2
+            }
+        },
+        "ibd_rs": {
+            "window": 1,
+            "period": "D",
+            "type": "IBD_RS",
+            "color": "cyan",
+            "mode": "absolute",
+            "style": "solid",
+            "pane": "pct_abs",
+            "chart_type": "line",
+            "thickness": 1
+        },
+        "minervini_score": {
+            "window": 1,
+            "period": "D",
+            "type": "MINERVINI_TREND",
+            "color": "lime",
+            "mode": "absolute",
+            "style": "solid",
+            "pane": "abs",
+            "chart_type": "line",
+            "thickness": 2
+        },
+        "minervini_trend_template": {
+            "window": 1,
+            "period": "D",
+            "color": "gold",
+            "mode": "absolute",
+            "style": "solid",
+            "pane": "abs",
+            "chart_type": "line",
+            "thickness": 1
+        },
+        "breadth_minervini": {
+            "window": 1,
+            "period": "D",
+            "type": "BREADTH_MINERVINI",
+            "aggregation": "all",
+            "color": "magenta",
+            "mode": "absolute",
+            "style": "solid",
+            "pane": "abs",
+            "chart_type": "line",
+            "thickness": 2
+        },
+        "breadth_minervini_pct": {
+            "window": 1,
+            "period": "D",
+            "type": "BREADTH_MINERVINI",
+            "aggregation": "all",
+            "mode": "pct_abs",
+            "color": "magenta",
+            "style": "solid",
+            "pane": "pct_abs",
+            "chart_type": "line",
+            "thickness": 2
+        }
+    }
+}

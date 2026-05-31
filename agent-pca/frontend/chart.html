@@ -204,7 +204,53 @@
 
       try {
         const r   = await fetch(`${PCA_API}/api/chartdata?symbol=${currentSymbol}&timeframe=${tf}&limit=${limit}`);
-        const data = await r.json();
+        let data = await r.json();
+
+        // ─── Fetch dynamic API indicators (Option 3 SSOT) ─────────
+        if (viewConfig && viewConfig.indicators) {
+          const apiInds = viewConfig.indicators.filter(i => i.source === 'api');
+          if (apiInds.length > 0) {
+            const FEATURES_API = `http://${location.hostname}:8003/features`;
+            for (const ind of apiInds) {
+              if (ind.type === 'ma') {
+                try {
+                  const reqBody = {
+                    ticker: currentSymbol,
+                    chart_timeframe: tf,
+                    ma_type: ind.params.ma_type.toUpperCase(),
+                    ma_window: ind.params.window
+                  };
+                  const res = await fetch(`${FEATURES_API}/ma`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(reqBody)
+                  });
+                  if (res.ok) {
+                    const featureData = await res.json();
+                    const label = featureData.ma_label;
+                    
+                    data.columns.push(label);
+                    ind.column = label; // tell renderer which column to use
+                    
+                    const featDict = {};
+                    featureData.timestamps.forEach((ts, idx) => {
+                      featDict[ts] = featureData.values[idx];
+                    });
+                    
+                    const tsIndex = data.columns.indexOf('timestamp');
+                    data.data.forEach(row => {
+                      const ts = row[tsIndex];
+                      row.push(featDict[ts] ?? null);
+                    });
+                  }
+                } catch (e) {
+                  console.error('Failed to fetch dynamic feature:', ind, e);
+                }
+              }
+            }
+          }
+        }
+
         if (!renderer) initRenderer();
         renderer.loadData(data);
         updateStatsBar(data);
