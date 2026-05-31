@@ -116,7 +116,7 @@ INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
                 "label": "Candlestick + Volumen",
                 "grid_pos": { "col": 0, "row": 0 },
                 "timeframe": "1D",
-                "bar_count": 250,
+                "bar_count": 2000,
                 "indicators": [
                     {
                         "type": "sma",
@@ -153,7 +153,7 @@ INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
                 "label": "OHLC Barchart",
                 "grid_pos": { "col": 1, "row": 0 },
                 "timeframe": "1D",
-                "bar_count": 250,
+                "bar_count": 2000,
                 "indicators": [
                     {
                         "type": "sma",
@@ -225,7 +225,7 @@ INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
                 "label": "Mainchart (SMAs + Dollar-Volumen)",
                 "grid_pos": { "col": 0, "row": 0 },
                 "timeframe": "1D",
-                "bar_count": 250,
+                "bar_count": 2000,
                 "indicators": [
                     {
                         "type": "sma",
@@ -292,7 +292,7 @@ INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
                 "label": "Second Chart (ADR + RS Rating)",
                 "grid_pos": { "col": 1, "row": 0 },
                 "timeframe": "1D",
-                "bar_count": 250,
+                "bar_count": 2000,
                 "indicators": [
                     {
                         "type": "rs",

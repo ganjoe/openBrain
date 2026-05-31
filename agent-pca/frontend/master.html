@@ -60,6 +60,25 @@
       background: #181825;
       box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
     }
+    .wl-card {
+      background: #11111b;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 1.2rem;
+      width: 280px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      text-align: left;
+    }
+    .wl-card:hover {
+      transform: translateY(-2px);
+      border-color: #8b5cf6;
+      background: #1e1b4b;
+      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.15);
+    }
     .layout-name {
       font-size: 1.05rem;
       font-weight: 600;
@@ -101,8 +120,14 @@
     <span id="status-text">Verbindung aufbauen…</span>
   </div>
 
+  <h2>Layouts</h2>
   <div class="layout-grid" id="layout-container">
     <div style="color: #64748b">Layouts werden geladen...</div>
+  </div>
+
+  <h2>Watchlists</h2>
+  <div class="layout-grid" id="watchlist-container">
+    <div style="color: #64748b">Watchlists werden geladen...</div>
   </div>
 
   <div class="log" id="log">Warte auf Befehle…</div>
@@ -113,9 +138,11 @@
     const statusText = document.getElementById('status-text');
     const logEl = document.getElementById('log');
     const layoutContainer = document.getElementById('layout-container');
+    const watchlistContainer = document.getElementById('watchlist-container');
 
     // Child window tracking: view_id -> window ref
     const childWindows = {};
+    let currentLayoutName = null;
 
     let ws;
 
@@ -192,6 +219,49 @@
       }
     }
 
+    async function loadWatchlists() {
+      try {
+        const r = await fetch(`http://${location.hostname}:8791/api/watchlists`);
+        const data = await r.json();
+        if (!data.watchlists || data.watchlists.length === 0) {
+          watchlistContainer.innerHTML = '<div style="color: #64748b">Keine Watchlists in der Datenbank.</div>';
+          return;
+        }
+        watchlistContainer.innerHTML = data.watchlists.map(name => `
+          <div class="wl-card" onclick="openWatchlist('${name}')">
+            <div class="layout-name">
+              <span>${name}</span>
+            </div>
+            <div class="layout-desc">Liste aktivieren</div>
+          </div>
+        `).join('');
+      } catch (e) {
+        log(`Fehler beim Watchlist-Abruf: ${e.message}`);
+        watchlistContainer.innerHTML = `<div style="color: #ef4444">Fehler beim Laden: ${e.message}</div>`;
+      }
+    }
+
+    async function openWatchlist(listName) {
+      if (!currentLayoutName) {
+        log('Achtung: Bitte wähle zuerst ein Layout aus!');
+        return;
+      }
+      try {
+        const res = await fetch(`http://${location.hostname}:8791/api/command`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'load_watchlist',
+            payload: { list_name: listName, layout_name: currentLayoutName }
+          })
+        });
+        if (!res.ok) throw new Error('API Fehler: ' + res.status);
+        log(`Watchlist '${listName}' in Layout '${currentLayoutName}' geladen.`);
+      } catch (e) {
+        log(`Fehler beim Setzen der Watchlist: ${e.message}`);
+      }
+    }
+
     function openLayout(layoutName) {
       // Manual button: fetch layout config from the service, then open windows
       fetch(`http://${location.hostname}:8791/api/layouts/${layoutName}`)
@@ -206,6 +276,7 @@
         return;
       }
 
+      currentLayoutName = layoutName;
       log(`Öffne Layout: ${layoutName} (${config.views.length} Fenster)`);
 
       // Calculate window positions based on grid and screen size
@@ -240,6 +311,7 @@
 
     connect();
     loadLayouts();
+    loadWatchlists();
   </script>
 </body>
 </html>

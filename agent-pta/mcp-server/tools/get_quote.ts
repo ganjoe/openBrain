@@ -2,6 +2,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { supabase } from "./shared.ts";
 
+function triggerBulkDownload(ticker: string) {
+  fetch("http://localhost:8002/download", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ticker: ticker })
+  }).catch(err => console.error(`[Webhook] Failed to notify stock-data-node for ${ticker}:`, err.message));
+}
+
 export function registerQuoteTools(server: McpServer) {
   server.registerTool(
     "get_quote",
@@ -62,6 +70,7 @@ export function registerQuoteTools(server: McpServer) {
         await supabase.from("pta_execution_log").delete().eq("id", requestId);
 
         if (quotePrice !== null) {
+          triggerBulkDownload(ticker);
           return { content: [{ type: "text", text: `Der aktuelle Live-Kurs für ${ticker} (via IBKR) beträgt: ${quotePrice}` }] };
         } else {
           // Fallback to Yahoo Finance
@@ -76,6 +85,7 @@ export function registerQuoteTools(server: McpServer) {
                  const data = await res.json();
                  const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
                  if (price) {
+                     triggerBulkDownload(ticker);
                      return { content: [{ type: "text", text: `Der aktuelle Kurs für ${ticker} (via Yahoo Finance Fallback) beträgt: ${price}` }] };
                  }
              } else {
