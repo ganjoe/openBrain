@@ -55,9 +55,7 @@ async def get_chart_data(
         if features and features_path.exists():
             # JOIN on timestamp — features file has same length and index as OHLCV
             query = f"""
-                SELECT o.timestamp, o.open, o.high, o.low, o.close, o.volume,
-                       f.ma_sma_50, f.ma_sma_150, f.ma_sma_200,
-                       f.ibd_rs, f.minervini_score, f.minervini_trend_template
+                SELECT o.*, f.* EXCLUDE (timestamp, open, high, low, close, volume)
                 FROM read_parquet('{ohlcv_path}') o
                 LEFT JOIN read_parquet('{features_path}') f
                   ON o.timestamp = f.timestamp

@@ -48,9 +48,15 @@ class ChartRenderer {
     this.crosshairPrice = null;  // Preis-Wert (remote broadcast)
 
     // ── Interaktion ────────────────────────────────────────
-    this._dragStart  = null;  // { x, viewStart } Mouse-Drag
-    this._touchStart = null;  // { x, y, time, viewStart }
-    this._pinchStart = null;  // { dist, viewBars, anchor, midRelX }
+    this._dragStart     = null;   // { x, viewStart } Mouse-Drag
+    this._touchStart    = null;   // { x, y, time, viewStart }
+    this._pinchStart    = null;   // { dist, viewBars, anchor, midRelX }
+    this._splitterDrag  = false;  // Pane-Splitter wird gezogen
+    this._splitterHover = false;  // Maus schwebt über Splitter-Zone
+
+    // ── Cache für Splitter-Event-Handler ──────────────────
+    this._hasVol = false;   // ob Volume-Pane aktiv (aus letztem draw())
+    this._splitY = 0;       // Y-Position des Splitters in CSS-px
 
     // Gecachte Werte für Crosshair-Berechnungen
     this._priceArea = null;
@@ -132,13 +138,24 @@ class ChartRenderer {
     const W   = this._cssW;
     const H   = this._cssH;
 
+    // ── Sekundärachsen & PAD_R frühzeitig bestimmen ───────
+    // (volColName + hasVol müssen vor PAD_R-Berechnung bekannt sein)
+    const volColName = this.viewConfig.volume?.column ?? 'volume';
+    const hasVol     = this.viewConfig.volume?.enabled && this._col(volColName) >= 0;
+    const secAxis    = this._findMainSecondaryAxis();
+    this._secAxis    = secAxis;   // Cache für _drawCrosshair
+    this.PAD_R       = (secAxis || hasVol) ? 60 : 10;
+
     // Hintergrund
     ctx.fillStyle = '#0d1117';
     ctx.fillRect(0, 0, W, H);
 
-    const hasVol = this.viewConfig.volume?.enabled && this._col('volume') >= 0;
     const chartH = hasVol ? H * (1 - this.VOLUME_R) : H;
     const volH   = hasVol ? H * this.VOLUME_R        : 0;
+
+    // Cache für Splitter-Event-Handler
+    this._hasVol = hasVol;
+    this._splitY = chartH;
 
     const area = {
       x: this.PAD_L,
@@ -154,6 +171,8 @@ class ChartRenderer {
       h: volH - 4 - this.PAD_B,
     } : null;
 
+    this.volArea = volArea;
+
     const vs   = this.viewStart;
     const vb   = Math.round(this.viewBars);          // Integer für den Loop-Zähler
     const barW = Math.max(0.5, area.w / this.viewBars); // Float für pixelgenaue Bar-Breite
@@ -162,10 +181,11 @@ class ChartRenderer {
     const hI = this._col('high');
     const lI = this._col('low');
     const oI = this._col('open');
-    const vI = this._col('volume');
+    const vI = this._col(volColName);
 
     // ── Auto-Y-Scale: nur sichtbare Bars ──────────────────
-    let minP = Infinity, maxP = -Infinity, maxVol = 0;
+    let minP = Infinity, maxP = -Infinity;
+    let minVol = 0, maxVol = 0.00001;
     for (let vi = 0; vi < vb; vi++) {
       const di = vs + vi;  // vs ist immer Integer (nach _clampViewport)
       if (di < 0 || di >= this.rows.length) continue;
@@ -173,10 +193,14 @@ class ChartRenderer {
       if (!row) continue;  // Sicherheitsnetz
       const h   = this._val(row, hI) ?? this._val(row, cI) ?? 0;
       const l   = this._val(row, lI) ?? this._val(row, cI) ?? 0;
-      const vol = this._val(row, vI) ?? 0;
       if (h > maxP) maxP = h;
       if (l < minP) minP = l;
-      if (vol > maxVol) maxVol = vol;
+
+      if (vI >= 0) {
+        const vol = this._val(row, vI) ?? 0;
+        if (vol > maxVol) maxVol = vol;
+        if (vol < minVol) minVol = vol;
+      }
     }
     if (!isFinite(minP)) { minP = 0; maxP = 1; }
     const padP = (maxP - minP) * 0.05 || 1;
@@ -186,6 +210,8 @@ class ChartRenderer {
     this._priceArea = area;
     this._minP      = minP;
     this._maxP      = maxP;
+    this.minVol     = minVol;
+    this.maxVol     = maxVol;
 
     const toY = (p) => area.y + area.h - ((p - minP) / (maxP - minP)) * area.h;
 
@@ -211,22 +237,27 @@ class ChartRenderer {
         this._drawOHLCBar(ctx, bx, barW, o, h, l, c, bull, toY);
       }
 
-      if (volArea && vI >= 0 && maxVol > 0) {
-        this._drawVolBar(ctx, volArea, vi, this._val(row, vI) ?? 0, maxVol, bull);
+      if (volArea && vI >= 0) {
+        this._drawVolBar(ctx, volArea, vi, this._val(row, vI) ?? 0, minVol, maxVol, bull);
       }
     }
 
     this._drawIndicators(ctx, area, toY, barW);
 
-    // Crosshair zeichnen wenn aktiv
+    // Achsen zuerst zeichnen, Crosshair-Labels kommen darüber
+    this._drawPriceAxis(ctx, area, minP, maxP);
+    this._drawTimeAxis(ctx, area, barW);
+    if (secAxis) this._drawSecondaryAxis(ctx, area, secAxis);
+    if (hasVol && volArea) this._drawVolPaneAxis(ctx, volArea, minVol, maxVol);
+    if (hasVol) this._drawSplitterHandle(ctx, chartH, W);
+
+    // Crosshair + dynamische Data-Labels (immer zuletzt → oben)
     const showCrosshair = this.crosshairBar >= 0 ||
                           (this.crosshairPrice !== null && this.crosshairY < 0);
     if (showCrosshair) {
-      this._drawCrosshair(ctx, area, barW);
+      this._vI = vI;  // Cache für Volumen-Spaltenzugriff im Crosshair
+      this._drawCrosshair(ctx, area, volArea, barW);
     }
-
-    this._drawPriceAxis(ctx, area, minP, maxP);
-    this._drawTimeAxis(ctx, area, barW);
   }
 
   // ════════════════════════════════════════════════════════
@@ -262,15 +293,18 @@ class ChartRenderer {
     ctx.beginPath(); ctx.moveTo(mid, toY(c)); ctx.lineTo(mid + barW * 0.35, toY(c)); ctx.stroke();
   }
 
-  _drawVolBar(ctx, va, vi, vol, maxVol, bull) {
+  _drawVolBar(ctx, va, vi, vol, minVol, maxVol, bull) {
     const barW = va.w / this.viewBars;
-    const bh   = (vol / maxVol) * va.h;
-    const bx   = va.x + vi * barW;
-    const by   = va.y + va.h - bh;
+    const range = maxVol - minVol || 0.00001;
+    const zeroY = va.y + va.h - ((0 - minVol) / range) * va.h;
+    const valY  = va.y + va.h - ((vol - minVol) / range) * va.h;
+
+    const bx = va.x + vi * barW;
     ctx.fillStyle = bull
       ? (this.viewConfig.volume?.color_up   ?? 'rgba(34,197,94,0.5)')
       : (this.viewConfig.volume?.color_down ?? 'rgba(239,68,68,0.5)');
-    ctx.fillRect(bx + 1, by, Math.max(1, barW - 2), bh);
+    
+    ctx.fillRect(bx + 1, Math.min(zeroY, valY), Math.max(1, barW - 2), Math.max(1, Math.abs(zeroY - valY)));
   }
 
   // ════════════════════════════════════════════════════════
@@ -281,17 +315,36 @@ class ChartRenderer {
     for (const ind of this.viewConfig.indicators ?? []) {
       const colI = this._col(ind.column);
       if (colI < 0) continue;
+      
+      const isVolPane = ind.pane === 'volume';
+      const drawArea = isVolPane ? this.volArea : area;
+      if (isVolPane && !drawArea) continue;
+
       ctx.strokeStyle = ind.color ?? '#888';
       ctx.lineWidth   = ind.width ?? 1;
       ctx.beginPath();
       let started = false;
+      
+      // Determine Y scaler
+      let yScaler;
+      if (isVolPane) {
+        const range = this.maxVol - this.minVol || 0.00001;
+        yScaler = (v) => drawArea.y + drawArea.h - ((v - this.minVol) / range) * drawArea.h;
+      } else if (ind.scale === 'normalized') {
+        const minVal = ind.scale_min ?? 0;
+        const maxVal = ind.scale_max ?? 100;
+        yScaler = (v) => drawArea.y + drawArea.h - ((v - minVal) / (maxVal - minVal)) * drawArea.h;
+      } else {
+        yScaler = toY;
+      }
+
       for (let vi = 0; vi < this.viewBars; vi++) {
         const di = this.viewStart + vi;
         if (di < 0 || di >= this.rows.length) { started = false; continue; }
         const v = this._val(this.rows[di], colI);
-        if (v == null || v === 0) { started = false; continue; }
-        const x = area.x + vi * barW + barW / 2;
-        const y = toY(v);
+        if (v == null || isNaN(v)) { started = false; continue; }
+        const x = drawArea.x + vi * barW + barW / 2;
+        const y = yScaler(v);
         if (!started) { ctx.moveTo(x, y); started = true; }
         else           { ctx.lineTo(x, y); }
       }
@@ -343,6 +396,155 @@ class ChartRenderer {
   }
 
   // ════════════════════════════════════════════════════════
+  // Sekundäre Y-Achsen & Splitter-Anfasser
+  // ════════════════════════════════════════════════════════
+
+  /** Gibt den ersten Haupt-Pane-Indikator mit normalized-Skala zurück (oder null). */
+  _findMainSecondaryAxis() {
+    for (const ind of this.viewConfig.indicators ?? []) {
+      if (ind.pane === 'volume') continue;
+      if (ind.scale === 'normalized') {
+        if (this._col(ind.column) < 0) continue;
+        return {
+          min:   ind.scale_min ?? 0,
+          max:   ind.scale_max ?? 100,
+          label: ind.label ?? ind.column,
+          color: ind.color ?? '#888',
+        };
+      }
+    }
+    return null;
+  }
+
+  /** Rechte Y-Achse für normalized Overlay-Indikatoren im Haupt-Pane. */
+  _drawSecondaryAxis(ctx, area, { min, max, label, color }) {
+    const axisX = area.x + area.w + 5;
+    const ticks  = this._niceTicks(min, max, 5);
+    const range  = max - min || 0.00001;
+
+    // Tick-Striche
+    ctx.strokeStyle = color + '44';
+    ctx.lineWidth   = 1;
+    for (const v of ticks) {
+      const y = area.y + area.h - ((v - min) / range) * area.h;
+      if (y < area.y - 2 || y > area.y + area.h + 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(area.x + area.w, y);
+      ctx.lineTo(area.x + area.w + 4, y);
+      ctx.stroke();
+    }
+
+    // Tick-Labels
+    ctx.fillStyle = color;
+    ctx.font      = '10px monospace';
+    ctx.textAlign = 'left';
+    for (const v of ticks) {
+      const y = area.y + area.h - ((v - min) / range) * area.h;
+      if (y < area.y - 2 || y > area.y + area.h + 2) continue;
+      ctx.fillText(this._fmtAxisVal(v), axisX, y + 4);
+    }
+
+    // Label-Badge oben rechts (farbig hinterlegt)
+    const shortLabel = label.length > 12 ? label.slice(0, 11) + '\u2026' : label;
+    ctx.font      = 'bold 9px monospace';
+    const lw      = ctx.measureText(shortLabel).width;
+    ctx.fillStyle = color + '28';
+    ctx.fillRect(area.x + area.w + 3, area.y + 2, lw + 8, 13);
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.fillText(shortLabel, area.x + area.w + 7, area.y + 12);
+  }
+
+  /** Rechte Y-Achse für den unteren Volumen-Pane. */
+  _drawVolPaneAxis(ctx, volArea, minVol, maxVol) {
+    const axisX = volArea.x - 4;
+    const color  = '#64748b';
+    const ticks  = this._niceTicks(minVol, maxVol, 3);
+    const range  = maxVol - minVol || 0.00001;
+
+    ctx.strokeStyle = color + '55';
+    ctx.lineWidth   = 1;
+    ctx.fillStyle   = color;
+    ctx.font        = '10px monospace';
+    ctx.textAlign   = 'right';
+
+    for (const v of ticks) {
+      const y = volArea.y + volArea.h - ((v - minVol) / range) * volArea.h;
+      if (y < volArea.y - 2 || y > volArea.y + volArea.h + 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(volArea.x, y);
+      ctx.lineTo(volArea.x - 4, y);
+      ctx.stroke();
+      ctx.fillText(this._fmtAxisVal(v), axisX, y + 4);
+    }
+
+    // Pane-Label oben rechts (Spaltenname)
+    const colName    = this.viewConfig.volume?.column ?? 'vol';
+    const shortLabel = colName.replace(/_/g, ' ').slice(0, 12);
+    ctx.font      = 'bold 9px monospace';
+    ctx.fillStyle = color + 'aa';
+    ctx.textAlign = 'left';
+    ctx.fillText(shortLabel, volArea.x + volArea.w + 5, volArea.y + 11);
+  }
+
+  /** Zeichnet den Drag-Anfasser zwischen oberem und unterem Pane. */
+  _drawSplitterHandle(ctx, splitY, W) {
+    const isActive  = this._splitterHover || this._splitterDrag;
+    const lineAlpha = isActive ? '88' : '33';
+    const dotAlpha  = isActive ? 'ee' : '66';
+
+    // Trennlinie
+    ctx.strokeStyle = '#94a3b8' + lineAlpha;
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(this.PAD_L, splitY);
+    ctx.lineTo(W - this.PAD_R, splitY);
+    ctx.stroke();
+
+    // 5 Anfasser-Punkte zentriert
+    const cx = W / 2;
+    ctx.fillStyle = '#94a3b8' + dotAlpha;
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath();
+      ctx.arc(cx + i * 7, splitY, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ════════════════════════════════════════════════════════
+  // Hilfs-Methoden: Achsenskalierung
+  // ════════════════════════════════════════════════════════
+
+  /** Berechnet gleichmäßige "schöne" Tick-Werte (analog D3 nice ticks). */
+  _niceTicks(min, max, count = 5) {
+    if (!isFinite(min) || !isFinite(max) || min >= max) return [isFinite(min) ? min : 0];
+    const range = max - min;
+    const raw   = range / count;
+    const mag   = Math.pow(10, Math.floor(Math.log10(raw)));
+    const norm  = raw / mag;
+    const step  = norm < 1.5 ? mag : norm < 3.5 ? 2 * mag : norm < 7.5 ? 5 * mag : 10 * mag;
+    const start = Math.ceil(min / step) * step;
+    const ticks = [];
+    for (let v = start; v <= max + step * 0.001; v += step) {
+      ticks.push(parseFloat(v.toPrecision(10)));
+      if (ticks.length > count + 2) break;
+    }
+    return ticks;
+  }
+
+  /** Kompakte Wert-Formatierung: 3.5B, 1.2M, 42K, 99, 3.14 */
+  _fmtAxisVal(v) {
+    const a = Math.abs(v);
+    if (a >= 1e9)  return (v / 1e9).toFixed(1) + 'B';
+    if (a >= 1e6)  return (v / 1e6).toFixed(1) + 'M';
+    if (a >= 1e4)  return (v / 1e3).toFixed(0) + 'K';
+    if (Number.isInteger(v) || a >= 100) return v.toFixed(0);
+    if (a >= 10)   return v.toFixed(1);
+    return v.toFixed(2);
+  }
+
+  // ════════════════════════════════════════════════════════
   // Datumsformat
   // ════════════════════════════════════════════════════════
 
@@ -361,9 +563,9 @@ class ChartRenderer {
   // Crosshair
   // ════════════════════════════════════════════════════════
 
-  _drawCrosshair(ctx, area, barW) {
+  _drawCrosshair(ctx, area, volArea, barW) {
     const absIdx = this.crosshairBar;
-    const vi     = absIdx - this.viewStart;       // visuelle Position
+    const vi     = absIdx - this.viewStart;
     const inView = vi >= 0 && vi < this.viewBars && absIdx >= 0;
 
     // Y auflösen: lokale Maus ODER Preis→Y vom Remote-Broadcast
@@ -373,21 +575,24 @@ class ChartRenderer {
           ((this.crosshairPrice - this._minP) / (this._maxP - this._minP)) * area.h;
     }
 
-    ctx.lineWidth = 1;
+    const yInArea  = y >= area.y  && y <= area.y  + area.h;
+    const yInVol   = volArea && y >= volArea.y && y <= volArea.y + volArea.h;
+
+    ctx.lineWidth   = 1;
     ctx.setLineDash([4, 4]);
     ctx.strokeStyle = 'rgba(255,255,255,0.22)';
 
-    // Vertikale Linie (nur wenn Bar sichtbar)
+    // ── Vertikale Linie durch beide Panes ───────────────
     if (inView) {
-      const x = area.x + vi * barW + barW / 2;
+      const x       = area.x + vi * barW + barW / 2;
+      const lineEnd = volArea ? volArea.y + volArea.h : area.y + area.h;
       ctx.beginPath();
       ctx.moveTo(x, area.y);
-      ctx.lineTo(x, area.y + area.h);
+      ctx.lineTo(x, lineEnd);
       ctx.stroke();
     }
 
-    // Horizontale Linie (immer, solange Y im Bereich)
-    const yInArea = y >= area.y && y <= area.y + area.h;
+    // ── Horizontale Linie im oberen Pane ────────────────
     if (yInArea) {
       ctx.beginPath();
       ctx.moveTo(area.x, y);
@@ -395,26 +600,58 @@ class ChartRenderer {
       ctx.stroke();
     }
 
+    // ── Horizontale Linie im unteren Pane ───────────────
+    if (yInVol) {
+      ctx.beginPath();
+      ctx.moveTo(volArea.x, y);
+      ctx.lineTo(volArea.x + volArea.w, y);
+      ctx.stroke();
+    }
+
     ctx.setLineDash([]);
 
-    // ── Preis-Label auf Y-Achse ─────────────────────────
+    // ── Preis-Label auf linker Y-Achse ──────────────────
     if (yInArea) {
       const price = this._minP + (1 - (y - area.y) / area.h) * (this._maxP - this._minP);
-      const lbl   = price.toFixed(2);
-      const lblW  = 54;
-      const lblH  = 16;
-      const lblX  = area.x - lblW - 2;
-      const lblY  = y - lblH / 2;
+      this._drawAxisValueLabel(ctx, price.toFixed(2), area.x - 2, y, 'left', '#f1f5f9');
+    }
 
-      ctx.fillStyle = 'rgba(30,41,59,0.92)';
-      ctx.beginPath();
-      ctx.roundRect(lblX, lblY, lblW, lblH, 3);
-      ctx.fill();
+    // ── Volumen/ADR-Label auf linker Y-Achse (unterer Pane) ──
+    if (yInVol) {
+      const range = this.maxVol - this.minVol || 0.00001;
+      const volAtY = this.minVol + (1 - (y - volArea.y) / volArea.h) * range;
+      this._drawAxisValueLabel(ctx, this._fmtAxisVal(volAtY), volArea.x - 2, y, 'left', '#f1f5f9');
+    }
 
-      ctx.fillStyle = '#f1f5f9';
-      ctx.font      = 'bold 10px monospace';
-      ctx.textAlign = 'right';
-      ctx.fillText(lbl, area.x - 5, y + 4);
+    // ── RS / Sec-Axis Data-Label rechts (oberer Pane) ───
+    if (inView && this._secAxis && absIdx < this.rows.length) {
+      const { min, max, color } = this._secAxis;
+      // Ersten normalized-Indikator auslesen
+      for (const ind of this.viewConfig.indicators ?? []) {
+        if (ind.pane === 'volume' || ind.scale !== 'normalized') continue;
+        const colI = this._col(ind.column);
+        if (colI < 0) continue;
+        const v = this._val(this.rows[absIdx], colI);
+        if (v == null || isNaN(v)) break;
+        const range = max - min || 0.00001;
+        const vy    = area.y + area.h - ((v - min) / range) * area.h;
+        const lbl   = this._fmtAxisVal(v);
+        this._drawAxisValueLabel(ctx, lbl, area.x + area.w + 2, vy, 'right', color);
+        break;
+      }
+    }
+
+    // ── Vol-Pane Data-Label rechts (unterer Pane) ───────
+    if (inView && volArea && absIdx < this.rows.length) {
+      const vColI = this._col(this.viewConfig.volume?.column ?? 'volume');
+      if (vColI >= 0) {
+        const v   = this._val(this.rows[absIdx], vColI);
+        if (v != null && !isNaN(v)) {
+          const range = this.maxVol - this.minVol || 0.00001;
+          const vy    = volArea.y + volArea.h - ((v - this.minVol) / range) * volArea.h;
+          this._drawAxisValueLabel(ctx, this._fmtAxisVal(v), volArea.x + volArea.w + 2, vy, 'right', '#94a3b8');
+        }
+      }
     }
 
     // ── Datum-Label auf X-Achse ─────────────────────────
@@ -427,7 +664,6 @@ class ChartRenderer {
         const lblH = 16;
         const lblY = area.y + area.h + 2;
         const cx   = area.x + vi * barW + barW / 2;
-        // Clampen damit Label im Canvas bleibt
         const lblX = Math.min(Math.max(cx - lblW / 2, area.x), area.x + area.w - lblW);
 
         ctx.fillStyle = 'rgba(30,41,59,0.92)';
@@ -440,6 +676,33 @@ class ChartRenderer {
         ctx.fillText(lbl, lblX + lblW / 2, lblY + 11);
       }
     }
+  }
+
+  /**
+   * Zeichnet eine schwebende Wert-Box auf einer Y-Achse.
+   * @param {string} lbl      - Anzeigetext
+   * @param {number} axisEdge - X-Koordinate der Achsenkante
+   * @param {number} y        - Y-Koordinate des Werts
+   * @param {'left'|'right'} side - rechte oder linke Achse
+   * @param {string} color    - Textfarbe
+   */
+  _drawAxisValueLabel(ctx, lbl, axisEdge, y, side, color) {
+    ctx.font = 'bold 10px monospace';
+    const tw   = ctx.measureText(lbl).width;
+    const lblW = tw + 10;
+    const lblH = 16;
+    const lblX = side === 'left' ? axisEdge - lblW : axisEdge;
+    const lblY = y - lblH / 2;
+
+    ctx.fillStyle = 'rgba(15,23,42,0.92)';
+    ctx.beginPath();
+    ctx.roundRect(lblX, lblY, lblW, lblH, 3);
+    ctx.fill();
+
+    ctx.fillStyle  = color;
+    ctx.textAlign  = side === 'left' ? 'right' : 'left';
+    const textX    = side === 'left' ? axisEdge - 5 : axisEdge + 5;
+    ctx.fillText(lbl, textX, y + 4);
   }
 
   // ── Crosshair public API ──────────────────────────────
@@ -467,27 +730,49 @@ class ChartRenderer {
   _bindEvents() {
     const c = this.canvas;
 
-    // ── Crosshair (Maus ohne Drag) ───────────────────────
+    // ── Mousemove: Splitter / Pan / Crosshair (Priorität absteigend) ──
     c.addEventListener('mousemove', (e) => {
       const rect   = c.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
+      // 1. Splitter-Drag hat höchste Priorität
+      if (this._splitterDrag) {
+        const newRatio = 1 - mouseY / this._cssH;
+        this.VOLUME_R  = Math.max(0.10, Math.min(0.50, newRatio));
+        this.draw();
+        return;
+      }
+
+      // 2. Pan-Modus
       if (this._dragStart) {
-        // Pan-Modus: Viewport verschieben
-        const relX    = mouseX - this.PAD_L;
-        const barW    = (this._cssW - this.PAD_L - this.PAD_R) / this.viewBars;
-        const delta   = (relX - this._dragStart.x) / barW;
+        const relX  = mouseX - this.PAD_L;
+        const barW  = (this._cssW - this.PAD_L - this.PAD_R) / this.viewBars;
+        const delta = (relX - this._dragStart.x) / barW;
         this.viewStart = this._dragStart.viewStart - delta;
         this._clampViewport();
         this.draw();
         return;
       }
 
-      // Crosshair
-      const relX  = mouseX - this.PAD_L;
-      const barW  = (this._cssW - this.PAD_L - this.PAD_R) / this.viewBars;
-      const vi    = Math.floor(relX / barW);
+      // 3. Splitter-Hover erkennen (±6 px um Trennlinie)
+      const nearSplitter  = this._hasVol && Math.abs(mouseY - this._splitY) <= 6;
+      const wasHovering   = this._splitterHover;
+      this._splitterHover = nearSplitter;
+      if (nearSplitter) {
+        c.style.cursor = 'ns-resize';
+        if (!wasHovering) this.draw();  // Highlight-Zustand hat gewechselt
+        return;
+      }
+      if (wasHovering) {
+        c.style.cursor = 'crosshair';
+        this.draw();
+      }
+
+      // 4. Crosshair
+      const relX = mouseX - this.PAD_L;
+      const barW = (this._cssW - this.PAD_L - this.PAD_R) / this.viewBars;
+      const vi   = Math.floor(relX / barW);
 
       if (vi >= 0 && vi < this.viewBars) {
         const absIdx = this.viewStart + vi;
@@ -497,7 +782,6 @@ class ChartRenderer {
           this.crosshairPrice = null;
           this.draw();
 
-          // Preis berechnen und broadcasten
           let price = null;
           if (this._priceArea) {
             const a = this._priceArea;
@@ -510,13 +794,22 @@ class ChartRenderer {
       }
     });
 
-    // ── Mouse-Drag (Pan) ─────────────────────────────────
+    // ── Mousedown: Splitter-Drag oder Pan starten ─────────
     c.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       const rect   = c.getBoundingClientRect();
-      const relX   = e.clientX - rect.left - this.PAD_L;
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Splitter hat Vorrang vor Pan
+      if (this._hasVol && Math.abs(mouseY - this._splitY) <= 6) {
+        this._splitterDrag = true;
+        c.style.cursor = 'ns-resize';
+        return;
+      }
+
+      const relX = mouseX - this.PAD_L;
       this._dragStart = { x: relX, viewStart: this.viewStart };
-      // Crosshair ausblenden und sofort neu zeichnen
       this.crosshairBar   = -1;
       this.crosshairY     = -1;
       this.crosshairPrice = null;
@@ -525,8 +818,10 @@ class ChartRenderer {
     });
 
     const endDrag = () => {
-      this._dragStart = null;
-      c.style.cursor  = 'crosshair';
+      this._dragStart     = null;
+      this._splitterDrag  = false;
+      this._splitterHover = false;
+      c.style.cursor      = 'crosshair';
     };
     c.addEventListener('mouseup',    endDrag);
     c.addEventListener('mouseleave', () => {
@@ -621,7 +916,6 @@ class ChartRenderer {
 
         // Schneller horizontaler Wisch → Ticker-Navigation
         if (vel > 0.4 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 350) {
-          // Viewport auf neueste Bars resetten (nach Ticker-Wechsel sinnvoll)
           this.viewStart = Math.max(0, this.rows.length - this.viewBars);
           this._clampViewport();
           document.dispatchEvent(new CustomEvent('pca:ticker_swipe', {

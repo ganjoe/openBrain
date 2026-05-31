@@ -58,9 +58,13 @@
     #canvas-wrap {
       flex: 1;
       position: relative;
+      min-width: 0;
+      min-height: 0;
     }
     canvas {
-      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
     }
@@ -144,11 +148,10 @@
     </table>
   </div>
 
-  <!-- Stats panel view -->
-  <div id="stats-view" id="stats-panel"></div>
+  <div id="stats-view"></div>
 
-  <script src="/js/canvas_renderer.js"></script>
-  <script src="/js/ws_client.js"></script>
+  <script src="/js/canvas_renderer.js?v=qmaggi-v1"></script>
+  <script src="/js/ws_client.js?v=qmaggi-v1"></script>
   <script>
     // ─── URL parameters ──────────────────────────────────────
     const params    = new URLSearchParams(location.search);

@@ -16,6 +16,7 @@
       justify-content: center;
       min-height: 100vh;
       gap: 1.5rem;
+      padding: 2rem;
     }
     .status {
       display: flex;
@@ -31,23 +32,64 @@
       transition: background 0.3s;
     }
     .dot.connected { background: #22c55e; }
-    h1 { font-size: 1.1rem; color: #475569; letter-spacing: 0.05em; }
-    .btn {
-      background: #1e293b;
-      border: 1px solid #334155;
-      color: #94a3b8;
-      padding: 0.6rem 1.4rem;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.85rem;
-      transition: all 0.15s;
+    h1 { font-size: 1.5rem; color: #f1f5f9; letter-spacing: 0.05em; font-weight: 700; }
+    .layout-grid {
+      display: flex;
+      gap: 1.2rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 900px;
+      margin: 1.5rem 0;
     }
-    .btn:hover { background: #334155; color: #e2e8f0; }
+    .layout-card {
+      background: #11111b;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 1.2rem;
+      width: 280px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      text-align: left;
+    }
+    .layout-card:hover {
+      transform: translateY(-2px);
+      border-color: #3b82f6;
+      background: #181825;
+      box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
+    }
+    .layout-name {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #f1f5f9;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      text-transform: capitalize;
+    }
+    .badge {
+      font-size: 0.65rem;
+      background: #2563eb;
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      font-weight: bold;
+      letter-spacing: 0.05em;
+    }
+    .layout-desc {
+      font-size: 0.78rem;
+      color: #64748b;
+      line-height: 1.4;
+      flex-grow: 1;
+    }
     .log {
       font-size: 0.75rem;
       color: #475569;
       font-family: monospace;
-      max-width: 400px;
+      max-width: 500px;
       text-align: center;
     }
   </style>
@@ -56,16 +98,21 @@
   <h1>PCA · Master Coordinator</h1>
   <div class="status">
     <div class="dot" id="dot"></div>
-    <span id="status-text">Connecting…</span>
+    <span id="status-text">Verbindung aufbauen…</span>
   </div>
-  <button class="btn" onclick="openLayout('desktop')">Open Desktop Layout</button>
-  <div class="log" id="log">Waiting for commands…</div>
+
+  <div class="layout-grid" id="layout-container">
+    <div style="color: #64748b">Layouts werden geladen...</div>
+  </div>
+
+  <div class="log" id="log">Warte auf Befehle…</div>
 
   <script>
     const PCA_WS = `ws://${location.hostname}:8791/ws?master=true`;
     const dot = document.getElementById('dot');
     const statusText = document.getElementById('status-text');
     const logEl = document.getElementById('log');
+    const layoutContainer = document.getElementById('layout-container');
 
     // Child window tracking: view_id -> window ref
     const childWindows = {};
@@ -82,18 +129,18 @@
 
       ws.onopen = () => {
         dot.classList.add('connected');
-        statusText.textContent = 'Connected to PCA Service';
-        log('Ready. Waiting for layout commands.');
+        statusText.textContent = 'Verbunden mit PCA Service';
+        log('Bereit. Warte auf Layout-Befehle.');
       };
 
       ws.onclose = () => {
         dot.classList.remove('connected');
-        statusText.textContent = 'Disconnected — reconnecting in 3s…';
+        statusText.textContent = 'Verbindung getrennt — Reconnect in 3s…';
         setTimeout(connect, 3000);
       };
 
       ws.onerror = () => {
-        statusText.textContent = 'Connection error';
+        statusText.textContent = 'Verbindungsfehler';
       };
 
       ws.onmessage = (event) => {
@@ -107,7 +154,7 @@
     }
 
     function handleMessage(msg) {
-      log(`Received: ${msg.action}`);
+      log(`Befehl empfangen: ${msg.action}`);
 
       if (msg.action === 'open_layout') {
         openLayoutFromConfig(msg.layout_name, msg.config);
@@ -119,21 +166,47 @@
       }
     }
 
+    async function loadLayouts() {
+      try {
+        const r = await fetch(`http://${location.hostname}:8791/api/layouts`);
+        const data = await r.json();
+        if (!data.layouts || data.layouts.length === 0) {
+          layoutContainer.innerHTML = '<div style="color: #64748b">Keine Layouts in der Datenbank.</div>';
+          return;
+        }
+        layoutContainer.innerHTML = data.layouts.map(l => {
+          const badge = l.is_default ? '<span class="badge">Default</span>' : '';
+          return `
+            <div class="layout-card" onclick="openLayout('${l.name}')">
+              <div class="layout-name">
+                <span>${l.name}</span>
+                ${badge}
+              </div>
+              <div class="layout-desc">${l.description || 'Keine Beschreibung.'}</div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        log(`Fehler beim Layout-Abruf: ${e.message}`);
+        layoutContainer.innerHTML = `<div style="color: #ef4444">Fehler beim Laden: ${e.message}</div>`;
+      }
+    }
+
     function openLayout(layoutName) {
       // Manual button: fetch layout config from the service, then open windows
       fetch(`http://${location.hostname}:8791/api/layouts/${layoutName}`)
         .then(r => r.json())
         .then(layout => openLayoutFromConfig(layoutName, layout.config))
-        .catch(e => log(`Error fetching layout: ${e.message}`));
+        .catch(e => log(`Fehler beim Öffnen des Layouts: ${e.message}`));
     }
 
     function openLayoutFromConfig(layoutName, config) {
       if (!config || !config.views) {
-        log(`Invalid layout config for: ${layoutName}`);
+        log(`Ungültige Layout-Konfiguration für: ${layoutName}`);
         return;
       }
 
-      log(`Opening layout: ${layoutName} (${config.views.length} views)`);
+      log(`Öffne Layout: ${layoutName} (${config.views.length} Fenster)`);
 
       // Calculate window positions based on grid and screen size
       const cols = config.grid?.cols || 2;
@@ -166,6 +239,7 @@
     }
 
     connect();
+    loadLayouts();
   </script>
 </body>
 </html>

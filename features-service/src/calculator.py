@@ -23,6 +23,10 @@ class TechnicalCalculator:
                 df = self._calc_stoch(df, config)
             elif config.feature_type == FeatureType.IBD_RS:
                 df = self._calc_ibd_rs_raw(df, config)
+            elif config.feature_type == FeatureType.DAILY_RANGE:
+                df = self._calc_daily_range(df, config)
+            elif config.feature_type == FeatureType.DOLLAR_VOLUME:
+                df = self._calc_dollar_volume(df, config)
             else:
                 # F-PRC-047: Other features are stubs
                 df = self._calc_stubs(df, config)
@@ -58,12 +62,24 @@ class TechnicalCalculator:
 
     def _calc_sma(self, df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
         window = config.window or 10
-        df[config.feature_id] = self._get_ma_series(df, 'close', window, FeatureType.SMA).values
+        column = config.additional_params.get("column", "close")
+        df[config.feature_id] = self._get_ma_series(df, column, window, FeatureType.SMA).values
         return df
 
     def _calc_ema(self, df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
         window = config.window or 10
-        df[config.feature_id] = self._get_ma_series(df, 'close', window, FeatureType.EMA).values
+        column = config.additional_params.get("column", "close")
+        df[config.feature_id] = self._get_ma_series(df, column, window, FeatureType.EMA).values
+        return df
+
+    def _calc_daily_range(self, df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
+        safe_close = np.where(df['close'] == 0, np.nan, df['close'])
+        df[config.feature_id] = ((df['high'] - df['low']) / safe_close * 100)
+        df[config.feature_id] = df[config.feature_id].fillna(0)
+        return df
+
+    def _calc_dollar_volume(self, df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
+        df[config.feature_id] = df['close'] * df['volume']
         return df
 
     def _calc_bb(self, df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:

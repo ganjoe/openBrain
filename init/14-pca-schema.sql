@@ -200,3 +200,159 @@ INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
         description = EXCLUDED.description,
         is_default  = EXCLUDED.is_default,
         updated_at  = NOW();
+
+
+-- ─────────────────────────────────────────────────────────────
+-- Layout: qmaggi
+-- 4-window 2x2 grid. Custom traders setup.
+--
+-- v1 (top-left):    Candlestick + Dollar-Volume pane + 6 SMAs (10, 20, 50, 100, 150, 200) + 50 SMA of Dollar Volume
+-- v2 (top-right):   Candlestick + ADR (Daily Range) pane + RS rating overlay line + 20 SMA of ADR
+-- v3 (bottom-left): Watchlist table
+-- v4 (bottom-right): Stats panel
+-- ─────────────────────────────────────────────────────────────
+INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
+    'qmaggi',
+    'QMaggi Layout: 6 SMAs & Dollar-Volumen, ADR-Säulen mit 20d SMA, RS Overlay, Watchlist, Stats',
+    FALSE,
+    '{
+        "watchlist": "growth_stocks",
+        "grid": { "cols": 2, "rows": 2 },
+        "views": [
+            {
+                "view_id": "v1",
+                "type": "candle_volume",
+                "label": "Mainchart (SMAs + Dollar-Volumen)",
+                "grid_pos": { "col": 0, "row": 0 },
+                "timeframe": "1D",
+                "bar_count": 250,
+                "indicators": [
+                    {
+                        "type": "sma",
+                        "column": "ma_sma_10",
+                        "color": "#ef4444",
+                        "label": "SMA 10",
+                        "width": 1.0
+                    },
+                    {
+                        "type": "sma",
+                        "column": "ma_sma_20",
+                        "color": "#eab308",
+                        "label": "SMA 20",
+                        "width": 1.0
+                    },
+                    {
+                        "type": "sma",
+                        "column": "ma_sma_50",
+                        "color": "#22c55e",
+                        "label": "SMA 50",
+                        "width": 1.5
+                    },
+                    {
+                        "type": "sma",
+                        "column": "ma_sma_100",
+                        "color": "#06b6d4",
+                        "label": "SMA 100",
+                        "width": 1.5
+                    },
+                    {
+                        "type": "sma",
+                        "column": "ma_sma_150",
+                        "color": "#3b82f6",
+                        "label": "SMA 150",
+                        "width": 1.5
+                    },
+                    {
+                        "type": "sma",
+                        "column": "ma_sma_200",
+                        "color": "#a855f7",
+                        "label": "SMA 200",
+                        "width": 2.0
+                    },
+                    {
+                        "type": "sma",
+                        "column": "ma_sma_50_dollar_volume",
+                        "color": "#eab308",
+                        "label": "SMA 50 (Vol)",
+                        "width": 1.5,
+                        "pane": "volume"
+                    }
+                ],
+                "volume": {
+                    "enabled": true,
+                    "column": "dollar_volume",
+                    "pane_ratio": 0.22,
+                    "color_up": "#22c55e",
+                    "color_down": "#ef4444"
+                }
+            },
+            {
+                "view_id": "v2",
+                "type": "candle_volume",
+                "label": "Second Chart (ADR + RS Rating)",
+                "grid_pos": { "col": 1, "row": 0 },
+                "timeframe": "1D",
+                "bar_count": 250,
+                "indicators": [
+                    {
+                        "type": "rs",
+                        "column": "ibd_rs",
+                        "color": "#06b6d4",
+                        "label": "RS Rating",
+                        "width": 2.0,
+                        "scale": "normalized",
+                        "scale_min": 0,
+                        "scale_max": 100
+                    },
+                    {
+                        "type": "sma",
+                        "column": "adr_20",
+                        "color": "#ef4444",
+                        "label": "ADR (20)",
+                        "width": 1.5,
+                        "pane": "volume"
+                    }
+                ],
+                "volume": {
+                    "enabled": true,
+                    "column": "daily_range",
+                    "pane_ratio": 0.22,
+                    "color_up": "#64748b",
+                    "color_down": "#64748b"
+                }
+            },
+            {
+                "view_id": "v3",
+                "type": "watchlist_table",
+                "label": "Watchlist",
+                "grid_pos": { "col": 0, "row": 1 },
+                "columns": [
+                    { "key": "ticker",                   "label": "Ticker" },
+                    { "key": "close",                    "label": "Close" },
+                    { "key": "ibd_rs",                   "label": "RS" },
+                    { "key": "minervini_score",           "label": "Score" },
+                    { "key": "minervini_trend_template",  "label": "✓" }
+                ]
+            },
+            {
+                "view_id": "v4",
+                "type": "stats_panel",
+                "label": "Ticker-Info",
+                "grid_pos": { "col": 1, "row": 1 },
+                "fields": [
+                    "close",
+                    "ma_sma_50",
+                    "ma_sma_150",
+                    "ma_sma_200",
+                    "ibd_rs",
+                    "minervini_score",
+                    "minervini_trend_template"
+                ]
+            }
+        ]
+    }'::jsonb
+) ON CONFLICT (name) DO UPDATE
+    SET config     = EXCLUDED.config,
+        description = EXCLUDED.description,
+        is_default  = EXCLUDED.is_default,
+        updated_at  = NOW();

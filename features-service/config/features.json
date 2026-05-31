@@ -172,6 +172,26 @@
             "pane": "pct_abs",
             "chart_type": "line",
             "thickness": 2
+        },
+        "daily_range": {
+            "type": "DAILY_RANGE",
+            "period": "D"
+        },
+        "dollar_volume": {
+            "type": "DOLLAR_VOLUME",
+            "period": "D"
+        },
+        "ma_sma_50_dollar_volume": {
+            "type": "SMA",
+            "window": 50,
+            "period": "D",
+            "column": "dollar_volume"
+        },
+        "adr_20": {
+            "type": "SMA",
+            "window": 20,
+            "period": "D",
+            "column": "daily_range"
         }
     }
 }
