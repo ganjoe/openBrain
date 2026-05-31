@@ -7,9 +7,10 @@
 const PCA_WS_URL = `ws://${location.hostname}:8791/ws`;
 
 class PcaWsClient {
-  constructor(onTicker, onCrosshair) {
+  constructor(onTicker, onCrosshair, onWatchlist) {
     this._onTicker    = onTicker;    // callback(symbol: string)
-    this._onCrosshair = onCrosshair; // callback(barIndex: number)
+    this._onCrosshair = onCrosshair; // callback(barIndex: number, price: number)
+    this._onWatchlist = onWatchlist; // callback(list_name: string)
     this._ws          = null;
     this._bc          = new BroadcastChannel('pca_sync');
     this._reconnectMs = 2000;
@@ -54,6 +55,12 @@ class PcaWsClient {
       case 'load_ticker':
         if (this._onTicker && msg.symbol) {
           this._onTicker(msg.symbol);
+        }
+        break;
+
+      case 'load_watchlist':
+        if (this._onWatchlist && msg.list_name) {
+          this._onWatchlist(msg.list_name);
         }
         break;
 

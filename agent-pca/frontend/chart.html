@@ -328,8 +328,14 @@
       await loadTicker(defaultSymbol);
 
       wsClient = new PcaWsClient(
-        (symbol) => loadTicker(symbol),                           // on ticker change
-        (idx, price) => renderer?.setCrosshairFromRemote(idx, price) // on crosshair sync from sibling
+        (symbol) => loadTicker(symbol),                             // on ticker change
+        (idx, price) => renderer?.setCrosshairFromRemote(idx, price), // on crosshair sync
+        (list_name) => {                                            // on watchlist change
+          if (VIEW_TYPE === 'watchlist_table') {
+            if (viewConfig) viewConfig.watchlist = list_name;
+            loadWatchlistTable(viewConfig);
+          }
+        }
       );
 
       document.addEventListener('pca:ws:connected',    () => wsDot.classList.add('connected'));

@@ -80,6 +80,34 @@ export function registerPcaTools(server: McpServer) {
     }
   );
 
+  // ── load_watchlist ───────────────────────────────────────────
+  server.registerTool(
+    "load_watchlist",
+    {
+      title: "Load Watchlist in Browser",
+      description:
+        "Display a named watchlist in all open watchlist windows AND persist the selection " +
+        "in the layout so it survives a tab refresh. Use this whenever the user wants to switch " +
+        "which watchlist is shown in the watchlist panel.",
+      inputSchema: {
+        list_name:   z.string().describe("Name of the watchlist, e.g. 'growth_stocks' or 'ipo_stocks'"),
+        layout_name: z.string().optional().default("desktop")
+                      .describe("Layout to update (default: 'desktop')"),
+      },
+    },
+    async ({ list_name, layout_name }: any) => {
+      try {
+        const result = await pcaCommand("load_watchlist", {
+          list_name,
+          layout_name: layout_name ?? "desktop",
+        });
+        return { content: [{ type: "text", text: `Watchlist '${list_name}' loaded and persisted in layout. ${result}` }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
   // ── add_to_watchlist ─────────────────────────────────────────
   server.registerTool(
     "add_to_watchlist",

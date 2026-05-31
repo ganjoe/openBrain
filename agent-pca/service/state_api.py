@@ -193,5 +193,47 @@ async def send_command(body: CommandRequest):
         await manager.broadcast({"action": "load_ticker", "symbol": symbol})
         return {"status": "broadcasted", "action": "load_ticker", "symbol": symbol}
 
+    elif action == "load_watchlist":
+        list_name   = body.payload.get("list_name", "")
+        layout_name = body.payload.get("layout_name", "desktop")
+        if not list_name:
+            raise HTTPException(status_code=400, detail="Missing 'list_name' in payload")
+
+        # 1. Fetch current layout config from DB
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/pca_layouts",
+                params={"name": f"eq.{layout_name}", "select": "config", "limit": "1"},
+                headers=_HEADERS(),
+            )
+            r.raise_for_status()
+        rows = r.json()
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"Layout '{layout_name}' not found")
+
+        # 2. Update watchlist field in layout config root
+        config = rows[0]["config"]
+        config["watchlist"] = list_name
+
+        # 3. Persist updated layout back to DB
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/pca_layouts",
+                params={"name": f"eq.{layout_name}"},
+                json={"config": config},
+                headers={**_HEADERS(), "Prefer": "return=minimal"},
+            )
+            r.raise_for_status()
+        logger.info("Layout '%s' updated: watchlist → '%s'", layout_name, list_name)
+
+        # 4. Broadcast to all connected browser tabs
+        await manager.broadcast({"action": "load_watchlist", "list_name": list_name})
+        return {
+            "status": "broadcasted",
+            "action": "load_watchlist",
+            "list_name": list_name,
+            "layout": layout_name,
+        }
+
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
