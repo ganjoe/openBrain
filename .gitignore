@@ -20,3 +20,4 @@ test-*.ts
 test-*.js
 scratch/
 
+fetch_exchange_rates.log

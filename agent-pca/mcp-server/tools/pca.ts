@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { supabase, pcaCommand, PCA_SERVICE_URL } from "./shared.ts";
+import { supabase, pcaCommand, PCA_SERVICE_URL, sendTelemetry } from "./shared.ts";
+
 
 export function registerPcaTools(server: McpServer) {
 
@@ -260,6 +261,96 @@ export function registerPcaTools(server: McpServer) {
 
         const data = await res.json();
         return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // ── trigger_feature_calculation ──────────────────────────────
+  server.registerTool(
+    "trigger_feature_calculation",
+    {
+      title: "Trigger Feature Calculation",
+      description: "Trigger the features service to recalculate technical indicators (MAs, RS Rating, Minervini) for all tickers.",
+      inputSchema: {
+        stream_telemetry: z.boolean().optional().default(true).describe("If true, streams progress updates via telemetry in real-time."),
+      },
+    },
+    async ({ stream_telemetry }: any) => {
+      try {
+        const stream = stream_telemetry ?? true;
+        const FEATURES_CALCULATE_URL = `http://features-service:8003/features/calculate${stream ? "?stream=true" : ""}`;
+        
+        const res = await fetch(FEATURES_CALCULATE_URL, {
+          method: "POST"
+        });
+        
+        if (!res.ok) {
+          if (res.status === 409) {
+            return { content: [{ type: "text", text: "Feature calculation is already running." }], isError: true };
+          }
+          const err = await res.text();
+          throw new Error(`Features API error ${res.status}: ${err}`);
+        }
+        
+        if (!stream) {
+          const data = await res.json();
+          return { content: [{ type: "text", text: `Feature calculation triggered in background. Status: ${data.status || "Unknown"}` }] };
+        }
+        
+        const reader = res.body?.getReader();
+        if (!reader) {
+          return { content: [{ type: "text", text: "Feature calculation triggered, but log stream is unavailable." }] };
+        }
+        
+        // Notify start
+        await sendTelemetry("▶️ Starting feature calculation...");
+        
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let finalSummary = "";
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+            
+            for (const line of lines) {
+              const cleanLine = line.trim();
+              if (!cleanLine) continue;
+              
+              if (
+                cleanLine.includes("Feature processing:") ||
+                cleanLine.includes("Feature calculation finished:") ||
+                cleanLine.includes("Skipped") ||
+                cleanLine.includes("Calculating features") ||
+                cleanLine.includes("Feature Calculation Summary:") ||
+                cleanLine.includes("Tickers processed") ||
+                cleanLine.includes("Duration")
+              ) {
+                // Parse out logging format prefix if any, e.g. "18:31:09 | INFO | processor | "
+                const match = cleanLine.match(/\|\s*[A-Z]+\s*\|\s*[\w_]+\s*\|\s*(.*)$/);
+                const msg = match ? match[1] : cleanLine;
+                
+                await sendTelemetry(`⚙️ [Feature Service] ${msg}`);
+                if (cleanLine.includes("Feature calculation finished:") || cleanLine.includes("Duration")) {
+                  finalSummary += `${msg}\n`;
+                }
+              }
+            }
+          }
+        } catch (err: any) {
+          await sendTelemetry(`❌ [Feature Service] Streaming error: ${err.message}`);
+          throw err;
+        }
+        
+        await sendTelemetry("✅ Feature calculation completed.");
+        return { content: [{ type: "text", text: `Feature calculation completed successfully.\n${finalSummary}` }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
       }

@@ -186,6 +186,7 @@ services:
         condition: service_started
     volumes:
       - ./agent-ea/metadata-prompt.txt:/app/metadata-prompt.txt:ro
+      - ./agent-ea/mcp-server/stdio.ts:/app/stdio.ts:ro
     environment:
       SUPABASE_URL: http://gateway:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
@@ -240,6 +241,7 @@ services:
         condition: service_started
     volumes:
       - ./agent-cco/metadata-prompt.txt:/app/metadata-prompt.txt:ro
+      - ./agent-cco/mcp-server/stdio.ts:/app/stdio.ts:ro
     environment:
       SUPABASE_URL: http://gateway:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
@@ -295,6 +297,7 @@ services:
         condition: service_started
     volumes:
       - ./agent-pta/metadata-prompt.txt:/app/metadata-prompt.txt:ro
+      - ./agent-pta/mcp-server/stdio.ts:/app/stdio.ts:ro
     environment:
       SUPABASE_URL: http://gateway:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
@@ -413,6 +416,8 @@ services:
         condition: service_started
       agent-pca-service:
         condition: service_started
+    volumes:
+      - ./agent-pca/mcp-server/stdio.ts:/app/stdio.ts:ro
     environment:
       SUPABASE_URL: http://gateway:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}

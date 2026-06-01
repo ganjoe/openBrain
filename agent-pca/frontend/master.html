@@ -285,11 +285,24 @@
       const winW = Math.floor(screen.availWidth / cols);
       const winH = Math.floor(screen.availHeight / rows);
 
-      config.views.forEach(view => {
+      config.views.forEach((view, index) => {
         const col = view.grid_pos?.col ?? 0;
         const row = view.grid_pos?.row ?? 0;
         const left = col * winW;
         const top = row * winH;
+
+        let w = winW;
+        let h = winH;
+        let l = left;
+        let t = top;
+
+        // Override with explicit window_pos if provided
+        if (view.window_pos) {
+          if (view.window_pos.width !== undefined) w = view.window_pos.width;
+          if (view.window_pos.height !== undefined) h = view.window_pos.height;
+          if (view.window_pos.left !== undefined) l = view.window_pos.left;
+          if (view.window_pos.top !== undefined) t = view.window_pos.top;
+        }
 
         const params = new URLSearchParams({
           layout: layoutName,
@@ -297,7 +310,7 @@
           type: view.type,
         });
         const url = `/chart.html?${params}`;
-        const features = `width=${winW},height=${winH},left=${left},top=${top},menubar=no,toolbar=no,location=no`;
+        const features = `popup=yes,width=${w},height=${h},left=${l},top=${t},menubar=no,toolbar=no,location=no`;
 
         // Reuse existing window if already open
         const existing = childWindows[view.view_id];

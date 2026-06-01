@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS pta_ibkr_account_summary (
   net_liquidation       NUMERIC NOT NULL DEFAULT 0.0,
   available_funds       NUMERIC NOT NULL DEFAULT 0.0,
   cash_quote            NUMERIC NOT NULL DEFAULT 0.0,
+  portfolio_heat_eur    NUMERIC DEFAULT 0.0,
+  core_risk_eur         NUMERIC DEFAULT 0.0,
   updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
 

@@ -16,6 +16,7 @@ export function registerPtaTools(server: McpServer) {
         quantity: z.number().optional().describe("Amount of shares/contracts"),
         limit_price: z.number().optional().describe("Limit price for orders"),
         stop_loss: z.number().optional().describe("Stop loss price"),
+        take_profit: z.number().optional().describe("Take profit limit price (for bracket orders)"),
         broker_order_id: z.string().optional().describe("Optional broker-provided order ID"),
         commission: z.number().optional().default(0),
         currency: z.string().optional().default("USD"),
@@ -77,7 +78,8 @@ export function registerPtaTools(server: McpServer) {
           p_commission: params.commission || 0,
           p_currency: params.currency || "USD",
           p_exchange: params.exchange || null,
-          p_notes: params.notes || null
+          p_notes: params.notes || null,
+          p_take_profit: params.take_profit || null
         });
 
         if (error) throw error;

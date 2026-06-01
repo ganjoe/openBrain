@@ -2,7 +2,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { supabase } from "./shared.ts";
 
-// Helper function to parse European number formats
 function parseEuroNumber(val: string | number | undefined): number | undefined {
   if (val === undefined || val === null) return undefined;
   if (typeof val === 'number') return val;
@@ -23,10 +22,43 @@ function parseEuroNumber(val: string | number | undefined): number | undefined {
 
 export function registerMinerviniTools(server: McpServer) {
   server.registerTool(
+    "update_minervini_parameters",
+    {
+      title: "Update Minervini Risk Parameters",
+      description: "Update the global Minervini risk parameters in the database.",
+      inputSchema: {
+        max_core_risk_pct: z.string().or(z.number()).optional().describe("Maximum allowed total portfolio core risk (default 6.0%)"),
+        base_risk_pct: z.string().or(z.number()).optional().describe("Default risk per trade (default 1.0%)"),
+        max_position_size_pct: z.string().or(z.number()).optional().describe("Max position size pct (default 25.0%)")
+      },
+    },
+    async (params: any) => {
+      try {
+        const updateData: any = {};
+        if (params.max_core_risk_pct !== undefined) updateData.max_core_risk_pct = parseEuroNumber(params.max_core_risk_pct);
+        if (params.base_risk_pct !== undefined) updateData.base_risk_pct = parseEuroNumber(params.base_risk_pct);
+        if (params.max_position_size_pct !== undefined) updateData.max_position_size_pct = parseEuroNumber(params.max_position_size_pct);
+
+        if (Object.keys(updateData).length === 0) {
+            return { content: [{ type: "text", text: "No valid parameters provided to update." }] };
+        }
+
+        const { error } = await supabase.from("minervini_risk_parameters").update(updateData).eq("id", 1);
+        if (error) {
+            return { content: [{ type: "text", text: `Error updating parameters: ${error.message}` }], isError: true };
+        }
+        return { content: [{ type: "text", text: `Successfully updated Minervini Risk Parameters: ${JSON.stringify(updateData)}` }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
     "ask_minervini",
     {
       title: "Minervini Risk Validator & Solver",
-      description: "Strict risk management tool. Validates trade setups, calculates missing parameters (stop loss or position size), and enforces Minervini rules based on database defaults.",
+      description: "Strict risk management tool. Validates trade setups, calculates missing parameters, and enforces GLOBAL Minervini rules based on pta_live_risk.",
       inputSchema: {
         symbol: z.string().describe("Stock ticker symbol"),
         current_price: z.string().or(z.number()).describe("Current price of the asset"),
@@ -48,92 +80,81 @@ export function registerMinerviniTools(server: McpServer) {
         }
 
         // 1. Load Risk Parameters from DB
-        const { data: riskParams, error: riskErr } = await supabase
-            .from("minervini_risk_parameters")
-            .select("*")
-            .eq("id", 1)
-            .single();
-            
-        // Use defaults if table doesn't exist or is empty
+        const { data: riskParams } = await supabase.from("minervini_risk_parameters").select("*").eq("id", 1).single();
         const baseRiskPct = riskParams?.base_risk_pct ?? 1.0;
         const maxPosSizePct = riskParams?.max_position_size_pct ?? 25.0;
+        const maxCoreRiskPct = riskParams?.max_core_risk_pct ?? 6.0;
 
-        // 2. Load Portfolio Summary for Total Equity and Analytics for Average Loss
-        // We simulate loading total equity and avg loss (in a real scenario, this would query pta_portfolio_summary and analytics)
-        const { data: summary } = await supabase.from("pta_portfolio_summary").select("calculated_cash_balance").maybeSingle();
-        let totalEquity = 10000; // default fallback
-        if (summary && summary.calculated_cash_balance) {
-            // Very simplified: assuming cash = equity for risk % math, or we need net_liquidation
-            const { data: accData } = await supabase.from("pta_ibkr_account_summary").select("net_liquidation").limit(1).maybeSingle();
-            if (accData && accData.net_liquidation) {
-                totalEquity = accData.net_liquidation;
-            }
+        // 2. Load Live Portfolio Risk and Equity
+        const { data: riskData } = await supabase.from("pta_live_risk").select("nav_eur, core_risk_pct").limit(1).maybeSingle();
+        let totalEquity = 10000;
+        let currentCoreRiskPct = 0;
+        if (riskData && riskData.nav_eur) {
+            totalEquity = riskData.nav_eur;
+            currentCoreRiskPct = riskData.core_risk_pct || 0;
         }
 
         // Simulating historical average loss from analytics (default -6%)
         let avgLossPct = 6.0; 
-        const { data: closedTrades } = await supabase.from("pta_trade_performance").select("net_pnl, is_winner").eq("is_closed", true).eq("is_winner", false);
-        if (closedTrades && closedTrades.length > 0) {
-           // simplified avg loss pct calculation (would normally need entry values)
-           // sticking to 6% default for strictness if not computable
-           avgLossPct = 6.0;
-        }
 
         const activeRiskPct = inputRiskPct ?? baseRiskPct;
         const maxRiskAmount = totalEquity * (activeRiskPct / 100);
+        
+        // Calculate the maximum allowed risk percentage for THIS new trade based on the global budget
+        const remainingGlobalBudgetPct = Math.max(0, maxCoreRiskPct - currentCoreRiskPct);
 
         let response = `=== MINERVINI RISK VALIDATOR: ${symbol} ===\n`;
-        response += `Aktueller Kurs: ${currentPrice.toFixed(2)} | Basis-Risiko: ${activeRiskPct}% | Erlaubter Avg Loss: -${avgLossPct}%\n\n`;
+        response += `Aktueller Kurs: ${currentPrice.toFixed(2)} | Basis-Risiko: ${activeRiskPct}% | Erlaubter Avg Loss: -${avgLossPct}%\n`;
+        response += `Global Core Risk Budget: ${currentCoreRiskPct.toFixed(2)}% / ${maxCoreRiskPct.toFixed(2)}% (Verbleibend: ${remainingGlobalBudgetPct.toFixed(2)}%)\n\n`;
 
         // 3. Solver Logic
         if (stopLossPrice !== undefined && positionSizePct === undefined) {
-            // Scenario 1: Stop-Loss given, Size missing
             const distance = currentPrice - stopLossPrice;
             const distancePct = (distance / currentPrice) * 100;
             
-            if (distance <= 0) {
-                return { content: [{ type: "text", text: "Fehler: Stop-Loss muss unter dem aktuellen Kurs liegen (nur Long-Positionen)." }] };
-            }
+            if (distance <= 0) return { content: [{ type: "text", text: "Fehler: Stop-Loss muss unter dem aktuellen Kurs liegen." }] };
 
             response += `Analyse: Du hast einen Stop-Loss von ${stopLossPrice.toFixed(2)} (${distancePct.toFixed(2)}% Abstand) vorgegeben.\n`;
 
-            if (distancePct > avgLossPct * 1.5) { // Strict Minervini rule
-                response += `\n❌ STATUS: REJECTED\n`;
-                response += `Begründung: Der Stop-Loss ist zu weit entfernt (${distancePct.toFixed(2)}%). Dies ruiniert deine Statistik (Ø Verlust: ${avgLossPct}%). \n`;
-                response += `Empfehlung: Suche einen besseren Einstieg, der einen Stop < ${avgLossPct}% erlaubt.\n`;
-                // Calculate fallback size just in case
-                const riskPerShare = distance;
-                const maxShares = Math.floor(maxRiskAmount / riskPerShare);
-                response += `Wenn du es ignorierst, darfst du maximal ${maxShares} Aktien kaufen, um unter ${activeRiskPct}% Portfolio-Risiko zu bleiben.`;
+            const riskPerShare = distance;
+            const sharesByRisk = Math.floor(maxRiskAmount / riskPerShare);
+            const sharesByBudget = Math.floor((totalEquity * (remainingGlobalBudgetPct / 100)) / riskPerShare);
+            const maxSharesByCap = Math.floor((totalEquity * (maxPosSizePct / 100)) / currentPrice);
+            
+            const finalShares = Math.max(0, Math.min(sharesByRisk, maxSharesByCap, sharesByBudget));
+            const posSizePct = ((finalShares * currentPrice) / totalEquity) * 100;
+            const newTradeRiskPct = ((finalShares * riskPerShare) / totalEquity) * 100;
+
+            if (distancePct > avgLossPct * 1.5) { 
+                response += `\n❌ STATUS: REJECTED\nBegründung: Stop-Loss zu weit (${distancePct.toFixed(2)}%).\n`;
+            } else if (remainingGlobalBudgetPct <= 0) {
+                response += `\n❌ STATUS: REJECTED\nBegründung: Das globale Core Risk Limit (${maxCoreRiskPct}%) ist bereits erreicht oder überschritten.\n`;
+            } else if (finalShares === 0) {
+                 response += `\n❌ STATUS: REJECTED\nBegründung: Das verbleibende Budget (${remainingGlobalBudgetPct.toFixed(2)}%) erlaubt bei diesem Stop-Loss keine ganze Aktie.\n`;
             } else {
-                const riskPerShare = distance;
-                const sharesByRisk = Math.floor(maxRiskAmount / riskPerShare);
-                const maxSharesByCap = Math.floor((totalEquity * (maxPosSizePct / 100)) / currentPrice);
-                const finalShares = Math.min(sharesByRisk, maxSharesByCap);
-                const posSizePct = ((finalShares * currentPrice) / totalEquity) * 100;
-                
-                response += `\n✅ STATUS: APPROVED\n`;
-                response += `Ergebnis: Du kannst **${finalShares} Aktien** kaufen.\n`;
-                response += `Begründung: Dies entspricht einer Positionsgröße von ${posSizePct.toFixed(2)}% und respektiert dein Risiko-Limit von ${activeRiskPct}%.`;
+                response += `\n✅ STATUS: APPROVED\nErgebnis: Du kannst **${finalShares} Aktien** kaufen.\n`;
+                response += `Begründung: Entspricht ${posSizePct.toFixed(2)}% Positionsgröße. Erhöht das Core Risk um ${newTradeRiskPct.toFixed(2)}% (Neues Total: ${(currentCoreRiskPct + newTradeRiskPct).toFixed(2)}%).`;
+                if (sharesByBudget < sharesByRisk && sharesByBudget < maxSharesByCap) {
+                    response += `\nℹ️ Hinweis: Die Stückzahl wurde durch das globale Risikobudget gedeckelt.`;
+                }
             }
         } 
         else if (positionSizePct !== undefined && stopLossPrice === undefined) {
-            // Scenario 2: Size given, Stop-Loss missing
             if (positionSizePct > maxPosSizePct) {
-                 response += `\n❌ STATUS: REJECTED\n`;
-                 response += `Begründung: Die gewünschte Positionsgröße (${positionSizePct}%) überschreitet das System-Limit (${maxPosSizePct}%).\n`;
-                 return { content: [{ type: "text", text: response }] };
+                 return { content: [{ type: "text", text: response + `\n❌ STATUS: REJECTED\nBegründung: Gewünschte Positionsgröße (${positionSizePct}%) überschreitet das Limit (${maxPosSizePct}%).\n` }] };
             }
 
             const targetPosValue = totalEquity * (positionSizePct / 100);
             const shares = Math.floor(targetPosValue / currentPrice);
             
-            // Reverse engineer Stop Loss
-            // maxRiskAmount = shares * (currentPrice - stopLossPrice)
-            // maxRiskAmount / shares = currentPrice - stopLossPrice
-            // stopLossPrice = currentPrice - (maxRiskAmount / shares)
+            // Limit the max risk amount to the smaller of: individual rule OR remaining global budget
+            const effectiveMaxRiskAmount = Math.min(maxRiskAmount, totalEquity * (remainingGlobalBudgetPct / 100));
             
-            const requiredStopLoss = currentPrice - (maxRiskAmount / shares);
+            if (effectiveMaxRiskAmount <= 0) {
+                return { content: [{ type: "text", text: response + `\n❌ STATUS: REJECTED\nBegründung: Kein globales Risikobudget mehr vorhanden (${currentCoreRiskPct.toFixed(2)}% >= ${maxCoreRiskPct}%).\n` }] };
+            }
+
+            const requiredStopLoss = currentPrice - (effectiveMaxRiskAmount / shares);
             const distancePct = ((currentPrice - requiredStopLoss) / currentPrice) * 100;
 
             response += `Analyse: Du willst für ${positionSizePct}% vom Portfolio (${shares} Aktien) kaufen.\n`;
@@ -141,62 +162,67 @@ export function registerMinerviniTools(server: McpServer) {
             if (distancePct > avgLossPct) {
                 const betterStopLoss = currentPrice * (1 - (avgLossPct/100));
                 response += `\n⚠️ STATUS: SUGGESTION / WARNING\n`;
-                response += `Mathematisch dürfte der Stop bei ${requiredStopLoss.toFixed(2)} (-${distancePct.toFixed(2)}%) liegen, um ${activeRiskPct}% Risiko zu erfüllen.\n`;
-                response += `ABER: Wir wollen deinen Average Loss nicht verschlechtern! \n`;
-                response += `Empfehlung: Setze den Stop strikt auf **${betterStopLoss.toFixed(2)}** (-${avgLossPct}%). Das Risiko sinkt dadurch sogar auf unter ${activeRiskPct}%.`;
+                response += `Mathematisch dürfte der Stop bei ${requiredStopLoss.toFixed(2)} (-${distancePct.toFixed(2)}%) liegen.\n`;
+                response += `Empfehlung: Setze den Stop strikt auf **${betterStopLoss.toFixed(2)}** (-${avgLossPct}%).`;
             } else {
-                response += `\n✅ STATUS: APPROVED\n`;
-                response += `Ergebnis: Setze den Stop-Loss auf mindestens **${requiredStopLoss.toFixed(2)}** (-${distancePct.toFixed(2)}%).\n`;
-                response += `Begründung: Bei ${shares} Aktien sichert dieser Stop exakt dein maximales Trade-Risiko von ${activeRiskPct}%.`;
+                response += `\n✅ STATUS: APPROVED\nErgebnis: Setze den Stop-Loss auf mindestens **${requiredStopLoss.toFixed(2)}** (-${distancePct.toFixed(2)}%).\n`;
+                if (effectiveMaxRiskAmount < maxRiskAmount) {
+                    response += `ℹ️ Hinweis: Der Stop-Loss wurde durch das verbleibende globale Risikobudget enger berechnet!`;
+                }
             }
         } 
         else if (stopLossPrice === undefined && positionSizePct === undefined) {
-            // Scenario 3: Nothing given, suggest ideal setup
-            const defaultStopDistPct = Math.min(avgLossPct, 8.0); // Minervini prefers < 8%
+            const defaultStopDistPct = Math.min(avgLossPct, 8.0);
             const idealStopLoss = currentPrice * (1 - (defaultStopDistPct/100));
             const riskPerShare = currentPrice - idealStopLoss;
-            const shares = Math.floor(maxRiskAmount / riskPerShare);
+            
+            // Limit shares by whichever risk bucket is smaller
+            const effectiveMaxRiskAmount = Math.min(maxRiskAmount, totalEquity * (remainingGlobalBudgetPct / 100));
+            
+            if (effectiveMaxRiskAmount <= 0) {
+                 return { content: [{ type: "text", text: response + `\n❌ STATUS: REJECTED\nBegründung: Kein globales Risikobudget mehr vorhanden.\n` }] };
+            }
+
+            const shares = Math.floor(effectiveMaxRiskAmount / riskPerShare);
             const idealPosSizePct = ((shares * currentPrice) / totalEquity) * 100;
 
             response += `Analyse: Keine Parameter angegeben. Berechne ideales Setup...\n`;
-            response += `\n✅ STATUS: SUGGESTION\n`;
-            response += `Ergebnis: Kaufe **${shares} Aktien** (${idealPosSizePct.toFixed(2)}% Positionsgröße) mit Stop-Loss bei **${idealStopLoss.toFixed(2)}** (-${defaultStopDistPct.toFixed(2)}%).\n`;
-            response += `Begründung: Dies ist das mathematische Optimum basierend auf deinen historischen ${avgLossPct}% Average Loss und dem ${activeRiskPct}% Portfolio-Risiko.`;
+            
+            if (shares === 0) {
+                 response += `\n❌ STATUS: REJECTED\nBegründung: Verbleibendes Risiko reicht nicht mal für 1 Aktie bei optimalem Stop-Loss.\n`;
+            } else {
+                 response += `\n✅ STATUS: SUGGESTION\nErgebnis: Kaufe **${shares} Aktien** (${idealPosSizePct.toFixed(2)}%) mit Stop bei **${idealStopLoss.toFixed(2)}** (-${defaultStopDistPct.toFixed(2)}%).\n`;
+                 if (effectiveMaxRiskAmount < maxRiskAmount) {
+                     response += `ℹ️ Hinweis: Stückzahl wurde durch das globale Risikobudget reduziert.`;
+                 }
+            }
         } else if (stopLossPrice !== undefined && positionSizePct !== undefined) {
-            // Scenario 4: Both given, validate the exact setup
             const distance = currentPrice - stopLossPrice;
             const distancePct = (distance / currentPrice) * 100;
             
-            if (distance <= 0) {
-                return { content: [{ type: "text", text: "Fehler: Stop-Loss muss unter dem aktuellen Kurs liegen." }] };
-            }
+            if (distance <= 0) return { content: [{ type: "text", text: "Fehler: Stop-Loss muss unter Kurs liegen." }] };
 
             const targetPosValue = totalEquity * (positionSizePct / 100);
             const shares = Math.floor(targetPosValue / currentPrice);
             const totalRisk = shares * distance;
             const actualRiskPct = (totalRisk / totalEquity) * 100;
 
-            response += `Analyse: Du willst ${positionSizePct}% vom Portfolio (${shares} Aktien) kaufen, mit Stop bei ${stopLossPrice.toFixed(2)} (-${distancePct.toFixed(2)}%).\n`;
-            response += `Das ergibt ein reales Portfolio-Risiko von ${actualRiskPct.toFixed(2)}%.\n`;
+            response += `Analyse: ${positionSizePct}% Portfolio (${shares} Aktien), Stop bei ${stopLossPrice.toFixed(2)} (-${distancePct.toFixed(2)}%).\n`;
+            response += `Das ergibt ein reales Risiko von ${actualRiskPct.toFixed(2)}% für diesen Trade.\n`;
 
-            if (actualRiskPct > activeRiskPct) {
-                response += `\n❌ STATUS: REJECTED\n`;
-                response += `Begründung: Das Risiko von ${actualRiskPct.toFixed(2)}% überschreitet dein Limit von ${activeRiskPct}%. Du musst entweder die Positionsgröße verringern oder den Stop-Loss enger setzen.`;
+            if (currentCoreRiskPct + actualRiskPct > maxCoreRiskPct) {
+                response += `\n❌ STATUS: REJECTED\nBegründung: Budget überschritten! Neues Core Risk wäre ${(currentCoreRiskPct + actualRiskPct).toFixed(2)}% (Max: ${maxCoreRiskPct}%).`;
+            } else if (actualRiskPct > activeRiskPct) {
+                response += `\n❌ STATUS: REJECTED\nBegründung: Trade-Risiko (${actualRiskPct.toFixed(2)}%) über Basis-Limit (${activeRiskPct}%).`;
             } else if (distancePct > avgLossPct * 1.5) {
-                response += `\n❌ STATUS: REJECTED\n`;
-                response += `Begründung: Das Portfolio-Risiko ist zwar im Limit, aber der Stop-Loss ist zu weit entfernt (${distancePct.toFixed(2)}%). Dies ruiniert deine Statistik (Ø Verlust: ${avgLossPct}%).\n`;
-                response += `Empfehlung: Setze den Stop enger oder suche ein besseres Setup.`;
+                response += `\n❌ STATUS: REJECTED\nBegründung: Stop-Loss zu weit entfernt (${distancePct.toFixed(2)}%).`;
             } else if (distancePct > avgLossPct) {
-                response += `\n⚠️ STATUS: WARNING\n`;
-                response += `Begründung: Risiko ist ok (${actualRiskPct.toFixed(2)}%), aber der Stop-Loss (-${distancePct.toFixed(2)}%) ist schlechter als dein Average Loss (-${avgLossPct}%).\n`;
-                response += `Du kannst den Trade machen, aber er verschlechtert langfristig deine Kennzahlen.`;
+                response += `\n⚠️ STATUS: WARNING\nTrade ok, aber Stop (-${distancePct.toFixed(2)}%) schlechter als Avg Loss (-${avgLossPct}%).`;
             } else {
-                response += `\n✅ STATUS: APPROVED\n`;
-                response += `Begründung: Perfektes Setup! Risiko (${actualRiskPct.toFixed(2)}%) ist unter Limit (${activeRiskPct}%) und Stop-Loss (-${distancePct.toFixed(2)}%) schützt deine Statistik (-${avgLossPct}%).`;
+                response += `\n✅ STATUS: APPROVED\nPerfektes Setup! (Neues Core Risk: ${(currentCoreRiskPct + actualRiskPct).toFixed(2)}%)`;
             }
         } else {
-            response += `\n❌ STATUS: ERROR\n`;
-            response += `Unerwarteter Fehler bei der Parameter-Auswertung.`;
+            response += `\n❌ STATUS: ERROR\nUnerwarteter Fehler bei der Parameter-Auswertung.`;
         }
 
         return { content: [{ type: "text", text: response }] };

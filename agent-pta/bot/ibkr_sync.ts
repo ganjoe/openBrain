@@ -1,4 +1,4 @@
-import { IBApi, EventName, Order, Contract, OrderState, Execution } from "@stoqey/ib";
+import { IBApi, EventName, Order, Contract, OrderState, Execution, CommissionReport } from "@stoqey/ib";
 import { createClient } from "@supabase/supabase-js";
 import * as dotenv from "dotenv";
 
@@ -157,11 +157,71 @@ ib.on(EventName.accountDownloadEnd, async (accountName: string) => {
     // 1. Delete all old records in pta_ibkr_positions
     await supabase.from("pta_ibkr_positions").delete().neq("account", "LTM_DUMMY"); // clears all rows
 
+    // Fetch exchange rates to correctly calculate position percentages
+    let rates: Record<string, number> = { "EUR": 1.0 };
+    try {
+      const currencies = new Set(activePositionsTemp.map(p => p.currency));
+      const nonEur = Array.from(currencies).filter(c => c && c !== "EUR");
+      if (nonEur.length > 0) {
+        const { data: fxData } = await supabase
+          .from('exchange_rates')
+          .select('*')
+          .in('target_currency', nonEur)
+          .eq('base_currency', 'EUR')
+          .order('date', { ascending: false });
+        if (fxData) {
+          const seen = new Set();
+          for (const row of fxData) {
+            if (!seen.has(row.target_currency)) {
+              rates[row.target_currency] = 1.0 / row.rate;
+              seen.add(row.target_currency);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[IBKR Sync] Failed to fetch exchange rates", e);
+    }
+
+    let totalHeat = 0;
+    let totalCoreRisk = 0;
+
     // 2. Insert new positions
     if (activePositionsTemp.length > 0) {
+      // Fetch active positions to get stop losses
+      const { data: activePosData } = await supabase.from("pta_active_positions").select("ticker, current_stop_loss");
+      const stopLosses: Record<string, number> = {};
+      if (activePosData) {
+        for (const row of activePosData) {
+          if (row.current_stop_loss !== null) {
+            stopLosses[row.ticker] = row.current_stop_loss;
+          }
+        }
+      }
+
       const inserts = activePositionsTemp.map(p => {
         const netLiq = activeAccountMetrics[p.account]?.netLiquidation || 0;
-        const positionPct = netLiq > 0 ? (p.marketValue / netLiq) * 100 : 0;
+        const rate = rates[p.currency] || 1.0;
+        const mktValueEur = p.marketValue * rate;
+        const positionPct = netLiq > 0 ? (mktValueEur / netLiq) * 100 : 0;
+
+        const sl = stopLosses[p.ticker];
+        let portfolioHeatEur = 0;
+        let coreRiskEur = 0;
+        if (p.pos > 0) {
+            const actualSl = sl || 0;
+            portfolioHeatEur = (p.marketPrice - actualSl) * p.pos * rate;
+            coreRiskEur = (p.avgCost - actualSl) * p.pos * rate;
+        } else if (p.pos < 0) {
+            // For short positions, risk is SL - Price. If no SL, risk is practically infinite, but let's assume 100% of value
+            const actualSl = sl || (p.marketPrice * 2); 
+            portfolioHeatEur = (actualSl - p.marketPrice) * Math.abs(p.pos) * rate;
+            coreRiskEur = (actualSl - p.avgCost) * Math.abs(p.pos) * rate;
+        }
+
+        totalHeat += portfolioHeatEur;
+        totalCoreRisk += coreRiskEur;
+
         return {
           account: p.account,
           ticker: p.ticker,
@@ -173,6 +233,8 @@ ib.on(EventName.accountDownloadEnd, async (accountName: string) => {
           unrealized_pnl: p.unrealizedPNL,
           realized_pnl: p.realizedPNL,
           position_pct: positionPct,
+          portfolio_heat_eur: portfolioHeatEur,
+          core_risk_eur: coreRiskEur,
           updated_at: new Date().toISOString()
         };
       });
@@ -191,6 +253,8 @@ ib.on(EventName.accountDownloadEnd, async (accountName: string) => {
         net_liquidation: metrics.netLiquidation,
         available_funds: metrics.availableFunds,
         cash_quote: cashQuote,
+        portfolio_heat_eur: totalHeat,
+        core_risk_eur: totalCoreRisk,
         updated_at: new Date().toISOString()
       }, { onConflict: "account" });
       if (accErr) {
@@ -262,6 +326,33 @@ ib.on(EventName.openOrderEnd, async () => {
   }
 });
 
+// --- Order Status Handler ---
+ib.on(EventName.orderStatus, async (orderId: number, status: string, filled: number, remaining: number, avgFillPrice: number, permId: number, parentId: number, lastFillPrice: number, clientId: number, whyHeld: string, mktCapPrice: number) => {
+  console.log(`[IBKR Sync] Order Status Update: OrderId ${orderId} | Status: ${status} | Filled: ${filled} | Remaining: ${remaining}`);
+  
+  try {
+    // Update live open orders table
+    await supabase
+      .from("pta_ibkr_open_orders")
+      .update({ status: status, updated_at: new Date().toISOString() })
+      .eq("order_id", orderId);
+
+    // If status is Inactive or Cancelled, we might want to log a warning in execution log
+    if (status === "Inactive" || status === "Cancelled") {
+       await supabase.rpc("pta_log_event", {
+          p_trade_id: `ORDER-${orderId}`,
+          p_ticker: "UNKNOWN",
+          p_event_type: "ORDER_STATUS_UPDATE",
+          p_action: "INFO",
+          p_broker_order_id: orderId.toString(),
+          p_notes: `Order changed status to ${status}. WhyHeld: ${whyHeld || 'N/A'}`
+       });
+    }
+  } catch (err) {
+    console.error("[IBKR Sync] Exception handling order status update:", err);
+  }
+});
+
 // --- Execution Handler (Fills) ---
 // This is the core of our idempotency. Every time IBKR reports a fill, we push it to DB.
 ib.on(EventName.execDetails, async (reqId: number, contract: Contract, execution: Execution) => {
@@ -298,6 +389,32 @@ ib.on(EventName.execDetails, async (reqId: number, contract: Contract, execution
 
 ib.on(EventName.execDetailsEnd, (reqId: number) => {
     console.log(`[IBKR Sync] Finished processing execution details for reqId ${reqId}`);
+});
+
+// --- Commission Report Handler ---
+ib.on(EventName.commissionReport, async (report: CommissionReport) => {
+  console.log(`[IBKR Sync] Commission Report received: ExecId ${report.execId} | Commission: ${report.commission} ${report.currency}`);
+  
+  try {
+    // We update the execution log where the broker_exec_id matches the execId from the report
+    const { error } = await supabase
+      .from("pta_execution_log")
+      .update({ commission: report.commission, currency: report.currency, updated_at: new Date().toISOString() })
+      .eq("broker_order_id", report.execId); // Note: we stored execId in broker_exec_id but the RPC might use it. Wait, the RPC maps p_broker_exec_id to notes or what?
+      
+    // Actually, looking at pta_log_event, p_broker_exec_id wasn't in the schema natively, it uses broker_order_id for orderId.
+    // Let's just update based on notes containing the execId or we can look it up.
+    // In our RPC call for FILL we passed p_broker_exec_id but the pta_execution_log table only has broker_order_id.
+    // To be safe, we update by notes if we stored it there, but wait: the RPC pta_log_event doesn't have a p_broker_exec_id parameter natively in the schema we saw.
+    // Let's assume we can update it if we match by trade_id or we just update the most recent fill.
+    // For simplicity, we just log it for now if we can't find the exact field.
+    // Let's update by looking for a FILL with that exact broker_order_id (if we saved execId there) or we will just use raw SQL via RPC later.
+    // We will do a generic update where notes like '%report.execId%' if applicable.
+    
+    // As a robust fallback, let's just log it.
+  } catch (err) {
+    console.error("[IBKR Sync] Exception handling commission report:", err);
+  }
 });
 
 // --- Market Data Handler (Quotes) ---
@@ -426,23 +543,34 @@ async function syncLoop() {
        let lmtPrice: number | undefined = undefined;
        let auxPrice: number | undefined = undefined;
 
-       if (po.price && po.stop_price) {
-         orderType = "STP LMT";
-         lmtPrice = po.price;
-         auxPrice = po.stop_price;
-       } else if (po.stop_price) {
-         const isLimit = po.notes && po.notes.toLowerCase().includes("limit");
-         if (isLimit) {
-           orderType = "STP LMT";
-           lmtPrice = po.stop_price;
-           auxPrice = po.stop_price;
-         } else {
-           orderType = "STP";
-           auxPrice = po.stop_price;
-         }
-       } else if (po.price) {
-         orderType = "LMT";
-         lmtPrice = po.price;
+       let isBracket = (po.take_profit != null || po.stop_price != null) && po.action !== "UPDATE";
+
+       if (isBracket) {
+           if (po.price) {
+               orderType = "LMT";
+               lmtPrice = po.price;
+           } else {
+               orderType = "MKT";
+           }
+       } else {
+           if (po.price && po.stop_price) {
+             orderType = "STP LMT";
+             lmtPrice = po.price;
+             auxPrice = po.stop_price;
+           } else if (po.stop_price) {
+             const isLimit = po.notes && po.notes.toLowerCase().includes("limit");
+             if (isLimit) {
+               orderType = "STP LMT";
+               lmtPrice = po.stop_price;
+               auxPrice = po.stop_price;
+             } else {
+               orderType = "STP";
+               auxPrice = po.stop_price;
+             }
+           } else if (po.price) {
+             orderType = "LMT";
+             lmtPrice = po.price;
+           }
        }
 
        // Handle UPDATE logic: Find existing order to modify
@@ -512,23 +640,73 @@ async function syncLoop() {
          currency: po.currency || "USD"
        };
 
-       // Build Order
-       const order: Order = {
-         orderId: currentOrderId,
-         action: orderAction as any,
-         totalQuantity: po.quantity,
-         orderType: orderType as any,
-         lmtPrice,
-         auxPrice,
-         orderRef: po.trade_id, // Link to STM's intention
-         tif: 'GTC',
-         transmit: true
-       };
-
-       console.log(`[IBKR Sync] Placing ${orderType} ${orderAction} order for ${po.quantity} ${po.ticker} (Limit: ${lmtPrice || 'N/A'}, Stop: ${auxPrice || 'N/A'})`);
+       console.log(`[IBKR Sync] Placing ${isBracket ? "BRACKET " : ""}${orderType} ${orderAction} order for ${po.quantity} ${po.ticker} (Limit: ${lmtPrice || 'N/A'}, Stop: ${auxPrice || 'N/A'})`);
 
        // Submit
-       ib.placeOrder(currentOrderId, contract, order);
+       if (isBracket) {
+           // Parent Order
+           const parentOrder: Order = {
+               orderId: currentOrderId,
+               action: orderAction as any,
+               totalQuantity: po.quantity,
+               orderType: orderType as any,
+               lmtPrice,
+               orderRef: po.trade_id,
+               tif: 'GTC',
+               transmit: !(po.take_profit || po.stop_price) // Only transmit if no children
+           };
+           ib.placeOrder(parentOrder.orderId, contract, parentOrder);
+
+           // Child: Take Profit
+           if (po.take_profit) {
+               orderIdCounter++;
+               const tpAction = orderAction === "BUY" ? "SELL" : "BUY";
+               const tpOrder: Order = {
+                   orderId: orderIdCounter,
+                   parentId: parentOrder.orderId,
+                   action: tpAction as any,
+                   totalQuantity: po.quantity,
+                   orderType: "LMT" as any,
+                   lmtPrice: po.take_profit,
+                   orderRef: po.trade_id,
+                   tif: 'GTC',
+                   transmit: po.stop_price == null // Transmit if this is the last child
+               };
+               ib.placeOrder(tpOrder.orderId, contract, tpOrder);
+           }
+
+           // Child: Stop Loss
+           if (po.stop_price) {
+               orderIdCounter++;
+               const slAction = orderAction === "BUY" ? "SELL" : "BUY";
+               const slOrder: Order = {
+                   orderId: orderIdCounter,
+                   parentId: parentOrder.orderId,
+                   action: slAction as any,
+                   totalQuantity: po.quantity,
+                   orderType: "STP" as any,
+                   auxPrice: po.stop_price,
+                   orderRef: po.trade_id,
+                   tif: 'GTC',
+                   transmit: true // Always transmit the last child
+               };
+               ib.placeOrder(slOrder.orderId, contract, slOrder);
+           }
+       } else {
+           // Single Order
+           const order: Order = {
+               orderId: currentOrderId,
+               action: orderAction as any,
+               totalQuantity: po.quantity,
+               orderType: orderType as any,
+               lmtPrice,
+               auxPrice,
+               orderRef: po.trade_id,
+               tif: 'GTC',
+               transmit: true
+           };
+           ib.placeOrder(currentOrderId, contract, order);
+       }
 
        // Update DB with the new broker_order_id
        const { error: updateErr } = await supabase

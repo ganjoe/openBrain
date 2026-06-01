@@ -2,7 +2,22 @@ import { Client } from "npm:@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "npm:@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 async function runTests() {
-  const envFile = await Deno.readTextFile("./.env");
+  let envFile = "";
+  try {
+    envFile = await Deno.readTextFile("./.env");
+  } catch {
+    try {
+      envFile = await Deno.readTextFile("../.env");
+    } catch {
+      try {
+        // Also try relative to the script file location if possible, or just fail
+        envFile = await Deno.readTextFile(new URL("./.env", import.meta.url).pathname);
+      } catch {
+        console.error("Could not find .env file in current, parent, or script directory.");
+        Deno.exit(1);
+      }
+    }
+  }
   const keyMatch = envFile.match(/^MCP_ACCESS_KEY=(.+)$/m);
   const MCP_ACCESS_KEY = keyMatch ? keyMatch[1].trim() : "unknown";
 

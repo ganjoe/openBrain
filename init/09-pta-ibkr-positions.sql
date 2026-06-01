@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS pta_ibkr_positions (
   unrealized_pnl  NUMERIC,
   realized_pnl    NUMERIC,
   position_pct    NUMERIC,
+  portfolio_heat_eur NUMERIC DEFAULT 0.0,
+  core_risk_eur   NUMERIC DEFAULT 0.0,
   updated_at      TIMESTAMPTZ DEFAULT NOW(),
   CONSTRAINT unique_account_ticker UNIQUE (account, ticker)
 );
