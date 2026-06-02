@@ -269,6 +269,56 @@ export function registerPcaTools(server: McpServer) {
 
   // ── trigger_feature_calculation ──────────────────────────────
   server.registerTool(
+    "request_historical_data",
+    {
+      title: "Request Historical Data Download",
+      description: "Trigger the stock-data-node to download missing historical OHLCV data for a ticker via IBKR.",
+      inputSchema: {
+        ticker: z.string().describe("Ticker symbol (e.g. PATH)"),
+        timeframes: z.array(z.string()).optional().describe("Optional specific timeframes to download, e.g. ['1D', '1W']"),
+      },
+    },
+    async ({ ticker, timeframes }: any) => {
+      try {
+        const hosts = ["172.17.0.1", "host.docker.internal", "localhost"];
+        let lastErr: Error | null = null;
+        let successData: any = null;
+
+        for (const host of hosts) {
+          try {
+            const url = `http://${host}:8002/download`;
+            const bodyPayload: any = { ticker: ticker.toUpperCase() };
+            if (timeframes) bodyPayload.timeframes = timeframes;
+
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(bodyPayload)
+            });
+            
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`HTTP ${res.status}: ${errText}`);
+            }
+            successData = await res.json();
+            break; // Success
+          } catch (e: any) {
+            lastErr = e;
+          }
+        }
+
+        if (!successData) {
+            throw new Error(`Could not reach stock-data-node on any host. Last error: ${lastErr?.message}`);
+        }
+
+        return { content: [{ type: "text", text: `Successfully enqueued download for ${ticker.toUpperCase()}: ${successData.message}` }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  server.registerTool(
     "trigger_feature_calculation",
     {
       title: "Trigger Feature Calculation",

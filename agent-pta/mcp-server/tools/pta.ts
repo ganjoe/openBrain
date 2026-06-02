@@ -61,7 +61,24 @@ export function registerPtaTools(server: McpServer) {
             eventType = "CASH_TRANSFER";
             action = params.quantity && params.quantity > 0 ? "DEPOSIT" : "WITHDRAW";
         } else if (params.action === "EXIT") {
-            action = "SELL";
+            // Determine direction based on existing position
+            const { data: posData } = await supabase.from("pta_ibkr_positions").select("quantity").eq("ticker", params.ticker).single();
+            if (posData && posData.quantity < 0) {
+                action = "BUY"; // Cover short
+            } else {
+                action = "SELL"; // Sell long
+            }
+            
+            // Auto-cancel any existing orders for this ticker to prevent orphaned orders
+            const { error: cancelLogErr } = await supabase.from("pta_execution_log").insert({
+                trade_id: params.trade_id || "SYSTEM",
+                ticker: params.ticker,
+                event_type: "CANCEL_REQUESTED",
+                action: "CANCEL",
+                notes: "Auto-cancelling open orders due to EXIT action"
+            });
+            if (cancelLogErr) console.error("Failed to auto-cancel orders on EXIT", cancelLogErr);
+            
         } else if (params.action === "ENTER") {
             action = "BUY";
         }
