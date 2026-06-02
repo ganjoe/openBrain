@@ -292,6 +292,40 @@ export function registerPcaTools(server: McpServer) {
     }
   );
 
+  // ── get_option_quote ──────────────────────────────────────────
+  server.registerTool(
+    "get_option_quote",
+    {
+      title: "Get Option Quote",
+      description: "Fetch live prices (bid, ask, last, volume) for a specific option contract from IB.",
+      inputSchema: {
+        ticker: z.string().describe("Underlying ticker symbol (e.g. AAPL)"),
+        expiry: z.string().describe("Expiration date (YYYYMMDD)"),
+        strike: z.number().describe("Strike price"),
+        right: z.enum(["C", "P"]).describe("Call (C) or Put (P)"),
+      },
+    },
+    async ({ ticker, expiry, strike, right }: any) => {
+      try {
+        const queryParams = new URLSearchParams({
+          expiry,
+          strike: strike.toString(),
+          right
+        });
+        const url = `${PCA_SERVICE_URL}/api/options/quote/${ticker.toUpperCase()}?${queryParams.toString()}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`Option Quote API error ${res.status}: ${err}`);
+        }
+        const data = await res.json();
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
   // ── trigger_feature_calculation ──────────────────────────────
   server.registerTool(
     "request_historical_data",

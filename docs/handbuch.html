@@ -817,6 +817,15 @@ Risiko pro Aktie = 12€. Reales Risiko = 12€ / 10.000€ = 0,12%. Das ist wei
 <H3>14.9.4 EU-Nummernformate</H3>
 <P>Das System verarbeitet deutsche Nummernformate robust. Eingaben wie <CODE>1.500,50€</CODE> oder <CODE>5,5%</CODE> werden im TypeScript-Parser (RegEx) zuverlässig in systemkonforme Floats (1500.50) übersetzt.</P>
 
+<H3>14.10 Options- und Kombinationshandel (Spreads)</H3>
+<P>Um das Risikomanagement nicht nur auf Aktienkäufe zu beschränken, unterstützt der PTA den nativen Handel von Derivaten. Dies umfasst sowohl einfache Single-Leg-Optionen als auch komplexe Multi-Leg-Strategien (z.B. Bear Put Spreads als Depot-Absicherung).</P>
+
+<H4>Workaround für komplexe Payload-Speicherung</H4>
+<P>Da relationale Datenbanken für hochvariable Optionsstrukturen (Strikes, Expirations, Put/Call-Ratios für unzählige Beine) nicht optimal sind, wurde die <CODE>pta_execution_log</CODE> Tabelle nicht durch dutzende spezifische Derivate-Spalten aufgebläht. Stattdessen nutzt der MCP-Server (<CODE>place_option_trade</CODE> und <CODE>place_combo_trade</CODE>) das universelle <CODE>notes</CODE>-Feld, um die gesamte technische JSON-Spezifikation des Trades (inklusive Ratios und Actions) zu injizieren. Dies hält das Schema schlank, während die Sync-Logik die Parameter on-the-fly beim Broker-Call parst.</P>
+
+<H4>Asynchrone Contract-Generierung (Combo Orders)</H4>
+<P>Interactive Brokers verlangt für Kombinations-Orders (Spreads) einen komplexen Contract vom Typ <CODE>BAG</CODE>. Hierfür reicht es nicht, lediglich Ticker und Strike zu senden. Der Background-Worker <CODE>ibkr_sync.ts</CODE> muss für jedes einzelne Bein der Kombination zwingend die eindeutige Contract ID (<CODE>conId</CODE>) auflösen. Da die IBKR-API asynchron arbeitet, ruft das System iterativ für jedes Leg <CODE>reqContractDetails</CODE> auf, pausiert die Event-Loop durch Promise-Wrappper (<CODE>setTimeout</CODE> Timeout-Steuerung) und assembliert den finalen <CODE>BAG</CODE>-Contract erst, wenn das Gateway alle <CODE>conIds</CODE> bestätigt hat. Anschließend wird die Order über <CODE>placeOrder</CODE> als Limit-Kombi an den Markt gesendet.</P>
+
 <A NAME="pca"></A>
 <H2>15. Der Portfolio & Chart Analyzer (PCA)</H2>
 <P>Der PCA-Agent ist die visuelle Schnittstelle des Open Brain Systems. Seine Hauptaufgabe besteht darin, hochperformante, browserbasierte Chart-Umgebungen zu instanziieren, zu steuern und zu synchronisieren. Im Gegensatz zum PTA analysiert der PCA keine Märkte und führt keine Trades aus; er fungiert als spezialisierter "Visualisierungs-Operator" für das Frontend.</P>
@@ -925,6 +934,21 @@ sequenceDiagram
     Note over Browser: Client-Side Merge: Align values by timestamp
     Note over Browser: renderer.loadData(mergedData)
 </div>
+
+<H3>15.3 Optionsketten & Live-Pricing (Derivate-Analyse)</H3>
+<P>Um den PTA mit validen Handelsdaten für den Derivatemarkt zu versorgen, fungiert der PCA als "Pricing Engine" und Struktur-Provider. Alle Anfragen zum Optionsmarkt werden durch den <CODE>agent-pca-service</CODE> abgewickelt.</P>
+
+<H4>1. Struktur-Abfrage (get_option_chains)</H4>
+<P>Um die verfügbaren Laufzeiten (Expirations) und Basispreise (Strikes) eines Assets zu ermitteln, ruft das Tool die IBKR-Funktion <CODE>reqSecDefOptParamsAsync</CODE> auf. Diese API-Schnittstelle ist hochperformant, da sie keine Live-Daten streamt, sondern lediglich die Architektur des Derivatemarktes (die "Kette") für den angeforderten Ticker auflöst. Das LLM nutzt dieses Tool, um herauszufinden, an welchen Tagen überhaupt Optionen verfallen.</P>
+
+<H4>2. Live-Pricing Abfrage (get_option_quote)</H4>
+<P>Da Optionsprämien extrem volatil sind, reicht es nicht, statische Daten zu verwenden. Das Tool <CODE>get_option_quote</CODE> etabliert eine "Hit-and-Run" Echtzeitverbindung:</P>
+<UL>
+<LI>Der PCA baut auf Basis von Ticker, Expiration, Strike und Right (Call/Put) einen dedizierten <CODE>Option</CODE>-Contract und qualifiziert ihn.</LI>
+<LI>Über <CODE>reqMktData</CODE> abonniert das System den Live-Datenstrom für Bid-, Ask- und Last-Preise direkt vom Exchange-Server.</LI>
+<LI>Da IBKR eine geringfügige Latenz zur Übermittlung aufweist, pausiert der Thread gezielt (<CODE>asyncio.sleep</CODE>), fängt die einlaufenden Ticks ab, speichert sie und kappt anschließend (<CODE>cancelMktData</CODE>) die Verbindung sofort wieder, um die Gateway-Limitationen nicht zu belasten.</LI>
+<LI>Dies ermöglicht dem System, Hedges und Spreads mathematisch auf den Cent genau mit echten Marktdaten durchzurechnen, ohne dass der Nutzer externe Quellen (wie Yahoo Finance) bemühen muss.</LI>
+</UL>
 
 <H1 style='color: #2e7d32; border-bottom: 2px solid #2e7d32;'>TEIL III: BACKEND</H1>
 

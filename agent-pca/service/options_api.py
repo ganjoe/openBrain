@@ -83,3 +83,58 @@ async def get_option_chain(ticker: str):
     except Exception as e:
         logger.error(f"Error fetching option chain for {ticker}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+class OptionQuoteResponse(BaseModel):
+    ticker: str
+    expiry: str
+    strike: float
+    right: str
+    bid: float
+    ask: float
+    last: float
+    volume: float
+
+@router.get("/options/quote/{ticker}", response_model=OptionQuoteResponse)
+async def get_option_quote(ticker: str, expiry: str, strike: float, right: str):
+    """
+    Fetches the live quote (bid/ask/last) for a specific option contract.
+    expiry format: YYYYMMDD
+    right: 'C' or 'P'
+    """
+    ib_conn = await get_ib_connection()
+    from ib_insync import Option
+    
+    # Try Stock first, if needed we could pass the underlying secType, 
+    # but ib_insync's Option wrapper works automatically with qualifyContracts
+    contract = Option(ticker.upper(), expiry, strike, right.upper(), 'SMART', currency='USD')
+    
+    qualifications = await ib_conn.qualifyContractsAsync(contract)
+    if not qualifications:
+        raise HTTPException(status_code=404, detail=f"Could not qualify option contract for {ticker} {expiry} {strike} {right}")
+        
+    qualified_contract = qualifications[0]
+    
+    try:
+        # Request market data
+        ticker_data = ib_conn.reqMktData(qualified_contract, '', False, False)
+        
+        # Wait a short moment for data to arrive from IBKR servers
+        await asyncio.sleep(2.0)
+        
+        # Unsubscribe
+        ib_conn.cancelMktData(qualified_contract)
+        
+        return OptionQuoteResponse(
+            ticker=ticker.upper(),
+            expiry=expiry,
+            strike=strike,
+            right=right.upper(),
+            bid=ticker_data.bid if ticker_data.bid == ticker_data.bid else 0.0,
+            ask=ticker_data.ask if ticker_data.ask == ticker_data.ask else 0.0,
+            last=ticker_data.last if ticker_data.last == ticker_data.last else 0.0,
+            volume=ticker_data.volume if ticker_data.volume == ticker_data.volume else 0.0
+        )
+    except Exception as e:
+        logger.error(f"Error fetching option quote for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
