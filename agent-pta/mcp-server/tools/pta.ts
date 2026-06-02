@@ -165,6 +165,175 @@ export function registerPtaTools(server: McpServer) {
     }
   );
 
+  // Tool: Place Option Trade
+  server.registerTool(
+    "place_option_trade",
+    {
+      title: "Place Option Trade",
+      description: "Log an option trade execution event. The option parameters are stored as JSON in the notes.",
+      inputSchema: {
+        action: z.enum(["ENTER", "EXIT", "CANCEL"]).describe("The execution action"),
+        trade_id: z.string().describe("The unique Trade-ID"),
+        ticker: z.string().describe("The underlying stock symbol"),
+        expiry: z.string().describe("Expiration date in YYYYMMDD format"),
+        strike: z.number().describe("Strike price"),
+        right: z.enum(["C", "P"]).describe("Call (C) or Put (P)"),
+        multiplier: z.number().optional().default(100).describe("Option multiplier (usually 100)"),
+        quantity: z.number().optional().describe("Amount of contracts"),
+        limit_price: z.number().optional().describe("Limit price for the order"),
+        broker_order_id: z.string().optional().describe("Optional broker-provided order ID"),
+        currency: z.string().optional().default("USD"),
+      },
+    },
+    async (params: any) => {
+      try {
+        let eventType = params.action === "CANCEL" ? "CANCEL_REQUESTED" : "ORDER_SUBMITTED";
+        let action = params.action;
+
+        if (params.action === "CANCEL") {
+            const { data: unconfirmed } = await supabase
+                .from("pta_execution_log")
+                .select("id")
+                .eq("trade_id", params.trade_id)
+                .is("broker_order_id", null)
+                .eq("event_type", "ORDER_SUBMITTED");
+                
+            if (unconfirmed && unconfirmed.length > 0) {
+                await supabase
+                    .from("pta_execution_log")
+                    .update({ broker_order_id: "CANCELLED", notes: "Cancelled locally" })
+                    .in("id", unconfirmed.map(u => u.id));
+                return { content: [{ type: "text", text: `Unconfirmed option order(s) for Trade-ID ${params.trade_id} cancelled locally.` }] };
+            }
+        } else if (params.action === "EXIT") {
+            // Very simplified: just invert the action or assume SELL
+            action = "SELL"; 
+        } else if (params.action === "ENTER") {
+            action = "BUY";
+        }
+
+        const optionParams = {
+            expiry: params.expiry,
+            strike: params.strike,
+            right: params.right,
+            multiplier: params.multiplier,
+            isOption: true
+        };
+
+        const { data, error } = await supabase.rpc("pta_log_event", {
+          p_trade_id: params.trade_id,
+          p_ticker: params.ticker,
+          p_event_type: eventType,
+          p_action: action,
+          p_quantity: Math.abs(params.quantity || 0),
+          p_price: params.limit_price || null,
+          p_stop_price: null,
+          p_broker_order_id: params.broker_order_id || null,
+          p_commission: 0,
+          p_currency: params.currency || "USD",
+          p_exchange: "SMART",
+          p_notes: JSON.stringify(optionParams),
+          p_take_profit: null
+        });
+
+        if (error) throw error;
+
+        return { 
+          content: [{ 
+            type: "text", 
+            text: `Option event logged successfully (ID: ${data}). Action: ${params.action} for ${params.ticker} ${params.expiry} ${params.strike}${params.right} (Trade: ${params.trade_id})` 
+          }] 
+        };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error logging option trade: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // Tool: Place Combo Trade
+  server.registerTool(
+    "place_combo_trade",
+    {
+      title: "Place Combination Trade (Spread)",
+      description: "Log a combination option trade (e.g. Bear Put Spread). Legs are defined as JSON array in notes.",
+      inputSchema: {
+        action: z.enum(["ENTER", "EXIT", "CANCEL"]).describe("The execution action"),
+        trade_id: z.string().describe("The unique Trade-ID"),
+        ticker: z.string().describe("The underlying stock symbol"),
+        comboLegs: z.array(z.object({
+            expiry: z.string().describe("Expiration date in YYYYMMDD format"),
+            strike: z.number().describe("Strike price"),
+            right: z.enum(["C", "P"]).describe("Call (C) or Put (P)"),
+            action: z.enum(["BUY", "SELL"]).describe("Leg action (BUY or SELL)"),
+            ratio: z.number().default(1).describe("Ratio of this leg")
+        })).describe("Array of legs for the combination"),
+        quantity: z.number().optional().describe("Amount of spreads"),
+        limit_price: z.number().optional().describe("Limit price (net premium) for the order"),
+        broker_order_id: z.string().optional().describe("Optional broker-provided order ID"),
+        currency: z.string().optional().default("USD"),
+      },
+    },
+    async (params: any) => {
+      try {
+        let eventType = params.action === "CANCEL" ? "CANCEL_REQUESTED" : "ORDER_SUBMITTED";
+        let action = params.action;
+
+        if (params.action === "CANCEL") {
+            const { data: unconfirmed } = await supabase
+                .from("pta_execution_log")
+                .select("id")
+                .eq("trade_id", params.trade_id)
+                .is("broker_order_id", null)
+                .eq("event_type", "ORDER_SUBMITTED");
+                
+            if (unconfirmed && unconfirmed.length > 0) {
+                await supabase
+                    .from("pta_execution_log")
+                    .update({ broker_order_id: "CANCELLED", notes: "Cancelled locally" })
+                    .in("id", unconfirmed.map(u => u.id));
+                return { content: [{ type: "text", text: `Unconfirmed combo order(s) for Trade-ID ${params.trade_id} cancelled locally.` }] };
+            }
+        } else if (params.action === "EXIT") {
+            action = "SELL"; 
+        } else if (params.action === "ENTER") {
+            action = "BUY";
+        }
+
+        const comboParams = {
+            legs: params.comboLegs,
+            isCombo: true
+        };
+
+        const { data, error } = await supabase.rpc("pta_log_event", {
+          p_trade_id: params.trade_id,
+          p_ticker: params.ticker,
+          p_event_type: eventType,
+          p_action: action,
+          p_quantity: Math.abs(params.quantity || 0),
+          p_price: params.limit_price || null,
+          p_stop_price: null,
+          p_broker_order_id: params.broker_order_id || null,
+          p_commission: 0,
+          p_currency: params.currency || "USD",
+          p_exchange: "SMART",
+          p_notes: JSON.stringify(comboParams),
+          p_take_profit: null
+        });
+
+        if (error) throw error;
+
+        return { 
+          content: [{ 
+            type: "text", 
+            text: `Combo event logged successfully (ID: ${data}). Action: ${params.action} for ${params.ticker} (Trade: ${params.trade_id})` 
+          }] 
+        };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error logging combo trade: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
   // Tool: List Active Positions
   server.registerTool(
     "list_active_positions",

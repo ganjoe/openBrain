@@ -267,6 +267,31 @@ export function registerPcaTools(server: McpServer) {
     }
   );
 
+  // ── get_option_chains ─────────────────────────────────────────
+  server.registerTool(
+    "get_option_chains",
+    {
+      title: "Get Option Chains",
+      description: "Retrieve available option expirations and strikes for a given ticker from IB Broker.",
+      inputSchema: {
+        ticker: z.string().describe("Ticker symbol (e.g. AAPL)"),
+      },
+    },
+    async ({ ticker }: any) => {
+      try {
+        const res = await fetch(`${PCA_SERVICE_URL}/api/options/chain/${ticker.toUpperCase()}`);
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`Options API error ${res.status}: ${err}`);
+        }
+        const data = await res.json();
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
   // ── trigger_feature_calculation ──────────────────────────────
   server.registerTool(
     "request_historical_data",

@@ -15,6 +15,7 @@ from websocket_manager import manager
 from ws_router import router as ws_router
 from chart_data import router as chart_router
 from state_api import router as state_router
+from options_api import router as options_router
 from mqtt_listener import start_mqtt_listener
 
 logger = logging.getLogger("pca.main")
@@ -51,6 +52,7 @@ app.add_middleware(
 app.include_router(ws_router)
 app.include_router(chart_router, prefix="/api")
 app.include_router(state_router, prefix="/api")
+app.include_router(options_router, prefix="/api")
 
 
 @app.get("/health")

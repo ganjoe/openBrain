@@ -1,8 +1,60 @@
 import { IBApi, EventName, Order, Contract, OrderState, Execution, CommissionReport } from "@stoqey/ib";
 import { createClient } from "@supabase/supabase-js";
 import * as dotenv from "dotenv";
+import { resolve } from "path";
 
-dotenv.config({ path: "/app/config.yaml" }); // Just for any local .env testing if needed
+dotenv.config({ path: resolve(__dirname, "../.env") });
+
+// Helper function to fetch conId for a contract
+function getConId(ib: IBApi, contract: Contract): Promise<number> {
+    return new Promise((resolve, reject) => {
+        let reqId = Math.floor(Math.random() * 1000000);
+        let resolved = false;
+
+        const onDetails = (req: number, details: any) => {
+            if (req === reqId && !resolved) {
+                resolved = true;
+                cleanup();
+                resolve(details.contract.conId);
+            }
+        };
+
+        const onEnd = (req: number) => {
+            if (req === reqId && !resolved) {
+                cleanup();
+                reject(new Error("No contract details found for " + JSON.stringify(contract)));
+            }
+        };
+
+        const onError = (err: Error, code: number, req: number) => {
+            if (req === reqId && !resolved) {
+                cleanup();
+                reject(err);
+            }
+        };
+
+        const cleanup = () => {
+            ib.off(EventName.contractDetails, onDetails);
+            ib.off(EventName.contractDetailsEnd, onEnd);
+            ib.off(EventName.error, onError);
+        };
+
+        ib.on(EventName.contractDetails, onDetails);
+        ib.on(EventName.contractDetailsEnd, onEnd);
+        ib.on(EventName.error, onError);
+
+        ib.reqContractDetails(reqId, contract);
+        
+        // Timeout
+        setTimeout(() => {
+            if (!resolved) {
+                resolved = true;
+                cleanup();
+                reject(new Error("Timeout fetching contract details"));
+            }
+        }, 10000);
+    });
+} // Just for any local .env testing if needed
 
 // --- Configuration ---
 const IB_HOST = process.env.IB_GATEWAY_HOST || "ib-gateway";
@@ -632,13 +684,71 @@ async function syncLoop() {
          }
        }
 
+       // Parse optional notes for option or combo parameters
+       let optionParams: any = null;
+       let comboParams: any = null;
+       if (po.notes) {
+           try {
+               const parsed = JSON.parse(po.notes);
+               if (parsed.isOption) {
+                   optionParams = parsed;
+               } else if (parsed.isCombo) {
+                   comboParams = parsed;
+               }
+           } catch (e) {
+               // Ignore if not JSON
+           }
+       }
+
        // Build Contract
-       const contract: Contract = {
-         symbol: po.ticker,
-         secType: "STK" as any,
-         exchange: "SMART",
-         currency: po.currency || "USD"
-       };
+       let contract: Contract;
+       if (comboParams && comboParams.legs && comboParams.legs.length > 0) {
+           const comboLegs: any[] = [];
+           for (const leg of comboParams.legs) {
+               const tempContract: Contract = {
+                   symbol: po.ticker,
+                   secType: "OPT" as any,
+                   exchange: "SMART",
+                   currency: po.currency || "USD",
+                   lastTradeDateOrContractMonth: leg.expiry,
+                   strike: leg.strike,
+                   right: leg.right
+               };
+               console.log(`[IBKR Sync] Fetching conId for leg: ${leg.strike} ${leg.right}`);
+               const legConId = await getConId(ib, tempContract);
+               comboLegs.push({
+                   conId: legConId,
+                   ratio: leg.ratio || 1,
+                   action: leg.action,
+                   exchange: "SMART"
+               });
+           }
+           contract = {
+               symbol: po.ticker,
+               secType: "BAG" as any,
+               exchange: "SMART",
+               currency: po.currency || "USD",
+               comboLegs: comboLegs
+           };
+       } else if (optionParams) {
+           contract = {
+               symbol: po.ticker,
+               secType: "OPT" as any,
+               exchange: "SMART",
+               currency: po.currency || "USD",
+               lastTradeDateOrContractMonth: optionParams.expiry,
+               strike: optionParams.strike,
+               right: optionParams.right,
+               multiplier: optionParams.multiplier?.toString() || "100"
+           };
+       } else {
+           contract = {
+             symbol: po.ticker,
+             secType: "STK" as any,
+             exchange: "SMART",
+             currency: po.currency || "USD"
+           };
+       }
 
        console.log(`[IBKR Sync] Placing ${isBracket ? "BRACKET " : ""}${orderType} ${orderAction} order for ${po.quantity} ${po.ticker} (Limit: ${lmtPrice || 'N/A'}, Stop: ${auxPrice || 'N/A'})`);
 
