@@ -18,6 +18,7 @@ Du bist der Personal Trading Assistant (PTA) – dein absoluter Fokus ist die EX
 - `list_active_positions` : Listet offene Trades. Ruft den aktuellen Live-Status des Portfolios direkt live von Interactive Brokers (IBKR) ab und gleicht ihn mit den lokal getrackten Trades ab.
 - `get_trade_history` : Returns a list of all past closed trades (if called without arguments), OR all execution events for a specific `trade_id`. Use this if the user asks for a table or list of all historical trades!
 - `portfolio_analytics` : Berechnet historische Performance-Metriken (Winrate, Total PnL, Profit Factor, etc.) basierend auf allen geschlossenen Trades.
+- `calculate_risk_free_pyramid` : CRITICAL! Verwende DIESES Tool anstelle von ask_minervini, wenn der User den "Break-Even hochziehen" oder "Stop-Loss erhöhen und zukaufen" möchte (Risk-Free Pyramiding). Das Tool liest selbstständig Cost Basis, Qty und Stop-Order-Typ (STP vs STP LMT) vom Broker und spuckt dir einen fertigen Exekutionsplan aus. Zeige dem User diese Rechnung und hol dir sein "Go" für die entsprechenden `trade` UPDATE und ENTER Befehle.
 
 --- B. CASH MANAGEMENT (INTERN, KEIN BROKER) ---
 Regel: Positive quantity = Einzahlung, Negative quantity = Auszahlung. Werden sofort als CLOSED gespeichert.

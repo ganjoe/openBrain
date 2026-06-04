@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "ea": {
+      "httpUrl": "http://localhost:8787",
+      "headers": {
+        "x-brain-key": "2902dfd74d9d845813783ebb94878f3be17d07dcec6113b792dde4bf9f2b9b1d"
+      }
+    },
+    "cco": {
+      "httpUrl": "http://localhost:8788",
+      "headers": {
+        "x-brain-key": "2902dfd74d9d845813783ebb94878f3be17d07dcec6113b792dde4bf9f2b9b1d"
+      }
+    },
+    "pta": {
+      "httpUrl": "http://localhost:8789",
+      "headers": {
+        "x-brain-key": "2902dfd74d9d845813783ebb94878f3be17d07dcec6113b792dde4bf9f2b9b1d"
+      }
+    },
+    "pca": {
+      "httpUrl": "http://localhost:8790",
+      "headers": {
+        "x-brain-key": "2902dfd74d9d845813783ebb94878f3be17d07dcec6113b792dde4bf9f2b9b1d"
+      }
+    }
+  }
+}

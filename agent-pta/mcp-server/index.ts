@@ -7,6 +7,7 @@ import { registerNexusTools } from "./tools/nexus.ts";
 import { registerPtaTools } from "./tools/pta.ts";
 import { registerMinerviniTools } from "./tools/ask_minervini.ts";
 import { registerQuoteTools } from "./tools/get_quote.ts";
+import { registerPyramidTools } from "./tools/pyramid.ts";
 
 // --- MCP Server Setup ---
 const server = new McpServer({
@@ -20,6 +21,7 @@ registerNexusTools(server);
 registerPtaTools(server);
 registerMinerviniTools(server);
 registerQuoteTools(server);
+registerPyramidTools(server);
 
 // --- Hono App ---
 const app = new Hono();

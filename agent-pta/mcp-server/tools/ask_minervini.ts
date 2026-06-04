@@ -126,11 +126,11 @@ export function registerMinerviniTools(server: McpServer) {
             const newTradeRiskPct = ((finalShares * riskPerShare) / totalEquity) * 100;
 
             if (distancePct > avgLossPct * 1.5) { 
-                response += `\n❌ STATUS: REJECTED\nBegründung: Stop-Loss zu weit (${distancePct.toFixed(2)}%).\n`;
+                response += `\n⚠️ STATUS: WARNING\nAnmerkung: Stop-Loss zu weit (${distancePct.toFixed(2)}%). Erhöht das Core Risk um ${newTradeRiskPct.toFixed(2)}%.\n`;
             } else if (remainingGlobalBudgetPct <= 0) {
-                response += `\n❌ STATUS: REJECTED\nBegründung: Das globale Core Risk Limit (${maxCoreRiskPct}%) ist bereits erreicht oder überschritten.\n`;
+                response += `\n⚠️ STATUS: WARNING\nAnmerkung: Das globale Core Risk Limit (${maxCoreRiskPct}%) ist bereits erreicht oder überschritten. Erhöht das Core Risk um ${newTradeRiskPct.toFixed(2)}%.\n`;
             } else if (finalShares === 0) {
-                 response += `\n❌ STATUS: REJECTED\nBegründung: Das verbleibende Budget (${remainingGlobalBudgetPct.toFixed(2)}%) erlaubt bei diesem Stop-Loss keine ganze Aktie.\n`;
+                 response += `\n⚠️ STATUS: WARNING\nAnmerkung: Das verbleibende Budget (${remainingGlobalBudgetPct.toFixed(2)}%) erlaubt bei diesem Stop-Loss keine ganze Aktie.\n`;
             } else {
                 response += `\n✅ STATUS: APPROVED\nErgebnis: Du kannst **${finalShares} Aktien** kaufen.\n`;
                 response += `Begründung: Entspricht ${posSizePct.toFixed(2)}% Positionsgröße. Erhöht das Core Risk um ${newTradeRiskPct.toFixed(2)}% (Neues Total: ${(currentCoreRiskPct + newTradeRiskPct).toFixed(2)}%).`;
@@ -141,7 +141,7 @@ export function registerMinerviniTools(server: McpServer) {
         } 
         else if (positionSizePct !== undefined && stopLossPrice === undefined) {
             if (positionSizePct > maxPosSizePct) {
-                 return { content: [{ type: "text", text: response + `\n❌ STATUS: REJECTED\nBegründung: Gewünschte Positionsgröße (${positionSizePct}%) überschreitet das Limit (${maxPosSizePct}%).\n` }] };
+                 response += `\n⚠️ STATUS: WARNING\nAnmerkung: Gewünschte Positionsgröße (${positionSizePct}%) überschreitet das Limit (${maxPosSizePct}%).\n`;
             }
 
             const targetPosValue = totalEquity * (positionSizePct / 100);
@@ -151,7 +151,7 @@ export function registerMinerviniTools(server: McpServer) {
             const effectiveMaxRiskAmount = Math.min(maxRiskAmount, totalEquity * (remainingGlobalBudgetPct / 100));
             
             if (effectiveMaxRiskAmount <= 0) {
-                return { content: [{ type: "text", text: response + `\n❌ STATUS: REJECTED\nBegründung: Kein globales Risikobudget mehr vorhanden (${currentCoreRiskPct.toFixed(2)}% >= ${maxCoreRiskPct}%).\n` }] };
+                response += `\n⚠️ STATUS: WARNING\nAnmerkung: Kein globales Risikobudget mehr vorhanden (${currentCoreRiskPct.toFixed(2)}% >= ${maxCoreRiskPct}%).\n`;
             }
 
             const requiredStopLoss = currentPrice - (effectiveMaxRiskAmount / shares);
@@ -180,7 +180,7 @@ export function registerMinerviniTools(server: McpServer) {
             const effectiveMaxRiskAmount = Math.min(maxRiskAmount, totalEquity * (remainingGlobalBudgetPct / 100));
             
             if (effectiveMaxRiskAmount <= 0) {
-                 return { content: [{ type: "text", text: response + `\n❌ STATUS: REJECTED\nBegründung: Kein globales Risikobudget mehr vorhanden.\n` }] };
+                 response += `\n⚠️ STATUS: WARNING\nAnmerkung: Kein globales Risikobudget mehr vorhanden.\n`;
             }
 
             const shares = Math.floor(effectiveMaxRiskAmount / riskPerShare);
@@ -189,7 +189,7 @@ export function registerMinerviniTools(server: McpServer) {
             response += `Analyse: Keine Parameter angegeben. Berechne ideales Setup...\n`;
             
             if (shares === 0) {
-                 response += `\n❌ STATUS: REJECTED\nBegründung: Verbleibendes Risiko reicht nicht mal für 1 Aktie bei optimalem Stop-Loss.\n`;
+                 response += `\n⚠️ STATUS: WARNING\nAnmerkung: Verbleibendes Risiko reicht nicht mal für 1 Aktie bei optimalem Stop-Loss.\n`;
             } else {
                  response += `\n✅ STATUS: SUGGESTION\nErgebnis: Kaufe **${shares} Aktien** (${idealPosSizePct.toFixed(2)}%) mit Stop bei **${idealStopLoss.toFixed(2)}** (-${defaultStopDistPct.toFixed(2)}%).\n`;
                  if (effectiveMaxRiskAmount < maxRiskAmount) {
@@ -211,11 +211,11 @@ export function registerMinerviniTools(server: McpServer) {
             response += `Das ergibt ein reales Risiko von ${actualRiskPct.toFixed(2)}% für diesen Trade.\n`;
 
             if (currentCoreRiskPct + actualRiskPct > maxCoreRiskPct) {
-                response += `\n❌ STATUS: REJECTED\nBegründung: Budget überschritten! Neues Core Risk wäre ${(currentCoreRiskPct + actualRiskPct).toFixed(2)}% (Max: ${maxCoreRiskPct}%).`;
+                response += `\n⚠️ STATUS: WARNING\nAnmerkung: Budget überschritten! Neues Core Risk wäre ${(currentCoreRiskPct + actualRiskPct).toFixed(2)}% (Max: ${maxCoreRiskPct}%).`;
             } else if (actualRiskPct > activeRiskPct) {
-                response += `\n❌ STATUS: REJECTED\nBegründung: Trade-Risiko (${actualRiskPct.toFixed(2)}%) über Basis-Limit (${activeRiskPct}%).`;
+                response += `\n⚠️ STATUS: WARNING\nAnmerkung: Trade-Risiko (${actualRiskPct.toFixed(2)}%) über Basis-Limit (${activeRiskPct}%).`;
             } else if (distancePct > avgLossPct * 1.5) {
-                response += `\n❌ STATUS: REJECTED\nBegründung: Stop-Loss zu weit entfernt (${distancePct.toFixed(2)}%).`;
+                response += `\n⚠️ STATUS: WARNING\nAnmerkung: Stop-Loss zu weit entfernt (${distancePct.toFixed(2)}%).`;
             } else if (distancePct > avgLossPct) {
                 response += `\n⚠️ STATUS: WARNING\nTrade ok, aber Stop (-${distancePct.toFixed(2)}%) schlechter als Avg Loss (-${avgLossPct}%).`;
             } else {
