@@ -226,242 +226,145 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
 
 export function registerXTools(server: McpServer) {
   server.registerTool(
-    "sync_influencer_news",
+    "manage_background_sync",
     {
-      title: "Sync Influencer News",
-      description: "Fetch latest posts from an X influencer and store them in the Workspace.",
+      title: "Manage Background Sync",
+      description: "Start or cancel background syncs for influencer news.",
       inputSchema: {
-        username: z.string().describe("The X username (e.g. @elonmusk)"),
-        limit: z.number().optional().default(100).describe("Max tweets to fetch (1-3200)"),
-        start_time: z.string().optional().describe("ISO 8601 date string (e.g. 2024-05-01T00:00:00Z). Use this to fetch historical posts (Backfill) or for the first-time sync of an influencer."),
+        action: z.enum(["START", "CANCEL"]).describe("The action to perform"),
+        username: z.string().describe("The X username (e.g. @elonmusk) or 'all'"),
+        limit: z.number().optional().default(100).describe("Max tweets to fetch (for START)"),
+        start_time: z.string().optional().describe("ISO 8601 date string for historical backfill (for START)"),
       },
     },
-    async ({ username, limit, start_time }: any) => {
-      if (!X_BEARER_TOKEN || X_BEARER_TOKEN.includes("YOUR_X_BEARER_TOKEN")) {
-        return { content: [{ type: "text", text: "Error: X_BEARER_TOKEN is not configured in .env" }], isError: true };
-      }
+    async ({ action, username, limit, start_time }: any) => {
+      if (action === "START") {
+          if (!X_BEARER_TOKEN || X_BEARER_TOKEN.includes("YOUR_X_BEARER_TOKEN")) {
+            return { content: [{ type: "text", text: "Error: X_BEARER_TOKEN is not configured in .env" }], isError: true };
+          }
 
-      if (username.toLowerCase() === "all") {
-        const { data: influencers, error } = await supabase.from("x_users").select("username").eq("is_active", true);
-        if (error || !influencers || influencers.length === 0) {
-           return { content: [{ type: "text", text: "Es wurden keine aktiven Influencer in der Datenbank gefunden." }] };
-        }
-        
-        // Start sequential background sync
-        (async () => {
-           for (const inf of influencers) {
-              const cleanName = `@${inf.username}`;
-              if (activeSyncControllers.has(cleanName)) continue;
-              const controller = new AbortController();
-              activeSyncControllers.set(cleanName, controller);
-              await runBackgroundSync(cleanName, inf.username, limit, start_time, controller.signal);
-           }
-        })();
-        
-        return { content: [{ type: "text", text: `Massen-Sync für ${influencers.length} Influencer gestartet. Dies geschieht nacheinander im Hintergrund.` }] };
-      }
-
-      let cleanName = (username.startsWith("@") ? username : `@${username}`).toLowerCase();
-      let targetUsername = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
-
-      // If not explicitly @ handle, try fuzzy search
-      if (!username.startsWith("@")) {
-         const queryEmbedding = (await getEmbeddingsBatch([username]))[0];
-         const { data: searchResults, error: searchError } = await supabase.rpc("search_influencers", {
-           query_embedding: queryEmbedding,
-           query_text: username,
-           match_threshold: 0.5,
-           match_count: 5
-         });
-
-         if (!searchError && searchResults && searchResults.length > 0) {
-            if (searchResults.length === 1 || searchResults[0].similarity > 0.8 || searchResults[0].username === targetUsername) {
-               targetUsername = searchResults[0].username;
-               cleanName = `@${targetUsername}`;
-            } else {
-               const listStr = searchResults.map((r: any) => `- @${r.username} (${r.screen_name})`).join("\n");
-               return { content: [{ type: "text", text: `Ich habe mehrere mögliche Influencer gefunden für '${username}'. Bitte sei spezifischer (z.B. mit @handle):\n${listStr}` }] };
+          if (username.toLowerCase() === "all") {
+            const { data: influencers, error } = await supabase.from("x_users").select("username").eq("is_active", true);
+            if (error || !influencers || influencers.length === 0) {
+               return { content: [{ type: "text", text: "Es wurden keine aktiven Influencer in der Datenbank gefunden." }] };
             }
-         }
+            
+            // Start sequential background sync
+            (async () => {
+               for (const inf of influencers) {
+                  const cleanName = `@${inf.username}`;
+                  if (activeSyncControllers.has(cleanName)) continue;
+                  const controller = new AbortController();
+                  activeSyncControllers.set(cleanName, controller);
+                  await runBackgroundSync(cleanName, inf.username, limit, start_time, controller.signal);
+               }
+            })();
+            
+            return { content: [{ type: "text", text: `Massen-Sync für ${influencers.length} Influencer gestartet. Dies geschieht nacheinander im Hintergrund.` }] };
+          }
+
+          let cleanName = (username.startsWith("@") ? username : `@${username}`).toLowerCase();
+          let targetUsername = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
+
+          // If not explicitly @ handle, try fuzzy search
+          if (!username.startsWith("@")) {
+             const queryEmbedding = (await getEmbeddingsBatch([username]))[0];
+             const { data: searchResults, error: searchError } = await supabase.rpc("search_influencers", {
+               query_embedding: queryEmbedding,
+               query_text: username,
+               match_threshold: 0.5,
+               match_count: 5
+             });
+
+             if (!searchError && searchResults && searchResults.length > 0) {
+                if (searchResults.length === 1 || searchResults[0].similarity > 0.8 || searchResults[0].username === targetUsername) {
+                   targetUsername = searchResults[0].username;
+                   cleanName = `@${targetUsername}`;
+                } else {
+                   const listStr = searchResults.map((r: any) => `- @${r.username} (${r.screen_name})`).join("\n");
+                   return { content: [{ type: "text", text: `Ich habe mehrere mögliche Influencer gefunden für '${username}'. Bitte sei spezifischer (z.B. mit @handle):\n${listStr}` }] };
+                }
+             }
+          }
+
+          // In-Memory Lock Check Check
+          if (activeSyncControllers.has(cleanName)) {
+             return { content: [{ type: "text", text: `Ein Hintergrund-Sync für ${cleanName} läuft bereits.` }] };
+          }
+
+          const controller = new AbortController();
+          activeSyncControllers.set(cleanName, controller);
+
+          console.log(`[X Sync] Starting background sync for ${cleanName}...`);
+          runBackgroundSync(cleanName, targetUsername, limit, start_time, controller.signal);
+
+          return { content: [{ type: "text", text: `Hintergrund-Sync für ${cleanName} erfolgreich gestartet. Ich informiere dich via Chat über den Fortschritt.` }] };
+      } else if (action === "CANCEL") {
+          const cleanName = (username.startsWith("@") ? username : `@${username}`).toLowerCase();
+          const controller = activeSyncControllers.get(cleanName);
+          if (!controller) {
+            return { content: [{ type: "text", text: `Es läuft aktuell kein Sync für ${cleanName}.` }] };
+          }
+          controller.abort();
+          return { content: [{ type: "text", text: `Abbruch-Signal für den Sync von ${cleanName} wurde gesendet.` }] };
       }
-
-      // In-Memory Lock Check (physically tied to process lifecycle)
-      if (activeSyncControllers.has(cleanName)) {
-         return { content: [{ type: "text", text: `Ein Hintergrund-Sync für ${cleanName} läuft bereits.` }] };
-      }
-
-      // Set In-Memory Lock
-      const controller = new AbortController();
-      activeSyncControllers.set(cleanName, controller);
-
-      console.log(`[X Sync] Starting background sync for ${cleanName}...`);
-      // Start background job (do not await)
-      runBackgroundSync(cleanName, targetUsername, limit, start_time, controller.signal);
-
-      return { content: [{ type: "text", text: `Hintergrund-Sync für ${cleanName} erfolgreich gestartet. Ich informiere dich via Chat über den Fortschritt.` }] };
+      return { content: [{ type: "text", text: `Invalid action` }], isError: true };
     }
   );
 
   server.registerTool(
-    "cancel_influencer_sync",
+    "manage_influencers",
     {
-      title: "Cancel Influencer Sync",
-      description: "Cancel an active background sync for an influencer. Use this if the sync is stuck or the user wants to abort it.",
+      title: "Manage Influencers",
+      description: "List, add, or remove influencers from the database.",
       inputSchema: {
-        username: z.string().describe("The X username (e.g. @elonmusk) of the sync to cancel"),
+        action: z.enum(["LIST", "ADD", "REMOVE"]).describe("The action to perform"),
+        username: z.string().optional().describe("The X username (for ADD or REMOVE)"),
+        notes: z.string().optional().describe("Optional notes about this influencer (for ADD)"),
       },
     },
-    async ({ username }: any) => {
-      const cleanName = (username.startsWith("@") ? username : `@${username}`).toLowerCase();
-      
-      const controller = activeSyncControllers.get(cleanName);
-      if (!controller) {
-        return { content: [{ type: "text", text: `Es läuft aktuell kein Sync für ${cleanName}.` }] };
-      }
-      
-      controller.abort();
-      return { content: [{ type: "text", text: `Abbruch-Signal für den Sync von ${cleanName} wurde gesendet.` }] };
-    }
-  );
-
-  server.registerTool(
-    "find_first_keyword_mentions",
-    {
-      title: "Find First Keyword Mentions",
-      description: "Searches the database for the FIRST TIME specific keywords were ever mentioned in the full text. Dumps the resulting posts directly to the chat.",
-      inputSchema: {
-        keywords: z.array(z.string()).describe("List of keywords to find the first mention for (e.g. ['AI', 'Robotik'])."),
-        authors: z.array(z.string()).optional().describe("List of author usernames to filter by (e.g. ['@elonmusk']). Empty means all authors."),
-        limit: z.number().optional().default(10).describe("Max results to return.")
-      },
-    },
-    async ({ keywords, authors, limit }: { keywords: string[], authors?: string[], limit: number }) => {
+    async ({ action, username, notes }: any) => {
       try {
-        if (!keywords || keywords.length === 0) {
-          return { content: [{ type: "text", text: "Keywords array cannot be empty." }] };
+        if (action === "LIST") {
+            const { data, error } = await supabase.from("x_users").select("username, screen_name, notes").eq("is_active", true).order("username");
+            if (error) throw error;
+            if (!data || data.length === 0) return { content: [{ type: "text", text: `Keine aktiven Influencer in der Datenbank gefunden.` }] };
+            const formatted = data.map((i: any, idx: number) => `${idx + 1}. @${i.username} (${i.screen_name || 'N/A'}) - ${i.notes || ''}`).join("\n");
+            return { content: [{ type: "text", text: `Hier sind alle überwachten Influencer:\n\n${formatted}` }] };
+        } else if (action === "ADD") {
+            if (!username) throw new Error("username is required for ADD");
+            const cleanName = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
+            const res = await fetch(`https://api.twitter.com/2/users/by/username/${cleanName}`, {
+              headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` }
+            });
+            if (!res.ok) throw new Error(`X API failed to resolve user: ${res.status}`);
+            const data = await res.json();
+            if (!data.data?.id) throw new Error(`User ${username} not found on X.`);
+            const userId = data.data.id;
+            const screenName = data.data.name;
+            const embedText = `username: ${cleanName} screen_name: ${screenName} notes: ${notes || ''}`;
+            const embedding = (await getEmbeddingsBatch([embedText]))[0];
+            const { error } = await supabase.from("x_users").upsert({
+              username: cleanName,
+              x_id: userId,
+              screen_name: screenName,
+              notes: notes || null,
+              embedding: embedding,
+              is_active: true
+            });
+            if (error) throw error;
+            return { content: [{ type: "text", text: `Influencer @${cleanName} (${screenName}) wurde erfolgreich zur Datenbank hinzugefügt.` }] };
+        } else if (action === "REMOVE") {
+            if (!username) throw new Error("username is required for REMOVE");
+            const cleanName = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
+            const { error } = await supabase.from("x_users").delete().eq("username", cleanName);
+            if (error) throw error;
+            return { content: [{ type: "text", text: `Influencer @${cleanName} wurde erfolgreich aus der Datenbank entfernt.` }] };
         }
-
-        const targetAuthors = authors && authors.length > 0 ? authors.map(a => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`) : null;
-        
-        const { data, error } = await supabase.rpc("find_first_keyword_mentions", {
-           p_keywords: keywords,
-           p_authors: targetAuthors,
-           p_limit: limit
-        });
-        
-        if (error) throw new Error(`Supabase error: ${error.message}`);
-
-        if (!data || data.length === 0) {
-          return { content: [{ type: "text", text: "Keine der Keywords wurden jemals erwähnt." }] };
-        }
-
-        // Format and dump to chat
-        let dumpText = `**Erste Erwähnungen gefunden für:** ${keywords.join(', ')}\n\n`;
-        data.forEach((r: any) => {
-          const dateStr = r.first_mentioned_at ? new Date(r.first_mentioned_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
-          dumpText += `### Keyword: ${r.keyword} (Erste Erwähnung)\n`;
-          dumpText += `📅 ${dateStr} | 👤 ${r.author} | 🔗 ID: ${r.post_id}\n`;
-          dumpText += `📝 "${r.post_content}"\n\n---\n\n`;
-        });
-
-        await sendTelemetry(dumpText);
-
-        return { content: [{ type: "text", text: `Success. ${data.length} first-mentions have been published directly to the chat via telemetry. Do not summarize them. Just output [STOP].` }] };
+        throw new Error("Invalid action");
       } catch (err: any) {
-         return { content: [{ type: "text", text: `Fehler bei der Keyword-Suche: ${err.message}` }], isError: true };
+        return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
       }
-    }
-  );
-
-  server.registerTool(
-    "add_influencer",
-    {
-      title: "Add Influencer",
-      description: "Add a new influencer to the database. Fetches their screen name automatically via the X API.",
-      inputSchema: {
-        username: z.string().describe("The X username (e.g. @joecarlsonshow)"),
-        notes: z.string().optional().describe("Optional notes about this influencer (e.g. 'Finance YouTuber'). Used for search."),
-      },
-    },
-    async ({ username, notes }: any) => {
-      try {
-        const cleanName = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
-        
-        // Fetch from X API to ensure it exists and get screen name
-        const res = await fetch(`https://api.twitter.com/2/users/by/username/${cleanName}`, {
-          headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` }
-        });
-        if (!res.ok) throw new Error(`X API failed to resolve user: ${res.status}`);
-        const data = await res.json();
-        if (!data.data?.id) throw new Error(`User ${username} not found on X.`);
-        
-        const userId = data.data.id;
-        const screenName = data.data.name;
-        
-        // Generate embedding for search
-        const embedText = `username: ${cleanName} screen_name: ${screenName} notes: ${notes || ''}`;
-        const embedding = (await getEmbeddingsBatch([embedText]))[0];
-
-        const { error } = await supabase.from("x_users").upsert({
-          username: cleanName,
-          x_id: userId,
-          screen_name: screenName,
-          notes: notes || null,
-          embedding: embedding,
-          is_active: true
-        });
-
-        if (error) throw error;
-        
-        return { content: [{ type: "text", text: `Influencer @${cleanName} (${screenName}) wurde erfolgreich zur Datenbank hinzugefügt.` }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Fehler beim Hinzufügen des Influencers: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
-  server.registerTool(
-    "remove_influencer",
-    {
-      title: "Remove Influencer",
-      description: "Remove an influencer from the database. This stops them from being monitored, but does not delete their existing posts.",
-      inputSchema: {
-        username: z.string().describe("The X username to remove (e.g. @joecarlsonshow)"),
-      },
-    },
-    async ({ username }: any) => {
-      try {
-        const cleanName = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
-        
-        const { error } = await supabase.from("x_users").delete().eq("username", cleanName);
-        if (error) throw error;
-
-        return { content: [{ type: "text", text: `Influencer @${cleanName} wurde erfolgreich aus der Datenbank entfernt.` }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Fehler beim Entfernen des Influencers: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
-  server.registerTool(
-    "list_influencers",
-    {
-      title: "List Influencers",
-      description: "List all registered active influencers from the database in a tabular format.",
-      inputSchema: {},
-    },
-    async () => {
-      const { data, error } = await supabase
-        .from("x_users")
-        .select("username, screen_name, notes")
-        .eq("is_active", true)
-        .order("username");
-        
-      if (error) return { content: [{ type: "text", text: `Fehler beim Abrufen der Influencer: ${error.message}` }], isError: true };
-      if (!data || data.length === 0) return { content: [{ type: "text", text: `Keine aktiven Influencer in der Datenbank gefunden.` }] };
-      
-      const formatted = data.map((i: any, idx: number) => `${idx + 1}. @${i.username} (${i.screen_name || 'N/A'}) - ${i.notes || ''}`).join("\n");
-      return { content: [{ type: "text", text: `Hier sind alle überwachten Influencer:\n\n${formatted}` }] };
     }
   );
 }

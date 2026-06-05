@@ -1,27 +1,67 @@
 {
   "mcpServers": {
-    "ea": {
-      "httpUrl": "http://localhost:8787",
-      "headers": {
-        "x-brain-key": "2902dfd74d9d845813783ebb94878f3be17d07dcec6113b792dde4bf9f2b9b1d"
+    "openbrain-ea": {
+      "command": "deno",
+      "args": [
+        "run",
+        "-A",
+        "--env",
+        "/home/daniel/openBrain/agent-ea/mcp-server/stdio.ts"
+      ],
+      "env": {
+        "SUPABASE_URL": "http://localhost:8001",
+        "OLLAMA_URL": "http://localhost:11434",
+        "LM_STUDIO_URL": "http://localhost:1234",
+        "AGENT_ID": "ea",
+        "GLOBAL_BRAIN_ACCESS": "true"
       }
     },
-    "cco": {
-      "httpUrl": "http://localhost:8788",
-      "headers": {
-        "x-brain-key": "2902dfd74d9d845813783ebb94878f3be17d07dcec6113b792dde4bf9f2b9b1d"
+    "openbrain-cco": {
+      "command": "deno",
+      "args": [
+        "run",
+        "-A",
+        "--env",
+        "/home/daniel/openBrain/agent-cco/mcp-server/stdio.ts"
+      ],
+      "env": {
+        "SUPABASE_URL": "http://localhost:8001",
+        "OLLAMA_URL": "http://localhost:11434",
+        "LM_STUDIO_URL": "http://localhost:1234",
+        "AGENT_ID": "cco",
+        "GLOBAL_BRAIN_ACCESS": "false"
       }
     },
-    "pta": {
-      "httpUrl": "http://localhost:8789",
-      "headers": {
-        "x-brain-key": "2902dfd74d9d845813783ebb94878f3be17d07dcec6113b792dde4bf9f2b9b1d"
+    "openbrain-pta": {
+      "command": "deno",
+      "args": [
+        "run",
+        "-A",
+        "--env",
+        "/home/daniel/openBrain/agent-pta/mcp-server/stdio.ts"
+      ],
+      "env": {
+        "SUPABASE_URL": "http://localhost:8001",
+        "OLLAMA_URL": "http://localhost:11434",
+        "LM_STUDIO_URL": "http://localhost:1234",
+        "AGENT_ID": "pta",
+        "GLOBAL_BRAIN_ACCESS": "false"
       }
     },
-    "pca": {
-      "httpUrl": "http://localhost:8790",
-      "headers": {
-        "x-brain-key": "2902dfd74d9d845813783ebb94878f3be17d07dcec6113b792dde4bf9f2b9b1d"
+    "openbrain-pca": {
+      "command": "deno",
+      "args": [
+        "run",
+        "-A",
+        "--env",
+        "/home/daniel/openBrain/agent-pca/mcp-server/stdio.ts"
+      ],
+      "env": {
+        "SUPABASE_URL": "http://localhost:8001",
+        "PCA_SERVICE_URL": "http://localhost:8791",
+        "OLLAMA_URL": "http://localhost:11434",
+        "LM_STUDIO_URL": "http://localhost:1234",
+        "AGENT_ID": "pca"
       }
     }
   }

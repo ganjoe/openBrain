@@ -122,146 +122,82 @@ export function registerOpenBrainTools(server: McpServer) {
     }
   );
 
-  // Tool: Semantic Search Workspace
+  // Tool: Search Influencer Posts
   server.registerTool(
-    "semantic_search_workspace",
+    "search_influencer_posts",
     {
-      title: "Semantic Search Workspace",
-      description: "Search for posts based on meaning, topics, or themes using AI embeddings. Do NOT use this for specific tickers or acronyms.",
+      title: "Search Influencer Posts",
+      description: "Search the workspace for influencer posts using semantic, exact, or ID-based methods, or find first mentions.",
       inputSchema: {
-        query: z.string().describe("What to search for"),
-        limit: z.number().optional().default(200).describe("Max results (default: 200). Keep it small to avoid context overload."),
-        threshold: z.number().optional().default(0.5).describe("Similarity threshold (0.0 to 1.0, default: 0.5). Use higher values for stricter semantic matches."),
-        artifact_type: z.string().optional().describe("Filter by artifact type (e.g., 'x_post')"),
-        days_back: z.number().optional().describe("Filter posts from the last X days."),
-        dump_to_chat: z.boolean().optional().default(false).describe("If true, results are directly published to the user's chat and NOT returned to you for analysis. Use this when the user says 'list', 'show me all', 'dump', etc."),
-        return_mode: z.enum(["ids_only", "snippets", "full_text"]).optional().default("snippets").describe("Detail level of results. Use 'snippets' for quick overviews, 'full_text' when you MUST read everything."),
+        action: z.enum(["SEMANTIC", "EXACT", "READ_IDS", "FIRST_MENTIONS"]).describe("The type of search"),
+        query: z.string().optional().describe("Search query for SEMANTIC or EXACT. Leave empty for EXACT to list recent posts."),
+        limit: z.number().optional().default(200).describe("Max results (default: 200)"),
+        threshold: z.number().optional().default(0.5).describe("Similarity threshold for SEMANTIC (default: 0.5)"),
+        artifact_type: z.string().optional().describe("Filter by artifact type (default: 'x_post')"),
+        days_back: z.number().optional().describe("Filter posts from the last X days"),
+        dump_to_chat: z.boolean().optional().default(false).describe("If true, dump results to chat instead of returning text"),
+        return_mode: z.enum(["ids_only", "snippets", "full_text"]).optional().default("snippets").describe("Return format"),
+        ids: z.array(z.string()).optional().describe("Array of post IDs (for READ_IDS)"),
+        keywords: z.array(z.string()).optional().describe("Keywords for FIRST_MENTIONS"),
+        authors: z.array(z.string()).optional().describe("Author usernames for FIRST_MENTIONS"),
         ...(GLOBAL_BRAIN_ACCESS ? { owner: z.string().optional().describe("Filter by agent ID.") } : {})
       },
     },
-    async ({ query, limit, threshold, artifact_type, days_back, dump_to_chat, return_mode, owner }: any) => {
+    async ({ action, query, limit, threshold, artifact_type, days_back, dump_to_chat, return_mode, ids, keywords, authors, owner }: any) => {
       try {
-        console.log(`[semantic_search_workspace] query="${query}" type="${artifact_type}" limit=${limit} days_back=${days_back} dump=${dump_to_chat}`);
         const p_agent_id = GLOBAL_BRAIN_ACCESS ? (owner || null) : AGENT_ID;
         
-        const qEmb = await getEmbedding(query);
-        const { data, error } = await supabase.rpc("semantic_search_workspace", {
-          query_embedding: qEmb,
-          match_threshold: threshold,
-          match_count: limit,
-          p_agent_id: p_agent_id,
-          p_artifact_type: artifact_type || null,
-          p_days_back: days_back || null
-        });
-
-        if (error) {
-           console.error("[semantic_search_workspace] DB error:", error);
-           throw error;
+        if (action === "SEMANTIC") {
+            const actual_query = query || "";
+            const qEmb = await getEmbedding(actual_query);
+            const { data, error } = await supabase.rpc("semantic_search_workspace", {
+              query_embedding: qEmb, match_threshold: threshold, match_count: limit,
+              p_agent_id: p_agent_id, p_artifact_type: artifact_type || null, p_days_back: days_back || null
+            });
+            if (error) throw error;
+            await sendSearchTelemetry(actual_query, data || []);
+            if (!data || data.length === 0) return { content: [{ type: "text", text: "No results found." }] };
+            if (dump_to_chat) {
+              await dumpToChat(actual_query, data);
+              return { content: [{ type: "text", text: `Success. ${data.length} posts dumped to chat. [STOP]` }] };
+            }
+            return { content: [{ type: "text", text: formatSearchResults(data, return_mode) }] };
+        } else if (action === "EXACT") {
+            const actual_keyword = query || "";
+            const { data, error } = await supabase.rpc("exact_search_workspace", {
+              p_exact_keyword: actual_keyword === "" ? null : actual_keyword,
+              match_count: limit, p_agent_id: p_agent_id, p_artifact_type: artifact_type || null, p_days_back: days_back || null
+            });
+            if (error) throw error;
+            await sendSearchTelemetry(actual_keyword === "" ? "Letzte Posts" : actual_keyword, data || []);
+            if (!data || data.length === 0) return { content: [{ type: "text", text: "No results found." }] };
+            if (dump_to_chat) {
+              await dumpToChat(actual_keyword === "" ? "Letzte Posts" : actual_keyword, data);
+              return { content: [{ type: "text", text: `Success. ${data.length} posts dumped to chat. [STOP]` }] };
+            }
+            return { content: [{ type: "text", text: formatSearchResults(data, return_mode) }] };
+        } else if (action === "READ_IDS") {
+            if (!ids || ids.length === 0) return { content: [{ type: "text", text: "No IDs provided." }] };
+            const { data, error } = await supabase.from("agent_workspace").select("*").in("id", ids);
+            if (error) throw error;
+            if (!data || data.length === 0) return { content: [{ type: "text", text: "No posts found for IDs." }] };
+            const results = data.map((t: any, i: number) => `[${i + 1}] ID: ${t.id} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`);
+            return { content: [{ type: "text", text: results.join("\n\n") }] };
+        } else if (action === "FIRST_MENTIONS") {
+            if (!keywords || keywords.length === 0) return { content: [{ type: "text", text: "Keywords array cannot be empty." }] };
+            const targetAuthors = authors && authors.length > 0 ? authors.map((a: string) => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`) : null;
+            const { data, error } = await supabase.rpc("find_first_keyword_mentions", { p_keywords: keywords, p_authors: targetAuthors, p_limit: limit });
+            if (error) throw error;
+            if (!data || data.length === 0) return { content: [{ type: "text", text: "Keine der Keywords wurden jemals erwähnt." }] };
+            let dumpText = `**Erste Erwähnungen gefunden für:** ${keywords.join(', ')}\n\n`;
+            data.forEach((r: any) => {
+              const dateStr = r.first_mentioned_at ? new Date(r.first_mentioned_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
+              dumpText += `### Keyword: ${r.keyword} (Erste Erwähnung)\n📅 ${dateStr} | 👤 ${r.author} | 🔗 ID: ${r.post_id}\n📝 "${r.post_content}"\n\n---\n\n`;
+            });
+            await sendTelemetry(dumpText);
+            return { content: [{ type: "text", text: `Success. ${data.length} first-mentions have been published directly to the chat via telemetry. Do not summarize them. Just output [STOP].` }] };
         }
-        
-        console.log(`[semantic_search_workspace] Found ${data ? data.length : 0} results.`);
-        await sendSearchTelemetry(query, data || []);
-        
-        if (!data || data.length === 0) {
-            return { content: [{ type: "text", text: "No results found in workspace." }] };
-        }
-
-        if (dump_to_chat) {
-          await dumpToChat(query, data);
-          return { content: [{ type: "text", text: `Success. ${data.length} posts have been published directly to the chat. Do not summarize them. Just output [STOP].` }] };
-        }
-
-        const formattedResults = formatSearchResults(data, return_mode);
-        return { content: [{ type: "text", text: formattedResults }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
-  // Tool: Exact Keyword Search
-  server.registerTool(
-    "exact_keyword_search",
-    {
-      title: "Exact Keyword Search",
-      description: "Search for EXACT text matches, tickers, authors, or specific acronyms (e.g. 'SIVE', 'Auros', '@aleabitoreddit'). This checks structured metadata for the exact word. If you just want to see the latest posts without a filter, leave the keyword empty.",
-      inputSchema: {
-        keyword: z.string().optional().describe("The exact keyword, ticker, or author to find. Leave empty to just list recent posts."),
-        limit: z.number().optional().default(200).describe("Max results (default: 200)."),
-        artifact_type: z.string().optional().describe("Filter by artifact type (e.g., 'x_post')"),
-        days_back: z.number().optional().describe("Filter posts from the last X days."),
-        dump_to_chat: z.boolean().optional().default(false).describe("If true, results are directly published to the user's chat and NOT returned to you for analysis. Use this when the user says 'list', 'show me all', 'dump', etc."),
-        return_mode: z.enum(["ids_only", "snippets", "full_text"]).optional().default("snippets").describe("Detail level of results. Use 'snippets' for quick overviews, 'full_text' when you MUST read everything."),
-        ...(GLOBAL_BRAIN_ACCESS ? { owner: z.string().optional().describe("Filter by agent ID.") } : {})
-      },
-    },
-    async ({ keyword, limit, artifact_type, days_back, dump_to_chat, return_mode, owner }: any) => {
-      try {
-        console.log(`[exact_keyword_search] keyword="${keyword}" type="${artifact_type}" limit=${limit} days_back=${days_back} dump=${dump_to_chat}`);
-        const p_agent_id = GLOBAL_BRAIN_ACCESS ? (owner || null) : AGENT_ID;
-        const actual_keyword = keyword || "";
-        
-        const { data, error } = await supabase.rpc("exact_search_workspace", {
-          p_exact_keyword: actual_keyword === "" ? null : actual_keyword,
-          match_count: limit,
-          p_agent_id: p_agent_id,
-          p_artifact_type: artifact_type || null,
-          p_days_back: days_back || null
-        });
-
-        if (error) {
-           console.error("[exact_keyword_search] DB error:", error);
-           throw error;
-        }
-        
-        console.log(`[exact_keyword_search] Found ${data ? data.length : 0} results.`);
-        await sendSearchTelemetry(actual_keyword === "" ? "Letzte Posts" : actual_keyword, data || []);
-        
-        if (!data || data.length === 0) {
-            return { content: [{ type: "text", text: "No results found in workspace." }] };
-        }
-
-        if (dump_to_chat) {
-          const title = actual_keyword === "" ? "Letzte Posts" : actual_keyword;
-          await dumpToChat(title, data);
-          return { content: [{ type: "text", text: `Success. ${data.length} posts have been published directly to the chat. Do not summarize them. Just output [STOP].` }] };
-        }
-
-        const formattedResults = formatSearchResults(data, return_mode);
-        return { content: [{ type: "text", text: formattedResults }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
-  // Tool: Read Workspace Posts
-  server.registerTool(
-    "read_workspace_posts",
-    {
-      title: "Read Workspace Posts",
-      description: "Fetch the full text and metadata of specific posts by their IDs.",
-      inputSchema: {
-        ids: z.array(z.string()).describe("Array of post IDs to read."),
-      },
-    },
-    async ({ ids }: any) => {
-      try {
-        if (!ids || ids.length === 0) return { content: [{ type: "text", text: "No IDs provided." }] };
-        
-        const { data, error } = await supabase
-          .from("agent_workspace")
-          .select("*")
-          .in("id", ids);
-
-        if (error) throw error;
-        if (!data || data.length === 0) return { content: [{ type: "text", text: "No posts found for the given IDs." }] };
-
-        const results = data.map((t: any, i: number) => {
-          return `[${i + 1}] ID: ${t.id} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`;
-        });
-
-        return { content: [{ type: "text", text: results.join("\n\n") }] };
+        throw new Error("Invalid action");
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
       }

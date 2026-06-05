@@ -93,7 +93,9 @@ INSERT INTO pca_watchlists (list_name, ticker, position) VALUES
     ('trading_stats', '$STATS.WINRATE', 3),
     ('trading_stats', '$STATS.PROFIT_FACTOR', 4),
     ('trading_stats', '$STATS.WINRATE_PF', 5),
-    ('trading_stats', '$STATS.CASH_QUOTE', 6)
+    ('trading_stats', '$STATS.CASH_QUOTE', 6),
+    ('trading_stats', '$STATS.NAV', 7),
+    ('trading_stats', '$STATS.ASSETS_VALUE', 8)
 ON CONFLICT (list_name, ticker) DO NOTHING;
 
 
@@ -209,16 +211,16 @@ INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
         updated_at  = NOW();
 
 -- ─────────────────────────────────────────────────────────────
--- Layout: trading_journal
--- Trading Stats Layout (PnL, R-Multiple)
+-- Layout: trading_journal_events
+-- Trading Stats Layout (PnL, R-Multiple, NAV, Asset Value) - Event Based
 -- ─────────────────────────────────────────────────────────────
 INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
-    'trading_journal',
-    'Trading Stats Layout mit PnL und R-Multiple',
+    'trading_journal_events',
+    'Trading Stats Layout mit PnL, Winrate, NAV und Asset Value',
     FALSE,
     '{
         "watchlist": "trading_stats",
-        "grid": { "cols": 2, "rows": 2 },
+        "grid": { "cols": 2, "rows": 3 },
         "views": [
             {
                 "view_id": "v1",
@@ -245,8 +247,30 @@ INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
             {
                 "view_id": "v3",
                 "type": "line",
-                "label": "Cash Quote & Active Positions",
+                "label": "Historical NAV",
                 "grid_pos": { "col": 0, "row": 1 },
+                "timeframe": "1D",
+                "bar_count": 2000,
+                "symbol": "$STATS.NAV",
+                "indicators": [],
+                "volume": { "enabled": true }
+            },
+            {
+                "view_id": "v4",
+                "type": "line",
+                "label": "Asset Value (Market Value)",
+                "grid_pos": { "col": 1, "row": 1 },
+                "timeframe": "1D",
+                "bar_count": 2000,
+                "symbol": "$STATS.ASSETS_VALUE",
+                "indicators": [],
+                "volume": { "enabled": true }
+            },
+            {
+                "view_id": "v5",
+                "type": "line",
+                "label": "Cash Quote & Active Positions",
+                "grid_pos": { "col": 0, "row": 2 },
                 "timeframe": "1D",
                 "bar_count": 2000,
                 "symbol": "$STATS.CASH_QUOTE",
@@ -254,10 +278,95 @@ INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
                 "volume": { "enabled": true }
             },
             {
-                "view_id": "v4",
+                "view_id": "v6",
                 "type": "watchlist_table",
                 "label": "Available Stats",
+                "grid_pos": { "col": 1, "row": 2 },
+                "columns": [
+                    { "key": "ticker", "label": "Statistic" },
+                    { "key": "close",  "label": "Value" }
+                ]
+            }
+        ]
+    }'::jsonb
+) ON CONFLICT (name) DO UPDATE
+    SET config     = EXCLUDED.config,
+        description = EXCLUDED.description,
+        is_default  = EXCLUDED.is_default,
+        updated_at  = NOW();
+
+-- ─────────────────────────────────────────────────────────────
+-- Layout: trading_journal_daily
+-- Trading Stats Layout (PnL, R-Multiple, NAV, Asset Value) - Daily Aggregated
+-- ─────────────────────────────────────────────────────────────
+INSERT INTO pca_layouts (name, description, is_default, config) VALUES (
+    'trading_journal_daily',
+    'Trading Stats Layout mit PnL, Winrate, NAV und Asset Value (Tagesbasis)',
+    FALSE,
+    '{
+        "watchlist": "trading_stats",
+        "grid": { "cols": 2, "rows": 3 },
+        "views": [
+            {
+                "view_id": "v1",
+                "type": "line",
+                "label": "Cumulative PnL",
+                "grid_pos": { "col": 0, "row": 0 },
+                "timeframe": "1D",
+                "bar_count": 2000,
+                "symbol": "$STATS.PNL",
+                "indicators": [],
+                "volume": { "enabled": true }
+            },
+            {
+                "view_id": "v2",
+                "type": "line",
+                "label": "Winrate & Profit Factor",
+                "grid_pos": { "col": 1, "row": 0 },
+                "timeframe": "1D",
+                "bar_count": 2000,
+                "symbol": "$STATS.WINRATE_PF",
+                "indicators": [],
+                "volume": { "enabled": true }
+            },
+            {
+                "view_id": "v3",
+                "type": "line",
+                "label": "Historical NAV",
+                "grid_pos": { "col": 0, "row": 1 },
+                "timeframe": "1D",
+                "bar_count": 2000,
+                "symbol": "$STATS.NAV",
+                "indicators": [],
+                "volume": { "enabled": true }
+            },
+            {
+                "view_id": "v4",
+                "type": "line",
+                "label": "Asset Value (Market Value)",
                 "grid_pos": { "col": 1, "row": 1 },
+                "timeframe": "1D",
+                "bar_count": 2000,
+                "symbol": "$STATS.ASSETS_VALUE",
+                "indicators": [],
+                "volume": { "enabled": true }
+            },
+            {
+                "view_id": "v5",
+                "type": "line",
+                "label": "Cash Quote & Active Positions",
+                "grid_pos": { "col": 0, "row": 2 },
+                "timeframe": "1D",
+                "bar_count": 2000,
+                "symbol": "$STATS.CASH_QUOTE",
+                "indicators": [],
+                "volume": { "enabled": true }
+            },
+            {
+                "view_id": "v6",
+                "type": "watchlist_table",
+                "label": "Available Stats",
+                "grid_pos": { "col": 1, "row": 2 },
                 "columns": [
                     { "key": "ticker", "label": "Statistic" },
                     { "key": "close",  "label": "Value" }

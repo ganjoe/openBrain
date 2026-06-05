@@ -5,213 +5,93 @@ import { supabase, pcaCommand, PCA_SERVICE_URL, sendTelemetry } from "./shared.t
 
 export function registerPcaTools(server: McpServer) {
 
-  // ── open_layout ─────────────────────────────────────────────
+  // ── manage_chart_view ─────────────────────────────────────────────
   server.registerTool(
-    "open_layout",
+    "manage_chart_view",
     {
-      title: "Open Chart Layout",
-      description: "Open a named layout in the browser. Instructs the master tab to spawn chart windows. Example: 'desktop'.",
+      title: "Manage Chart View",
+      description: "Manage layouts, load tickers, and navigate watchlists.",
       inputSchema: {
-        layout: z.string().describe("Layout name, e.g. 'desktop'"),
+        action: z.enum(["OPEN_LAYOUT", "LIST_LAYOUTS", "LOAD_TICKER", "NEXT_TICKER", "PREV_TICKER"]).describe("The action to perform"),
+        layout: z.string().optional().describe("Layout name, e.g. 'desktop' (for OPEN_LAYOUT)"),
+        symbol: z.string().optional().describe("Ticker symbol (for LOAD_TICKER)"),
+        list_name: z.string().optional().describe("Watchlist name (for NEXT/PREV)"),
+        current_ticker: z.string().optional().describe("Currently displayed ticker (for NEXT/PREV)"),
       },
     },
-    async ({ layout }: any) => {
-      try {
-        const result = await pcaCommand("open_layout", { layout });
-        return { content: [{ type: "text", text: `Layout '${layout}' opened. ${result}` }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
-  // ── load_ticker ─────────────────────────────────────────────
-  server.registerTool(
-    "load_ticker",
-    {
-      title: "Load Ticker in Chart",
-      description: "Display a specific ticker symbol in all open chart windows.",
-      inputSchema: {
-        symbol: z.string().describe("Ticker symbol, e.g. 'AAPL' or 'NVDA'"),
-      },
-    },
-    async ({ symbol }: any) => {
-      try {
-        const result = await pcaCommand("load_ticker", { symbol: symbol.toUpperCase() });
-        return { content: [{ type: "text", text: `Ticker ${symbol.toUpperCase()} loaded. ${result}` }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
-  // ── list_watchlists ──────────────────────────────────────────
-  server.registerTool(
-    "list_watchlists",
-    {
-      title: "List Watchlists",
-      description: "Show all available watchlist names and their tickers.",
-      inputSchema: {
-        list_name: z.string().optional().describe("Optional: name of a specific watchlist to inspect"),
-      },
-    },
-    async ({ list_name }: any) => {
-      try {
-        if (list_name) {
-          const { data, error } = await supabase
-            .from("pca_watchlists")
-            .select("ticker, position")
-            .eq("list_name", list_name)
-            .order("position");
-          if (error) throw error;
-          const tickers = data.map((r: any) => r.ticker).join(", ");
-          return { content: [{ type: "text", text: `Watchlist '${list_name}': ${tickers}` }] };
-        } else {
-          const { data, error } = await supabase
-            .from("pca_watchlists")
-            .select("list_name")
-            .order("list_name");
-          if (error) throw error;
-          const names = [...new Set(data.map((r: any) => r.list_name))].join(", ");
-          return { content: [{ type: "text", text: `Available watchlists: ${names}` }] };
+    async ({ action, layout, symbol, list_name, current_ticker }: any) => {
+        try {
+            if (action === "OPEN_LAYOUT") {
+                if (!layout) throw new Error("layout required for OPEN_LAYOUT");
+                const result = await pcaCommand("open_layout", { layout });
+                return { content: [{ type: "text", text: `Layout '${layout}' opened. ${result}` }] };
+            } else if (action === "LIST_LAYOUTS") {
+                const { data, error } = await supabase.from("pca_layouts").select("name, description, is_default").order("name");
+                if (error) throw error;
+                const lines = data.map((l: any) => `• ${l.name}${l.is_default ? " [default]" : ""}: ${l.description ?? "—"}`);
+                return { content: [{ type: "text", text: lines.join("\n") || "No layouts found." }] };
+            } else if (action === "LOAD_TICKER") {
+                if (!symbol) throw new Error("symbol required for LOAD_TICKER");
+                const result = await pcaCommand("load_ticker", { symbol: symbol.toUpperCase() });
+                return { content: [{ type: "text", text: `Ticker ${symbol.toUpperCase()} loaded. ${result}` }] };
+            } else if (action === "NEXT_TICKER" || action === "PREV_TICKER") {
+                if (!current_ticker) throw new Error("current_ticker required");
+                return _navigateWatchlist(list_name ?? "growth_stocks", current_ticker, action === "NEXT_TICKER" ? 1 : -1);
+            }
+            throw new Error("Invalid action");
+        } catch (err: any) {
+            return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
         }
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
     }
   );
 
-  // ── load_watchlist ───────────────────────────────────────────
+  // ── manage_watchlist ──────────────────────────────────────────
   server.registerTool(
-    "load_watchlist",
+    "manage_watchlist",
     {
-      title: "Load Watchlist in Browser",
-      description:
-        "Display a named watchlist in all open watchlist windows AND persist the selection " +
-        "in the layout so it survives a tab refresh. Use this whenever the user wants to switch " +
-        "which watchlist is shown in the watchlist panel.",
+      title: "Manage Watchlist",
+      description: "List, load, add to, or remove from watchlists.",
       inputSchema: {
-        list_name:   z.string().describe("Name of the watchlist, e.g. 'growth_stocks' or 'ipo_stocks'"),
-        layout_name: z.string().optional().default("desktop")
-                      .describe("Layout to update (default: 'desktop')"),
+        action: z.enum(["LIST", "LOAD", "ADD", "REMOVE"]).describe("The action to perform"),
+        list_name: z.string().optional().describe("Watchlist name"),
+        ticker: z.string().optional().describe("Ticker symbol (for ADD, REMOVE)"),
+        position: z.number().optional().describe("Position in list (for ADD)"),
+        layout_name: z.string().optional().describe("Layout to update (for LOAD)"),
       },
     },
-    async ({ list_name, layout_name }: any) => {
-      try {
-        const result = await pcaCommand("load_watchlist", {
-          list_name,
-          layout_name: layout_name ?? "desktop",
-        });
-        return { content: [{ type: "text", text: `Watchlist '${list_name}' loaded and persisted in layout. ${result}` }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
-  // ── add_to_watchlist ─────────────────────────────────────────
-  server.registerTool(
-    "add_to_watchlist",
-    {
-      title: "Add Ticker to Watchlist",
-      description: "Add a ticker symbol to a named watchlist.",
-      inputSchema: {
-        list_name: z.string().describe("Watchlist name, e.g. 'growth_stocks'"),
-        ticker: z.string().describe("Ticker symbol to add"),
-        position: z.number().optional().default(999).describe("Position in the list (default: append)"),
-      },
-    },
-    async ({ list_name, ticker, position }: any) => {
-      try {
-        const { error } = await supabase
-          .from("pca_watchlists")
-          .insert({ list_name, ticker: ticker.toUpperCase(), position: position ?? 999 });
-        if (error) throw error;
-        return { content: [{ type: "text", text: `${ticker.toUpperCase()} added to '${list_name}'.` }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
-  // ── remove_from_watchlist ────────────────────────────────────
-  server.registerTool(
-    "remove_from_watchlist",
-    {
-      title: "Remove Ticker from Watchlist",
-      description: "Remove a ticker symbol from a named watchlist.",
-      inputSchema: {
-        list_name: z.string().describe("Watchlist name"),
-        ticker: z.string().describe("Ticker symbol to remove"),
-      },
-    },
-    async ({ list_name, ticker }: any) => {
-      try {
-        const { error } = await supabase
-          .from("pca_watchlists")
-          .delete()
-          .eq("list_name", list_name)
-          .eq("ticker", ticker.toUpperCase());
-        if (error) throw error;
-        return { content: [{ type: "text", text: `${ticker.toUpperCase()} removed from '${list_name}'.` }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
-  // ── list_layouts ─────────────────────────────────────────────
-  server.registerTool(
-    "list_layouts",
-    {
-      title: "List Layouts",
-      description: "Show all saved chart layouts with their descriptions.",
-      inputSchema: {},
-    },
-    async () => {
-      try {
-        const { data, error } = await supabase
-          .from("pca_layouts")
-          .select("name, description, is_default")
-          .order("name");
-        if (error) throw error;
-        const lines = data.map((l: any) =>
-          `• ${l.name}${l.is_default ? " [default]" : ""}: ${l.description ?? "—"}`
-        );
-        return { content: [{ type: "text", text: lines.join("\n") || "No layouts found." }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
-  // ── next_ticker / prev_ticker ────────────────────────────────
-  server.registerTool(
-    "next_ticker",
-    {
-      title: "Next Ticker in Watchlist",
-      description: "Advance to the next ticker in a watchlist and display it in all chart windows.",
-      inputSchema: {
-        list_name: z.string().default("growth_stocks").describe("Watchlist name"),
-        current_ticker: z.string().describe("The currently displayed ticker"),
-      },
-    },
-    async ({ list_name, current_ticker }: any) => {
-      return _navigateWatchlist(list_name, current_ticker, 1);
-    }
-  );
-
-  server.registerTool(
-    "prev_ticker",
-    {
-      title: "Previous Ticker in Watchlist",
-      description: "Go back to the previous ticker in a watchlist and display it in all chart windows.",
-      inputSchema: {
-        list_name: z.string().default("growth_stocks").describe("Watchlist name"),
-        current_ticker: z.string().describe("The currently displayed ticker"),
-      },
-    },
-    async ({ list_name, current_ticker }: any) => {
-      return _navigateWatchlist(list_name, current_ticker, -1);
+    async ({ action, list_name, ticker, position, layout_name }: any) => {
+        try {
+            if (action === "LIST") {
+                if (list_name) {
+                  const { data, error } = await supabase.from("pca_watchlists").select("ticker, position").eq("list_name", list_name).order("position");
+                  if (error) throw error;
+                  const tickers = data.map((r: any) => r.ticker).join(", ");
+                  return { content: [{ type: "text", text: `Watchlist '${list_name}': ${tickers}` }] };
+                } else {
+                  const { data, error } = await supabase.from("pca_watchlists").select("list_name").order("list_name");
+                  if (error) throw error;
+                  const names = [...new Set(data.map((r: any) => r.list_name))].join(", ");
+                  return { content: [{ type: "text", text: `Available watchlists: ${names}` }] };
+                }
+            } else if (action === "LOAD") {
+                if (!list_name) throw new Error("list_name required for LOAD");
+                const result = await pcaCommand("load_watchlist", { list_name, layout_name: layout_name ?? "desktop" });
+                return { content: [{ type: "text", text: `Watchlist '${list_name}' loaded and persisted in layout. ${result}` }] };
+            } else if (action === "ADD") {
+                if (!list_name || !ticker) throw new Error("list_name and ticker required for ADD");
+                const { error } = await supabase.from("pca_watchlists").insert({ list_name, ticker: ticker.toUpperCase(), position: position ?? 999 });
+                if (error) throw error;
+                return { content: [{ type: "text", text: `${ticker.toUpperCase()} added to '${list_name}'.` }] };
+            } else if (action === "REMOVE") {
+                if (!list_name || !ticker) throw new Error("list_name and ticker required for REMOVE");
+                const { error } = await supabase.from("pca_watchlists").delete().eq("list_name", list_name).eq("ticker", ticker.toUpperCase());
+                if (error) throw error;
+                return { content: [{ type: "text", text: `${ticker.toUpperCase()} removed from '${list_name}'.` }] };
+            }
+            throw new Error("Invalid action");
+        } catch (err: any) {
+            return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+        }
     }
   );
 
@@ -267,59 +147,49 @@ export function registerPcaTools(server: McpServer) {
     }
   );
 
-  // ── get_option_chains ─────────────────────────────────────────
+  // ── get_options_data ──────────────────────────────────────────
   server.registerTool(
-    "get_option_chains",
+    "get_options_data",
     {
-      title: "Get Option Chains",
-      description: "Retrieve available option expirations and strikes for a given ticker from IB Broker.",
+      title: "Get Options Data",
+      description: "Retrieve available option chains or live quotes for a specific contract.",
       inputSchema: {
+        action: z.enum(["CHAIN", "QUOTE"]).describe("The action to perform"),
         ticker: z.string().describe("Ticker symbol (e.g. AAPL)"),
+        expiry: z.string().optional().describe("Expiration date (YYYYMMDD) (for QUOTE)"),
+        strike: z.number().optional().describe("Strike price (for QUOTE)"),
+        right: z.enum(["C", "P"]).optional().describe("Call (C) or Put (P) (for QUOTE)"),
       },
     },
-    async ({ ticker }: any) => {
+    async ({ action, ticker, expiry, strike, right }: any) => {
       try {
-        const res = await fetch(`${PCA_SERVICE_URL}/api/options/chain/${ticker.toUpperCase()}`);
-        if (!res.ok) {
-          const err = await res.text();
-          throw new Error(`Options API error ${res.status}: ${err}`);
+        if (action === "CHAIN") {
+            const res = await fetch(`${PCA_SERVICE_URL}/api/options/chain/${ticker.toUpperCase()}`);
+            if (!res.ok) {
+              const err = await res.text();
+              throw new Error(`Options API error ${res.status}: ${err}`);
+            }
+            const data = await res.json();
+            return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        } else if (action === "QUOTE") {
+            if (!expiry || strike === undefined || !right) {
+                throw new Error("expiry, strike, and right are required for QUOTE");
+            }
+            const queryParams = new URLSearchParams({
+              expiry,
+              strike: strike.toString(),
+              right
+            });
+            const url = `${PCA_SERVICE_URL}/api/options/quote/${ticker.toUpperCase()}?${queryParams.toString()}`;
+            const res = await fetch(url);
+            if (!res.ok) {
+              const err = await res.text();
+              throw new Error(`Option Quote API error ${res.status}: ${err}`);
+            }
+            const data = await res.json();
+            return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
         }
-        const data = await res.json();
-        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
-
-  // ── get_option_quote ──────────────────────────────────────────
-  server.registerTool(
-    "get_option_quote",
-    {
-      title: "Get Option Quote",
-      description: "Fetch live prices (bid, ask, last, volume) for a specific option contract from IB.",
-      inputSchema: {
-        ticker: z.string().describe("Underlying ticker symbol (e.g. AAPL)"),
-        expiry: z.string().describe("Expiration date (YYYYMMDD)"),
-        strike: z.number().describe("Strike price"),
-        right: z.enum(["C", "P"]).describe("Call (C) or Put (P)"),
-      },
-    },
-    async ({ ticker, expiry, strike, right }: any) => {
-      try {
-        const queryParams = new URLSearchParams({
-          expiry,
-          strike: strike.toString(),
-          right
-        });
-        const url = `${PCA_SERVICE_URL}/api/options/quote/${ticker.toUpperCase()}?${queryParams.toString()}`;
-        const res = await fetch(url);
-        if (!res.ok) {
-          const err = await res.text();
-          throw new Error(`Option Quote API error ${res.status}: ${err}`);
-        }
-        const data = await res.json();
-        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+        throw new Error("Invalid action");
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
       }
