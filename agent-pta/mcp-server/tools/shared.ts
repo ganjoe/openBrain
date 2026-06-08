@@ -62,6 +62,21 @@ export async function getActiveProvider(): Promise<string> {
   return "local";
 }
 
+// --- Active Trading Mode helper ---
+export async function getActiveTradingMode(): Promise<"live" | "paper"> {
+  try {
+    const { data } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "ib_gateway_config")
+      .single();
+    if (data?.value?.active_mode === "paper") return "paper";
+  } catch (e) {
+    console.warn("[Mode] Failed to fetch trading mode, defaulting to live.");
+  }
+  return "live";
+}
+
 // --- Metadata extraction (LLM based) ---
 export async function extractMetadata(text: string): Promise<Record<string, unknown>> {
   const provider = await getActiveProvider();

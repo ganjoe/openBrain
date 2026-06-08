@@ -259,7 +259,26 @@ async def update_context_limit(req: ContextLimitRequest):
         
     return {"status": "updated", "config": config_val}
 
-IB_CONTAINER_NAME = os.getenv("IB_GATEWAY_CONTAINER_NAME", "ib-gateway_live-ib-gateway-1")
+# ── Dynamic gateway config — loaded from DB ──────────────────────────────────
+
+async def get_gateway_config() -> dict:
+    """Load ib_gateway_config from system_settings. Falls back to live defaults."""
+    try:
+        rows = await _db_get("system_settings", {"key": "eq.ib_gateway_config"})
+        if rows:
+            return rows[0].get("value", {})
+    except Exception as e:
+        logger.warning(f"Could not load gateway config: {e}")
+    return {
+        "active_mode": "live",
+        "live": {"container_name": "ib-gateway_live-ib-gateway-1", "port": 4002, "host": "10.20.0.23"},
+        "paper": {"container_name": "ib-gateway_paper", "port": 4001, "host": "10.20.0.23"},
+    }
+
+async def get_active_container_name() -> str:
+    cfg = await get_gateway_config()
+    mode = cfg.get("active_mode", "live")
+    return cfg.get(mode, {}).get("container_name", "ib-gateway_live-ib-gateway-1")
 
 async def get_docker_container_running(container_name: str) -> bool:
     try:
@@ -269,50 +288,189 @@ async def get_docker_container_running(container_name: str) -> bool:
                 data = r.json()
                 return data.get("State", {}).get("Running", False)
     except Exception as e:
-        print(f"Docker API error: {e}")
+        logger.warning(f"Docker API error: {e}")
     return False
+
+async def docker_container_action(container_name: str, action: str):
+    """Start or stop a docker container via the Docker Unix socket."""
+    async with httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")) as client:
+        r = await client.post(f"http://localhost/containers/{container_name}/{action}")
+        if r.status_code not in (204, 304):
+            raise HTTPException(status_code=500, detail=f"Docker {action} failed for {container_name}: {r.text}")
 
 @router.get("/api/settings/ib_gateway_status")
 async def get_ib_gateway_status():
-    """Fetch the current IB Gateway status (Docker + DB)."""
-    docker_running = await get_docker_container_running(IB_CONTAINER_NAME)
-    
+    """Return Docker + login status for BOTH gateway containers, plus active mode."""
+    cfg = await get_gateway_config()
+    active_mode = cfg.get("active_mode", "live")
+
+    live_container  = cfg.get("live", {}).get("container_name", "ib-gateway_live-ib-gateway-1")
+    paper_container = cfg.get("paper", {}).get("container_name", "ib-gateway_paper")
+
+    # Query Docker status for both containers in parallel
+    live_running, paper_running = await asyncio.gather(
+        get_docker_container_running(live_container),
+        get_docker_container_running(paper_container),
+    )
+
+    # ibkr_sync only connects to the active container — connected flag only meaningful for active mode
     rows = await _db_get("system_settings", {"key": "eq.ib_gateway_status"})
-    connected = False
+    active_connected = False
     if rows:
-        connected = rows[0].get("value", {}).get("connected", False)
-        
-    return {"connected": connected, "docker_running": docker_running}
+        active_connected = rows[0].get("value", {}).get("connected", False)
+
+    return {
+        "active_mode": active_mode,
+        "live": {
+            "docker_running": live_running,
+            "connected": active_connected if active_mode == "live" else False,
+        },
+        "paper": {
+            "docker_running": paper_running,
+            "connected": active_connected if active_mode == "paper" else False,
+        },
+    }
 
 @router.post("/api/settings/ib_gateway/start")
 async def start_ib_gateway():
-    try:
-        async with httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")) as client:
-            r = await client.post(f"http://localhost/containers/{IB_CONTAINER_NAME}/start")
-            if r.status_code not in (204, 304):
-                raise HTTPException(status_code=500, detail=f"Failed to start container: {r.text}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    return {"status": "started"}
+    container_name = await get_active_container_name()
+    await docker_container_action(container_name, "start")
+    return {"status": "started", "container": container_name}
 
 @router.post("/api/settings/ib_gateway/stop")
 async def stop_ib_gateway():
+    container_name = await get_active_container_name()
+    await docker_container_action(container_name, "stop")
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        await client.post(
+            f"{GATEWAY_URL}/rest/v1/system_settings",
+            headers={**DB_HEADERS, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"},
+            json={"key": "ib_gateway_status", "value": {"connected": False}}
+        )
+    return {"status": "stopped", "container": container_name}
+
+class StopContainerRequest(BaseModel):
+    mode: str  # 'live' or 'paper'
+
+@router.post("/api/settings/ib_gateway/stop_container")
+async def stop_specific_container(body: StopContainerRequest):
+    """Stop the gateway container for a specific mode (used by green-button click)."""
+    if body.mode not in ("live", "paper"):
+        raise HTTPException(status_code=400, detail="mode must be 'live' or 'paper'")
+    cfg = await get_gateway_config()
+    container_name = cfg.get(body.mode, {}).get("container_name")
+    if not container_name:
+        raise HTTPException(status_code=404, detail=f"No container configured for mode '{body.mode}'")
+    await docker_container_action(container_name, "stop")
+    # Mark as disconnected in DB
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        await client.post(
+            f"{GATEWAY_URL}/rest/v1/system_settings",
+            headers={**DB_HEADERS, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"},
+            json={"key": "ib_gateway_status", "value": {"connected": False}}
+        )
+    # Telemetry
     try:
-        async with httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(uds="/var/run/docker.sock")) as client:
-            r = await client.post(f"http://localhost/containers/{IB_CONTAINER_NAME}/stop")
-            if r.status_code not in (204, 304):
-                raise HTTPException(status_code=500, detail=f"Failed to stop container: {r.text}")
-                
-        # Manually set connected: false in DB so UI updates instantly
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                f"{GATEWAY_URL}/rest/v1/system_settings",
-                headers={**DB_HEADERS, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"},
-                json={"key": "ib_gateway_status", "value": {"connected": False}}
-            )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    return {"status": "stopped"}
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            await client.post("http://localhost:7734/api/send", json={
+                "from_agent": "system", "to": "all",
+                "text": f"🔴 IBKR-{body.mode.upper()} Container gestoppt",
+                "msg_type": "telemetry"
+            })
+    except Exception:
+        pass
+    return {"status": "stopped", "container": container_name, "mode": body.mode}
+
+# ── Trading Mode Switch ───────────────────────────────────────────────────────
+
+class TradingModeRequest(BaseModel):
+    mode: str  # 'live' or 'paper'
+
+@router.get("/api/settings/ib_gateway_mode")
+async def get_ib_gateway_mode():
+    """Get the currently active trading mode."""
+    cfg = await get_gateway_config()
+    return {"active_mode": cfg.get("active_mode", "live")}
+
+@router.post("/api/settings/ib_gateway_mode")
+async def set_ib_gateway_mode(body: TradingModeRequest):
+    """Switch between 'live' and 'paper' trading mode.
+
+    This will:
+    1. Stop the current active gateway container
+    2. Start the target gateway container
+    3. Update active_mode in system_settings
+    4. Broadcast the new mode via MQTT so agents hot-reload their connection
+    """
+    new_mode = body.mode
+    if new_mode not in ("live", "paper"):
+        raise HTTPException(status_code=400, detail="mode must be 'live' or 'paper'")
+
+    cfg = await get_gateway_config()
+    current_mode = cfg.get("active_mode", "live")
+
+    if current_mode == new_mode:
+        return {"status": "no_change", "active_mode": new_mode}
+
+    old_container = cfg.get(current_mode, {}).get("container_name")
+    new_container = cfg.get(new_mode, {}).get("container_name")
+    new_host = cfg.get(new_mode, {}).get("host", "10.20.0.23")
+    new_port = cfg.get(new_mode, {}).get("port", 4002)
+
+    logger.info(f"Switching trading mode: {current_mode} → {new_mode}")
+
+    # 1. Stop old gateway, start new gateway
+    if old_container:
+        try:
+            await docker_container_action(old_container, "stop")
+            logger.info(f"Stopped container: {old_container}")
+        except Exception as e:
+            logger.warning(f"Could not stop old gateway ({old_container}): {e}")
+
+    if new_container:
+        try:
+            await docker_container_action(new_container, "start")
+            logger.info(f"Started container: {new_container}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to start {new_container}: {e}")
+
+    # 2. Update active_mode in DB
+    cfg["active_mode"] = new_mode
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        await client.patch(
+            f"{GATEWAY_URL}/rest/v1/system_settings",
+            params={"key": "eq.ib_gateway_config"},
+            headers={**DB_HEADERS, "Content-Type": "application/json"},
+            json={"value": cfg}
+        )
+
+    # 3. Mark gateway as disconnected (will reconnect shortly)
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        await client.post(
+            f"{GATEWAY_URL}/rest/v1/system_settings",
+            headers={**DB_HEADERS, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"},
+            json={"key": "ib_gateway_status", "value": {"connected": False}}
+        )
+
+    # 4. Broadcast via MQTT so agents hot-reload their gateway connection
+    mqtt_client = get_mqtt_client()
+    if mqtt_client:
+        payload = json.dumps({"mode": new_mode, "host": new_host, "port": new_port})
+        mqtt_client.publish("system/config/trading_mode", payload, qos=1, retain=True)
+        logger.info(f"Published trading_mode change to MQTT: {payload}")
+
+    # 5. Telemetry message
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            await client.post("http://localhost:7734/api/send", json={
+                "from_agent": "system", "to": "all",
+                "text": f"🔄 Trading Mode gewechselt: {current_mode.upper()} → {new_mode.upper()}",
+                "msg_type": "telemetry"
+            })
+    except Exception:
+        pass
+
+    return {"status": "switched", "active_mode": new_mode, "container": new_container}
 
 # ─── LM Studio Settings ───────────────────────────────────────────────────────
 

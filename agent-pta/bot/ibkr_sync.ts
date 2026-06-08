@@ -2,6 +2,7 @@ import { IBApi, EventName, Order, Contract, OrderState, Execution, CommissionRep
 import { createClient } from "@supabase/supabase-js";
 import * as dotenv from "dotenv";
 import { resolve } from "path";
+import * as mqtt from "mqtt";
 
 dotenv.config({ path: resolve(__dirname, "../.env") });
 
@@ -57,14 +58,42 @@ function getConId(ib: IBApi, contract: Contract): Promise<number> {
 } // Just for any local .env testing if needed
 
 // --- Configuration ---
-const IB_HOST = process.env.IB_GATEWAY_HOST || "ib-gateway";
-const IB_PORT = parseInt(process.env.IB_GATEWAY_PORT || "4002", 10);
+const IB_HOST_DEFAULT = process.env.IB_GATEWAY_HOST || "ib-gateway";
+const IB_PORT_DEFAULT = parseInt(process.env.IB_GATEWAY_PORT || "4002", 10);
+const MQTT_BROKER = process.env.MQTT_BROKER_URL || "mqtt://nexus-broker:1883";
 
 // Use the Gateway URL for Supabase JS client since it appends /rest/v1 automatically
-const SUPABASE_URL = process.env.SUPABASE_URL || "http://gateway:80"; 
+const SUPABASE_URL = process.env.SUPABASE_URL || "http://gateway:80";
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY || "missing";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Active trading mode — set from DB at startup, updated via MQTT
+let activeTradingMode: "live" | "paper" = "live";
+
+// Fetch gateway config and active mode from DB
+async function loadGatewayConfig(): Promise<{ host: string; port: number; mode: "live" | "paper" }> {
+  try {
+    const { data, error } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "ib_gateway_config")
+      .single();
+    if (data && !error) {
+      const cfg = data.value as any;
+      const mode: "live" | "paper" = cfg.active_mode === "paper" ? "paper" : "live";
+      const gatewayInfo = cfg[mode] || {};
+      return {
+        host: gatewayInfo.host || IB_HOST_DEFAULT,
+        port: gatewayInfo.port || IB_PORT_DEFAULT,
+        mode,
+      };
+    }
+  } catch (e) {
+    console.warn("[IBKR Sync] Could not load gateway config from DB, using env defaults.");
+  }
+  return { host: IB_HOST_DEFAULT, port: IB_PORT_DEFAULT, mode: "live" };
+}
 
 async function updateGatewayStatus(connected: boolean) {
   try {
@@ -78,19 +107,24 @@ async function updateGatewayStatus(connected: boolean) {
       console.error("[IBKR Sync] Failed to update gateway status in DB:", error.message);
     } else {
       console.log(`[IBKR Sync] Updated gateway status in DB to connected: ${connected}`);
+      // Telemetry — non-blocking, fire and forget
+      const emoji  = connected ? "🟢" : "🟡";
+      const action = connected ? "eingeloggt" : "getrennt / wartet auf Login";
+      fetch("http://nexus-service:7734/api/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from_agent: "system",
+          to: "all",
+          text: `${emoji} IBKR-${activeTradingMode.toUpperCase()} ${action}`,
+          msg_type: "telemetry"
+        })
+      }).catch(() => {});
     }
   } catch (err) {
     console.error("[IBKR Sync] Exception during gateway status update:", err);
   }
 }
-
-console.log(`[IBKR Sync] Starting. IBKR: ${IB_HOST}:${IB_PORT}`);
-
-const ib = new IBApi({
-  host: IB_HOST,
-  port: IB_PORT,
-  clientId: 10001, // Unique client ID (10001) to prevent collisions with stock-data-node (1-9999)
-});
 
 // --- State ---
 let isConnected = false;
@@ -106,50 +140,87 @@ let pendingRefreshIds: number[] = [];
 let tickerIdCounter = 100000;
 const activeQuoteRequests: Map<number, { ticker: string, dbId: number }> = new Map();
 
+// ib and activeTradingMode initialized in async boot below
+let ib!: IBApi;
 
-// --- IBKR Connection Handlers ---
-ib.on(EventName.connected, () => {
-  console.log("[IBKR Sync] Connected to IB Gateway.");
-  isConnected = true;
-  updateGatewayStatus(true).catch(err => console.error("Error in connected status update:", err));
-  
-  // Set Market Data Type to 4 (Delayed-Frozen) 
-  // so we still get quotes even without paid live subscriptions and when market is closed.
-  ib.reqMarketDataType(4);
-  
-  // Request next valid ID to start placing orders
-  ib.reqIds(-1);
+// --- MQTT listener for hot-reload on trading mode switch ---
+const mqttClient = mqtt.connect(MQTT_BROKER, { clientId: `ibkr-sync-${Date.now()}`, clean: true });
+mqttClient.on("connect", () => {
+  mqttClient.subscribe("system/config/trading_mode", { qos: 1 });
+  console.log("[IBKR Sync] Subscribed to system/config/trading_mode");
 });
+mqttClient.on("message", async (topic: string, payload: Buffer) => {
+  if (topic !== "system/config/trading_mode") return;
+  try {
+    const data = JSON.parse(payload.toString());
+    const newMode: "live" | "paper" = data.mode === "paper" ? "paper" : "live";
+    const newHost: string = data.host || IB_HOST_DEFAULT;
+    const newPort: number = data.port || IB_PORT_DEFAULT;
 
-ib.on(EventName.disconnected, () => {
-  console.log("[IBKR Sync] Disconnected from IB Gateway. Reconnecting in 5s...");
-  isConnected = false;
-  updateGatewayStatus(false).catch(err => console.error("Error in disconnected status update:", err));
-  setTimeout(() => ib.connect(), 5000);
-});
+    if (newMode === activeTradingMode) return; // no change
 
-ib.on(EventName.error, async (err: Error, code: number, reqId: number) => {
-  console.error(`[IBKR Error] Code: ${code}, ReqId: ${reqId}, Msg: ${err.message}`);
-  
-  // If it's a market data error for a quote request, mark it as error so it doesn't hang
-  if (reqId >= 100000 && activeQuoteRequests.has(reqId) && code !== 2104 && code !== 2106) {
-      const req = activeQuoteRequests.get(reqId);
-      if (req) {
-         console.log(`[IBKR Sync] Marking quote request for ${req.ticker} as ERROR due to code ${code}`);
-         activeQuoteRequests.delete(reqId);
-         ib.cancelMktData(reqId);
-         await supabase.from("pta_execution_log").update({ notes: "ERROR", price: 0 }).eq("id", req.dbId);
-      }
+    console.log(`[IBKR Sync] Mode switch received: ${activeTradingMode} → ${newMode} (${newHost}:${newPort})`);
+    activeTradingMode = newMode;
+
+    // Disconnect current connection
+    await updateGatewayStatus(false);
+    try { ib.disconnect(); } catch (_) {}
+
+    // Reconnect to new gateway
+    ib = new IBApi({ host: newHost, port: newPort, clientId: 10001 });
+    attachIBHandlers();
+    ib.connect();
+  } catch (e) {
+    console.error("[IBKR Sync] Error handling mode switch:", e);
   }
 });
 
-ib.on(EventName.nextValidId, (orderId: number) => {
-  orderIdCounter = orderId;
-  console.log(`[IBKR Sync] Next Valid Order ID: ${orderIdCounter}`);
-});
 
-// --- Position Handling (Live Portfolio Rich Snapshot) ---
-ib.on(EventName.updatePortfolio, (contract: Contract, position: number, marketPrice: number, marketValue: number, averageCost?: number, unrealizedPNL?: number, realizedPNL?: number, accountName?: string) => {
+// --- IBKR Connection Handlers (attached at startup and after hot-reload) ---
+function attachIBHandlers() {
+  ib.on(EventName.connected, () => {
+    console.log(`[IBKR Sync] Connected to IB Gateway (${activeTradingMode}).`);
+    isConnected = true;
+    updateGatewayStatus(true).catch(err => console.error("Error in connected status update:", err));
+
+    // Set Market Data Type to 4 (Delayed-Frozen)
+    // so we still get quotes even without paid live subscriptions and when market is closed.
+    ib.reqMarketDataType(4);
+
+    // Request next valid ID to start placing orders
+    ib.reqIds(-1);
+  });
+
+  ib.on(EventName.disconnected, () => {
+    console.log("[IBKR Sync] Disconnected from IB Gateway. Reconnecting in 5s...");
+    isConnected = false;
+    updateGatewayStatus(false).catch(err => console.error("Error in disconnected status update:", err));
+    setTimeout(() => ib.connect(), 5000);
+  });
+
+  ib.on(EventName.error, async (err: Error, code: number, reqId: number) => {
+    console.error(`[IBKR Error] Code: ${code}, ReqId: ${reqId}, Msg: ${err.message}`);
+
+    // If it's a market data error for a quote request, mark it as error so it doesn't hang
+    if (reqId >= 100000 && activeQuoteRequests.has(reqId) && code !== 2104 && code !== 2106) {
+        const req = activeQuoteRequests.get(reqId);
+        if (req) {
+          console.log(`[IBKR Sync] Marking quote request for ${req.ticker} as ERROR due to code ${code}`);
+          activeQuoteRequests.delete(reqId);
+          ib.cancelMktData(reqId);
+          await supabase.from("pta_execution_log").update({ notes: "ERROR", price: 0 }).eq("id", req.dbId);
+        }
+    }
+  });
+
+  ib.on(EventName.nextValidId, (orderId: number) => {
+    orderIdCounter = orderId;
+    console.log(`[IBKR Sync] Next Valid Order ID: ${orderIdCounter}`);
+  });
+  // end of connection handlers
+
+  // --- Position Handling (Live Portfolio Rich Snapshot) ---
+  ib.on(EventName.updatePortfolio, (contract: Contract, position: number, marketPrice: number, marketValue: number, averageCost?: number, unrealizedPNL?: number, realizedPNL?: number, accountName?: string) => {
   if (!isSyncingPositions) return;
   if (!contract.symbol || position === 0) return;
   
@@ -206,8 +277,8 @@ ib.on(EventName.accountDownloadEnd, async (accountName: string) => {
   console.log(`[IBKR Sync] Finished processing live positions. Saving rich snapshot of ${activePositionsTemp.length} positions...`);
 
   try {
-    // 1. Delete all old records in pta_ibkr_positions
-    await supabase.from("pta_ibkr_positions").delete().neq("account", "LTM_DUMMY"); // clears all rows
+    // 1. Delete all old records for the current mode only (live stays, paper stays separate)
+    await supabase.from("pta_ibkr_positions").delete().eq("mode", activeTradingMode);
 
     // Fetch exchange rates to correctly calculate position percentages
     let rates: Record<string, number> = { "EUR": 1.0 };
@@ -287,6 +358,7 @@ ib.on(EventName.accountDownloadEnd, async (accountName: string) => {
           position_pct: positionPct,
           portfolio_heat_eur: portfolioHeatEur,
           core_risk_eur: coreRiskEur,
+          mode: activeTradingMode,
           updated_at: new Date().toISOString()
         };
       });
@@ -299,6 +371,7 @@ ib.on(EventName.accountDownloadEnd, async (accountName: string) => {
     // 3. Upsert account metrics
     for (const [account, metrics] of Object.entries(activeAccountMetrics)) {
       const cashQuote = metrics.netLiquidation > 0 ? (metrics.totalCashBalance / metrics.netLiquidation) * 100 : 0;
+      // Upsert keyed by account+mode so live and paper summaries coexist
       const { error: accErr } = await supabase.from("pta_ibkr_account_summary").upsert({
         account: account,
         total_cash_balance: metrics.totalCashBalance,
@@ -307,8 +380,9 @@ ib.on(EventName.accountDownloadEnd, async (accountName: string) => {
         cash_quote: cashQuote,
         portfolio_heat_eur: totalHeat,
         core_risk_eur: totalCoreRisk,
+        mode: activeTradingMode,
         updated_at: new Date().toISOString()
-      }, { onConflict: "account" });
+      }, { onConflict: "account,mode" });
       if (accErr) {
         console.error(`[IBKR Sync] Error upserting account summary for ${account}:`, accErr.message);
       }
@@ -348,8 +422,8 @@ ib.on(EventName.openOrderEnd, async () => {
   console.log(`[IBKR Sync] Finished processing live open orders. Saving snapshot of ${activeOpenOrdersTemp.length} orders...`);
   
   try {
-    // Delete all old records in pta_ibkr_open_orders
-    await supabase.from("pta_ibkr_open_orders").delete().neq("account", "LTM_DUMMY");
+    // Delete only open orders for the current mode
+    await supabase.from("pta_ibkr_open_orders").delete().eq("mode", activeTradingMode);
     
     if (activeOpenOrdersTemp.length > 0) {
       const inserts = activeOpenOrdersTemp.map(o => ({
@@ -363,6 +437,7 @@ ib.on(EventName.openOrderEnd, async () => {
         limit_price: o.limitPrice,
         stop_price: o.stopPrice,
         status: o.status,
+        mode: activeTradingMode,
         updated_at: new Date().toISOString()
       }));
       const { error } = await supabase.from("pta_ibkr_open_orders").insert(inserts);
@@ -506,7 +581,8 @@ async function checkSyncComplete() {
         if (error) console.error("[IBKR Sync] Error updating refresh requests:", error);
         pendingRefreshIds = [];
     }
-}
+  }
+} // end attachIBHandlers
 
 // --- Main Sync Loop ---
 async function syncLoop() {
@@ -933,19 +1009,37 @@ async function syncLoop() {
   }
 }
 
-// Start
-updateGatewayStatus(false).then(() => {
-  ib.connect();
-}).catch(err => {
-  console.error("Initial status update failed:", err);
-  ib.connect();
-});
-setInterval(syncLoop, 2000); // Check DB every 2 seconds
+// Start — async boot to load gateway config before connecting
+async function boot() {
+  const initialConfig = await loadGatewayConfig().catch(() => ({
+    host: IB_HOST_DEFAULT, port: IB_PORT_DEFAULT, mode: "live" as const
+  }));
+  activeTradingMode = initialConfig.mode;
+  console.log(`[IBKR Sync] Starting. Mode: ${activeTradingMode} | IBKR: ${initialConfig.host}:${initialConfig.port}`);
 
-// Request executions of today to catch up on startup
-setTimeout(() => {
+  ib = new IBApi({
+    host: initialConfig.host,
+    port: initialConfig.port,
+    clientId: 10001,
+  });
+  attachIBHandlers();
+
+  await updateGatewayStatus(false).catch(err => {
+    console.error("Initial status update failed:", err);
+  });
+  ib.connect();
+  setInterval(syncLoop, 2000); // Check DB every 2 seconds
+
+  // Request executions of today to catch up on startup
+  setTimeout(() => {
     if (isConnected) {
-        console.log("[IBKR Sync] Requesting historical executions for today to catch up...");
-        ib.reqExecutions(1, { clientId: "10001" }); 
+      console.log("[IBKR Sync] Requesting historical executions for today to catch up...");
+      ib.reqExecutions(1, { clientId: "10001" });
     }
-}, 3000);
+  }, 3000);
+}
+
+boot().catch(err => {
+  console.error("[IBKR Sync] Fatal boot error:", err);
+  process.exit(1);
+});

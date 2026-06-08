@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Pacifico&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=8" />
+  <link rel="stylesheet" href="style.css?v=9" />
   <!-- marked.js for Markdown rendering -->
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 </head>
@@ -101,8 +101,8 @@
             <span class="slider round"></span>
           </label>
           <span class="autoscroll-label" title="Auto-Scroll">Auto-Scroll</span>
-          <span id="ib-indicator" class="indicator offline" title="IB Broker Gateway: Disconnected">● IBKR</span>
-          <button id="ib-toggle-btn" class="icon-btn" title="Start/Stop IB Gateway" style="margin-left: 8px;">⏻</button>
+          <span id="ib-live-btn"  class="ib-mode-btn" title="IBKR Live Gateway">IBKR-Live</span>
+          <span id="ib-paper-btn" class="ib-mode-btn" title="IBKR Paper Gateway">IBKR-Paper</span>
           <span id="conn-indicator" class="indicator offline" title="Live Connection">●</span>
         </div>
       </header>
@@ -112,7 +112,7 @@
 
   </div>
 
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
   <script>
     // Auto-collapse filters on mobile
     if (window.innerWidth <= 768) {

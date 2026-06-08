@@ -525,62 +525,82 @@ async function loadAgents() {
 
 // ── IB Gateway Status ─────────────────────────────────────────
 async function fetchIBGatewayStatus() {
-  const $ibIndicator = document.getElementById("ib-indicator");
-  const $ibToggleBtn = document.getElementById("ib-toggle-btn");
-  if (!$ibIndicator) return;
+  const $live  = document.getElementById("ib-live-btn");
+  const $paper = document.getElementById("ib-paper-btn");
+  if (!$live || !$paper) return;
   try {
-    const r = await fetch(`${API}/api/settings/ib_gateway_status`);
+    const r    = await fetch(`${API}/api/settings/ib_gateway_status`);
     const data = await r.json();
-    
-    if (data.connected) {
-      $ibIndicator.className = "indicator online";
-      $ibIndicator.title = "IB Broker Gateway: Connected";
-    } else {
-      $ibIndicator.className = "indicator offline";
-      $ibIndicator.title = "IB Broker Gateway: Disconnected";
-    }
-
-    if ($ibToggleBtn) {
-      if ($ibToggleBtn.textContent !== "⏳") {
-        if (data.docker_running) {
-          $ibToggleBtn.style.color = "var(--online)";
-          $ibToggleBtn.style.textShadow = "0 0 5px var(--online)";
-          $ibToggleBtn.dataset.state = "running";
-        } else {
-          $ibToggleBtn.style.color = "var(--offline)";
-          $ibToggleBtn.style.textShadow = "none";
-          $ibToggleBtn.dataset.state = "stopped";
-        }
-      }
-    }
+    // data = { active_mode, live: {docker_running, connected}, paper: {docker_running, connected} }
+    applyModeBtnState("live",  data.live  || {}, data.active_mode === "live");
+    applyModeBtnState("paper", data.paper || {}, data.active_mode === "paper");
   } catch (e) {
     console.error("Failed to fetch IB Gateway status:", e);
-    $ibIndicator.className = "indicator offline";
-    $ibIndicator.title = "IB Broker Gateway: Disconnected";
+    [$live, $paper].forEach(el => {
+      el.style.color = "var(--offline)";
+      el.style.boxShadow = "none";
+      el.dataset.state = "red";
+    });
   }
 }
 
-const $ibToggleBtn = document.getElementById("ib-toggle-btn");
-if ($ibToggleBtn) {
-  $ibToggleBtn.addEventListener("click", async () => {
-    const isRunning = $ibToggleBtn.dataset.state === "running";
-    const action = isRunning ? "stop" : "start";
-    
-    $ibToggleBtn.textContent = "⏳";
-    $ibToggleBtn.style.color = "var(--text-dim)";
-    $ibToggleBtn.style.textShadow = "none";
-    
+function applyModeBtnState(mode, status, isActive) {
+  const btn = document.getElementById(`ib-${mode}-btn`);
+  if (!btn) return;
+  let color, shadow, state;
+  if (!status.docker_running) {
+    color  = "#ef4444"; shadow = "0 0 8px rgba(239,68,68,0.5)";  state = "red";    // 🔴 gestoppt
+  } else if (!status.connected) {
+    color  = "#f59e0b"; shadow = "0 0 8px rgba(245,158,11,0.5)"; state = "yellow"; // 🟡 läuft, kein Login
+  } else {
+    color  = "#22c55e"; shadow = "0 0 8px rgba(34,197,94,0.5)";  state = "green";  // 🟢 verbunden
+  }
+  btn.style.color       = color;
+  btn.style.textShadow  = shadow;
+  btn.style.borderColor = color;
+  btn.style.opacity     = isActive ? "1" : "0.55";
+  btn.style.fontWeight  = isActive ? "800" : "600";
+  btn.style.textDecoration = isActive ? "underline" : "none";
+  btn.dataset.state = state;
+  // Tooltip
+  const labels = { red: "gestoppt", yellow: "läuft – warte auf Login", green: "verbunden" };
+  const modeLabel = mode.charAt(0).toUpperCase() + mode.slice(1);
+  btn.title = `IBKR-${modeLabel}: ${labels[state]}${isActive ? " (aktiv)" : " – klicken zum Aktivieren"}`;
+}
+
+// ── IBKR Mode Button Click Handlers ──────────────────────────
+["live", "paper"].forEach(mode => {
+  const btn = document.getElementById(`ib-${mode}-btn`);
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const state = btn.dataset.state; // "red" | "yellow" | "green"
+    btn.style.opacity = "0.4";
+
     try {
-      await fetch(`${API}/api/settings/ib_gateway/${action}`, { method: "POST" });
-      setTimeout(fetchIBGatewayStatus, 1500);
+      if (state === "green") {
+        // 🟢 → Container stoppen
+        await fetch(`${API}/api/settings/ib_gateway/stop_container`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode })
+        });
+      } else {
+        // 🔴 / 🟡 → zu diesem Mode wechseln (startet Container automatisch falls nötig)
+        await fetch(`${API}/api/settings/ib_gateway_mode`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode })
+        });
+      }
     } catch (e) {
-      console.error(`Failed to ${action} IB Gateway:`, e);
+      console.error(`IBKR ${mode} button error:`, e);
     } finally {
-      $ibToggleBtn.textContent = "⏻";
-      fetchIBGatewayStatus();
+      btn.style.opacity = "";
+      setTimeout(fetchIBGatewayStatus, 800);
     }
   });
-}
+});
+
 
 // ── Boot ──────────────────────────────────────────────────────
 (async () => {

@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { supabase } from "./shared.ts";
+import { supabase, getActiveTradingMode } from "./shared.ts";
 
 export function registerPtaTools(server: McpServer) {
   // Tool: Place Trade (Execution Logger)
@@ -113,6 +113,7 @@ export function registerPtaTools(server: McpServer) {
             p_notes = JSON.stringify(comboParams);
         }
 
+        const activeMode = await getActiveTradingMode();
         const { data, error } = await supabase.rpc("pta_log_event", {
           p_trade_id: params.trade_id,
           p_ticker: params.ticker,
@@ -126,7 +127,8 @@ export function registerPtaTools(server: McpServer) {
           p_currency: params.currency || "USD",
           p_exchange: params.exchange || (params.asset_type !== "STK" ? "SMART" : null),
           p_notes: p_notes,
-          p_take_profit: params.take_profit || null
+          p_take_profit: params.take_profit || null,
+          p_mode: activeMode
         });
 
         if (error) throw error;
@@ -207,6 +209,8 @@ export function registerPtaTools(server: McpServer) {
     },
     async ({ ticker }: any) => {
       try {
+        const activeMode = await getActiveTradingMode();
+
         // 1. Trigger live position refresh from IBKR by logging a REFRESH_REQUESTED event
         const { data: refreshData, error: insertErr } = await supabase.from("pta_execution_log").insert({
           trade_id: "SYSTEM",
@@ -238,31 +242,35 @@ export function registerPtaTools(server: McpServer) {
         // Clean up the event
         await supabase.from("pta_execution_log").delete().eq("id", refreshId);
 
-        // 3. Fetch local active positions
-        let activeQuery = supabase.from("pta_active_positions").select("*");
+        // 3. Fetch local active positions (filtered by active mode — critical for paper/live isolation)
+        let activeQuery = supabase.from("pta_active_positions").select("*").eq("mode", activeMode);
         if (ticker) activeQuery = activeQuery.eq("ticker", ticker.toUpperCase());
         const { data: activeData, error: activeErr } = await activeQuery;
         if (activeErr) throw activeErr;
 
-        // 4. Fetch live broker positions
-        let liveQuery = supabase.from("pta_ibkr_positions").select("*");
+        // 4. Fetch live broker positions (filtered by active mode)
+        let liveQuery = supabase.from("pta_ibkr_positions").select("*").eq("mode", activeMode);
         if (ticker) liveQuery = liveQuery.eq("ticker", ticker.toUpperCase());
         const { data: liveData, error: liveErr } = await liveQuery;
         if (liveErr) throw liveErr;
-        // 5. Fetch account summary
-        const { data: accData, error: accErr } = await supabase.from("pta_ibkr_account_summary").select("*").limit(1).maybeSingle();
+
+        // 5. Fetch account summary (filtered by active mode)
+        const { data: accData, error: accErr } = await supabase
+          .from("pta_ibkr_account_summary").select("*")
+          .eq("mode", activeMode).limit(1).maybeSingle();
         if (accErr) throw accErr;
 
-        // 6. Fetch live open orders
-        let ordersQuery = supabase.from("pta_ibkr_open_orders").select("*");
+        // 6. Fetch live open orders (filtered by active mode)
+        let ordersQuery = supabase.from("pta_ibkr_open_orders").select("*").eq("mode", activeMode);
         if (ticker) ordersQuery = ordersQuery.eq("ticker", ticker.toUpperCase());
         const { data: ordersData, error: ordersErr } = await ordersQuery;
         if (ordersErr) throw ordersErr;
 
-        // 6.5 Fetch unconfirmed local orders
+        // 6.5 Fetch unconfirmed local orders (filtered by active mode)
         let unconfirmedQuery = supabase.from("pta_execution_log")
           .select("*")
           .is("broker_order_id", null)
+          .eq("mode", activeMode)
           .in("event_type", ["ORDER_SUBMITTED", "CANCEL_REQUESTED"]);
         if (ticker) unconfirmedQuery = unconfirmedQuery.eq("ticker", ticker.toUpperCase());
         const { data: unconfirmedData, error: unconfirmedErr } = await unconfirmedQuery;
@@ -312,15 +320,17 @@ export function registerPtaTools(server: McpServer) {
             return ((now - openTime) / (1000 * 3600 * 24)).toFixed(1);
         };
 
-        let responseText = "";
+        let responseText = `=== TRADING MODE: ${activeMode.toUpperCase()} ===\n\n`;
 
         // Format account summary
         if (accData && !ticker) {
-          responseText += "=== LIVE IBKR ACCOUNT SUMMARY (Base: EUR) ===\n";
+          responseText += `=== ${activeMode.toUpperCase()} IBKR ACCOUNT SUMMARY (Base: EUR) ===\n`;
           responseText += `- Total Cash Balance: ${accData.total_cash_balance.toFixed(2)} EUR\n`;
           responseText += `- Net Liquidation Value: ${accData.net_liquidation.toFixed(2)} EUR\n`;
           responseText += `- Available Funds: ${accData.available_funds.toFixed(2)} EUR\n`;
           responseText += `- Cash Quote: ${accData.cash_quote?.toFixed(2) || '0.00'}%\n\n`;
+        } else if (!ticker) {
+          responseText += `No account summary available for ${activeMode} mode yet.\n\n`;
         }
 
         // Group open orders by ticker
@@ -414,25 +424,30 @@ export function registerPtaTools(server: McpServer) {
     },
     async ({ trade_id, limit, start_date, end_date, min_trade_index, max_trade_index }: any) => {
       try {
+        const activeMode = await getActiveTradingMode();
+
         if (trade_id) {
+          // Specific trade: fetch all events for this trade_id, filtered by mode
           const { data, error } = await supabase
             .from("pta_execution_log")
             .select("*")
             .eq("trade_id", trade_id)
+            .eq("mode", activeMode)
             .order("created_at", { ascending: true });
 
           if (error) throw error;
           if (!data || data.length === 0) {
-            return { content: [{ type: "text", text: `No history found for Trade-ID: ${trade_id}` }] };
+            return { content: [{ type: "text", text: `No history found for Trade-ID: ${trade_id} in ${activeMode} mode.` }] };
           }
 
           const history = data.map((e: any) => 
             `${new Date(e.created_at).toLocaleString()} | ${e.event_type} | ${e.action} | Qty: ${e.quantity} | Price: ${e.price || '-'} | OID: ${e.broker_order_id || '-'}`
           ).join("\n");
 
-          return { content: [{ type: "text", text: `History for ${trade_id}:\n\n${history}` }] };
+          return { content: [{ type: "text", text: `[${activeMode.toUpperCase()} MODE] History for ${trade_id}:\n\n${history}` }] };
         } else {
-          let query = supabase.from("pta_trade_history").select("*");
+          // Closed trades list, filtered by mode
+          let query = supabase.from("pta_trade_history").select("*").eq("mode", activeMode);
 
           if (start_date) query = query.gte("close_time", start_date);
           if (end_date) query = query.lte("close_time", end_date + "T23:59:59Z");
@@ -445,7 +460,7 @@ export function registerPtaTools(server: McpServer) {
 
           if (error) throw error;
           if (!data || data.length === 0) {
-            return { content: [{ type: "text", text: `No closed trades found in history.` }] };
+            return { content: [{ type: "text", text: `No closed trades found in ${activeMode} mode history.` }] };
           }
 
           const history = data.map((t: any) => {
@@ -453,7 +468,7 @@ export function registerPtaTools(server: McpServer) {
             return `#${t.trade_index} | [${t.trade_id}] ${new Date(t.close_time).toLocaleDateString()} | ${t.ticker} | ${t.is_winner ? 'WIN' : 'LOSS'} | PnL: ${t.net_pnl} | Winrate: ${parseFloat(t.running_winrate).toFixed(1)}%${daysOutStr}`;
           }).join("\n");
 
-          return { content: [{ type: "text", text: `Recent ${data.length} Closed Trades:\n\n${history}` }] };
+          return { content: [{ type: "text", text: `[${activeMode.toUpperCase()} MODE] Recent ${data.length} Closed Trades:\n\n${history}` }] };
         }
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error fetching history: ${err.message}` }], isError: true };
@@ -476,10 +491,13 @@ export function registerPtaTools(server: McpServer) {
     },
     async ({ start_date, end_date, days }: any) => {
       try {
+        const activeMode = await getActiveTradingMode();
+
         let query = supabase
           .from("pta_trade_performance")
           .select("*")
-          .eq("is_closed", true);
+          .eq("is_closed", true)
+          .eq("mode", activeMode);   // mode filter
 
         if (days) {
           const pastDate = new Date();

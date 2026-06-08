@@ -308,8 +308,29 @@ input:checked + .slider:before { transform: translateX(14px); background-color: 
   opacity: 0.7;
   text-shadow: 0 0 5px var(--offline);
 }
-#ib-indicator {
-  margin-right: 15px;
+
+/* ── IBKR Mode Buttons ─────────────────────────────────────── */
+.ib-mode-btn {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+}
+.ib-mode-btn:hover {
+  filter: brightness(1.35);
+  transform: scale(1.05);
+}
+.ib-mode-btn:active {
+  transform: scale(0.97);
+  filter: brightness(0.85);
 }
 
 #messages {
