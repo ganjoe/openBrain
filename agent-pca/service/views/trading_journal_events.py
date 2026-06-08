@@ -18,23 +18,25 @@ def get_chart_data_events(symbol: str, timeframe: str, limit: int) -> dict:
     columns = ["timestamp", "open", "high", "low", "close", "volume"]
     
     try:
-        r = httpx.get(f"{postgrest_url}/pta_trade_history?order=close_time.asc")
+        # Fetch execution logs
+        r = httpx.get(f"{postgrest_url}/pta_execution_log?event_type=in.(FILL,CASH_TRANSFER)&order=created_at.asc&limit=50000")
         r.raise_for_status()
-        trades = r.json()
+        exec_logs = r.json()
         
-        # We also need exec logs to calculate NAV correctly at the exact trade time
-        r_exec = httpx.get(f"{postgrest_url}/pta_execution_log?event_type=in.(FILL,CASH_TRANSFER)&order=created_at.asc")
-        r_exec.raise_for_status()
-        exec_logs = r_exec.json()
+        # Fetch trade history for the events
+        r_trades = httpx.get(f"{postgrest_url}/pta_trade_history?order=close_time.asc&limit=50000")
+        r_trades.raise_for_status()
+        trades = r_trades.json()
         
-        r_rates = httpx.get(f"{postgrest_url}/exchange_rates?base_currency=eq.EUR&order=date.asc")
+        # Fetch FX rates
+        r_rates = httpx.get(f"{postgrest_url}/exchange_rates?base_currency=eq.EUR&order=date.asc&limit=50000")
         r_rates.raise_for_status()
         rates_data = r_rates.json()
     except Exception as e:
         logger.exception("Failed to fetch data from DB: %s", e)
         raise HTTPException(status_code=500, detail="Failed to fetch stats data")
 
-    if not trades or not exec_logs:
+    if not exec_logs or not trades:
         return {"symbol": symbol, "timeframe": timeframe, "count": 0, "columns": columns, "data": []}
 
     # Prepare FX rates
@@ -52,7 +54,7 @@ def get_chart_data_events(symbol: str, timeframe: str, limit: int) -> dict:
         if all_dates: return fx[curr][all_dates[0]]
         return 1.0
 
-    # Load Prices (for NAV)
+    # Load Prices
     ticker_currency = {}
     for ev in exec_logs:
         if ev.get("ticker") and ev.get("currency"):
@@ -84,7 +86,9 @@ def get_chart_data_events(symbol: str, timeframe: str, limit: int) -> dict:
         if dates: return prices[t][dates[-1]]
         return 0.0
 
-    # State
+    # Build Events
+    valid_trades = [t for t in trades if t.get("close_time")]
+    
     current_cash = 0.0
     positions = defaultdict(float)
     
@@ -92,22 +96,14 @@ def get_chart_data_events(symbol: str, timeframe: str, limit: int) -> dict:
     log_idx = 0
     num_logs = len(exec_logs)
     
-    # Iterate through trades as our master timeline
-    for trade in trades:
-        if not trade.get("close_time"):
-            continue
-            
-        # Parse trade close time
-        trade_dt = datetime.datetime.fromisoformat(trade["close_time"].replace("Z", "+00:00"))
-        trade_dt_str = trade_dt.strftime("%Y-%m-%d")
+    for t in valid_trades:
+        close_dt = datetime.datetime.fromisoformat(t["close_time"].replace("Z", "+00:00"))
         
-        # Advance the execution log state machine up to this trade's close time
+        # Advance execution logs up to this close_time
         while log_idx < num_logs:
             ev = exec_logs[log_idx]
             ev_dt = datetime.datetime.fromisoformat(ev["created_at"].replace("Z", "+00:00"))
-            
-            # We process execution logs up to (and including) the trade time
-            if ev_dt > trade_dt:
+            if ev_dt > close_dt:
                 break
                 
             action = ev.get("action")
@@ -118,6 +114,7 @@ def get_chart_data_events(symbol: str, timeframe: str, limit: int) -> dict:
             currency = ev.get("currency")
             
             rate = get_fx(currency, ev_dt.strftime("%Y-%m-%d"))
+            if rate == 0: rate = 1.0
             val_eur = (qty * price) / rate
             comm_eur = comm / rate
             
@@ -133,24 +130,23 @@ def get_chart_data_events(symbol: str, timeframe: str, limit: int) -> dict:
                 elif action == "SELL":
                     current_cash += (val_eur - comm_eur)
                     positions[ticker] -= qty
-                
+                    
                 if positions[ticker] <= 0.0001:
                     del positions[ticker]
                     
             log_idx += 1
             
-        # Now the state machine is perfectly aligned with the moment right after the trade.
-        # Calculate NAV and Assets Value
+        # Calculate snapshot at this event
+        curr_date_str = close_dt.strftime("%Y-%m-%d")
         asset_value = 0.0
-        for t, q in positions.items():
-            px = get_price(t, trade_dt_str)
-            r = get_fx(ticker_currency.get(t, "EUR"), trade_dt_str)
+        for pos_t, q in positions.items():
+            px = get_price(pos_t, curr_date_str)
+            r = get_fx(ticker_currency.get(pos_t, "EUR"), curr_date_str)
+            if r == 0: r = 1.0
             asset_value += (q * px) / r
             
         nav = current_cash + asset_value
         cash_quote = (current_cash / nav * 100.0) if nav > 0 else 0.0
-        
-        pnl = float(trade.get("pnl_net", 0.0))
         
         if symbol == "$STATS.NAV":
             val = nav
@@ -159,11 +155,11 @@ def get_chart_data_events(symbol: str, timeframe: str, limit: int) -> dict:
         elif symbol == "$STATS.CASH_QUOTE":
             val = cash_quote
         elif symbol == "$STATS.PNL":
-            val = pnl
+            val = float(t.get("pnl_net", 0.0))
         else:
             val = 0.0
-
-        ts_sec = int(trade_dt.timestamp())
+            
+        ts_sec = int(close_dt.timestamp())
         data.append([ts_sec, val, val, val, val, 0])
 
     if limit > 0:

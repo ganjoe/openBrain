@@ -1,0 +1,1198 @@
+﻿Statement,Header,Feldname,Feldwert
+Statement,Data,Title,Umsatzübersicht
+Statement,Data,Period,"Januar 1, 2026 - Juni 4, 2026"
+Statement,Data,WhenGenerated,"2026-06-05, 09:11:54 EDT"
+Kontoinformation,Header,Feldname,Feldwert
+Kontoinformation,Data,Name,daniel meier
+Kontoinformation,Data,Account,U16537315
+Kontoinformation,Data,Master-Name,CapTrader GmbH
+Kontoinformation,Data,Kontotyp,Brokerkunde
+Kontoinformation,Data,Kundentyp,Einzelkonto
+Kontoinformation,Data,Kontoberechtigungen,Margin
+Kontoinformation,Data,Basiswährung,EUR
+Nettovermögenswert,Header,Assetklasse,Vorheriger Gesamtwert,Aktuell Long,Aktuell Short,Aktueller Gesamtwert,Veränderung
+Nettovermögenswert,Data,Barmittel,5611.841883831,8859.946994236,-704.37369545,8155.573298786,2543.731414955
+Nettovermögenswert,Data,Aktien,6772.3718365,6668.372033,-357.086688,6311.285345,-461.0864915
+Nettovermögenswert,Data,Aufgelaufene Zinsen,0,0.2920035,-0.23048075,0.06152275,0.06152275
+Nettovermögenswert,Data,Aufgelaufene Dividenden,6.317017,0.5512192,0,0.5512192,-5.7657978
+Nettovermögenswert,Data,Gesamt,12390.530737331,15529.162249936,-1061.6908642,14467.471385736,2076.940648405
+Nettovermögenswert,Header,Zeitgewichtete Rendite
+Nettovermögenswert,Data,16.762321909%
+Veränderung des NAV,Header,Feldname,Feldwert
+Veränderung des NAV,Data,Anfangswert,12390.530737331
+Veränderung des NAV,Data,Mark-to-Market,2388.04437203
+Veränderung des NAV,Data,Dividenden,9.1187384
+Veränderung des NAV,Data,Quellensteuer,-1.3673644
+Veränderung des NAV,Data,Veränderung im Dividendenanfall,-5.7828098
+Veränderung des NAV,Data,Zinsen,4.31304926
+Veränderung des NAV,Data,Veränderung der auflaufenden Zinsen,0.01615148
+Veränderung des NAV,Data,Sonstige Gebühren,-0.71
+Veränderung des NAV,Data,Provisionen,-316.75387183
+Veränderung des NAV,Data,Andere FX-Umrechnungen,0.06238327
+Veränderung des NAV,Data,Endwert,14467.471385736
+Mark-to-Market-Performance-Überblick,Header,Vermögenswertkategorie,Symbol,Vorher Menge,Aktuell Menge,Vorher Kurs,Aktuell Kurs,Mark-to-Market P/L Position,Mark-to-Market P/L Transaktion,Mark-to-Market P/L Provisionen,Mark-to-Market P/L Sonstige,Mark-to-Market P/L Gesamt,Code
+Mark-to-Market-Performance-Überblick,Data,Aktien,4GLD,10,0,120.3700,--,-138.6,-8.299,-10,0,-156.899,
+Mark-to-Market-Performance-Überblick,Data,Aktien,AAOI,0,0,--,--,74.6604513,-15.17466025,-8.57162,0,50.91417105,
+Mark-to-Market-Performance-Überblick,Data,Aktien,AEHR,0,0,--,--,62.5369588,-5.3909888,-3.43858,0,53.70739,
+Mark-to-Market-Performance-Überblick,Data,Aktien,AMPX,0,0,--,--,21.94698,2.047684,-3.40834,0,20.586324,
+Mark-to-Market-Performance-Überblick,Data,Aktien,ARM,0,2,--,393.4400,338.0525376,2.6824078,-1.70854,0,339.0264054,
+Mark-to-Market-Performance-Überblick,Data,Aktien,ARW,0,0,--,--,-17.6320784,-3.8493204,-3.40748,0,-24.8888788,
+Mark-to-Market-Performance-Überblick,Data,Aktien,ASTS,5,0,72.6300,--,110.1240485,-15.9862205,-1.71434,0,92.423488,
+Mark-to-Market-Performance-Überblick,Data,Aktien,AVAV,0,0,--,--,-74.1122063,6.9775377,-3.39032,0,-70.5249886,
+Mark-to-Market-Performance-Überblick,Data,Aktien,AXTI,0,0,--,--,36.6309645,-16.45008509,-3.45588,0,16.72499941,
+Mark-to-Market-Performance-Überblick,Data,Aktien,BA,0,0,--,--,-10.5481048,3.5909214,-3.39032,0,-10.3475034,
+Mark-to-Market-Performance-Überblick,Data,Aktien,BEPC,10,0,38.3400,--,3.380016,-0.942887,-1.71434,0,0.722789,
+Mark-to-Market-Performance-Überblick,Data,Aktien,BMNR,10,0,27.1500,--,38.452103,-6.65080983,-5.14276,0,26.65853317,
+Mark-to-Market-Performance-Überblick,Data,Aktien,BMY,0,0,--,--,41.183199,4.707068,-3.39382,0,42.496447,
+Mark-to-Market-Performance-Überblick,Data,Aktien,COHR,0,0,--,--,76.2989242,-10.49731422,-3.43116,0,62.37044998,
+Mark-to-Market-Performance-Überblick,Data,Aktien,CRCL,0,0,--,--,-7.681514,-0.4819269,-3.44586,0,-11.6093009,
+Mark-to-Market-Performance-Überblick,Data,Aktien,CRM,0,2,--,188.7500,15.8278124,-0.4890258,-1.71588,0,13.6229066,
+Mark-to-Market-Performance-Überblick,Data,Aktien,CRWD,0,0,--,--,0.2213422,11.36121574,-3.43774,0,8.14481794,
+Mark-to-Market-Performance-Überblick,Data,Aktien,CSIQ,0,0,--,--,0,-5.561319,-3.44888,0,-9.010199,
+Mark-to-Market-Performance-Überblick,Data,Aktien,CTKB,50,0,5.0500,--,-24.72188,-2.8953435,-1.67846,0,-29.2956835,
+Mark-to-Market-Performance-Überblick,Data,Aktien,EOSE,0,0,--,--,-211.4021325,-53.46625619,-15.42632,0,-280.29470869,
+Mark-to-Market-Performance-Überblick,Data,Aktien,FCX,0,0,--,--,15.975839,-0.9463125,-3.39038,0,11.6391465,
+Mark-to-Market-Performance-Überblick,Data,Aktien,FLNC,12,0,19.7800,--,36.0478042,-11.459379,-5.1374,0,19.4510252,
+Mark-to-Market-Performance-Überblick,Data,Aktien,FLS,0,0,--,--,1.0648376,-5.7364372,-3.43526,0,-8.1068596,
+Mark-to-Market-Performance-Überblick,Data,Aktien,HBM,0,0,--,--,-8.7438,2.3372209,-3.36322,0,-9.7697991,
+Mark-to-Market-Performance-Überblick,Data,Aktien,HIMS,0,0,--,--,-56.4732135,10.00434975,-3.45588,0,-49.92474375,
+Mark-to-Market-Performance-Überblick,Data,Aktien,HON,0,0,--,--,-19.0900378,11.01054869,-3.42474,0,-11.50422911,
+Mark-to-Market-Performance-Überblick,Data,Aktien,HPS.A,0,2,--,329.1000,147.565217,4.1978068,-0.62282,0,151.1402038,
+Mark-to-Market-Performance-Überblick,Data,Aktien,INTC,0,0,--,--,19.0217196,4.8561642,-6.80696,0,17.0709238,
+Mark-to-Market-Performance-Überblick,Data,Aktien,IPGP,0,0,--,--,2.8385916,1.9118664,-3.44598,0,1.304478,
+Mark-to-Market-Performance-Überblick,Data,Aktien,IPWR,0,40,--,7.4100,-54.253632,37.502104,-1.72028,0,-18.471808,
+Mark-to-Market-Performance-Überblick,Data,Aktien,IREN,0,0,--,--,4.8966005,-11.65954575,-3.37254,0,-10.13548525,
+Mark-to-Market-Performance-Überblick,Data,Aktien,JAZZ,1,0,170.0000,--,-5.7744185,-0.4329951,-1.69802,0,-7.9054336,
+Mark-to-Market-Performance-Überblick,Data,Aktien,LITE,0,0,--,--,163.5235878,1.0275912,-3.41976,0,161.131419,
+Mark-to-Market-Performance-Überblick,Data,Aktien,LMND,3,0,71.1800,--,13.0014498,-2.87121705,-6.77216,0,3.35807275,
+Mark-to-Market-Performance-Überblick,Data,Aktien,LPK,0,0,--,--,81.75,18,-6,0,93.75,
+Mark-to-Market-Performance-Überblick,Data,Aktien,LPTH,0,0,--,--,93.197705,-38.926486,-3.43328,0,50.837939,
+Mark-to-Market-Performance-Überblick,Data,Aktien,MA,2,0,570.8800,--,-44.499842,17.4870004,-1.71778,1.2420604,-27.4885612,
+Mark-to-Market-Performance-Überblick,Data,Aktien,MRK,10,0,105.2600,--,105.435626,4.867534,-1.67846,6.1924496,114.8171496,
+Mark-to-Market-Performance-Überblick,Data,Aktien,MRVL,0,0,--,--,35.9547264,-1.5513264,-3.42076,0.12786,31.1105,
+Mark-to-Market-Performance-Überblick,Data,Aktien,MU,2,0,285.4100,--,61.5840592,7.44293425,-6.79856,0.171748,62.40018145,
+Mark-to-Market-Performance-Überblick,Data,Aktien,NBIS,0,0,--,--,29.3019848,-4.8456612,-3.4524,0,21.0039236,
+Mark-to-Market-Performance-Überblick,Data,Aktien,NFLX,6,0,93.7600,--,-21.6554946,2.79154391,-5.15208,0,-24.01603069,
+Mark-to-Market-Performance-Überblick,Data,Aktien,NOW,0,8,--,119.3600,83.4934869,1.33913205,-5.1362,0,79.69641895,
+Mark-to-Market-Performance-Überblick,Data,Aktien,NVDA,0,3,--,218.6600,16.231049,-51.98545281,-10.30498,0.017256,-46.04212781,
+Mark-to-Market-Performance-Überblick,Data,Aktien,ONDS,30,0,9.7600,--,68.5620525,6.02484,-5.16674,0,69.4201525,
+Mark-to-Market-Performance-Überblick,Data,Aktien,OPTX,0,0,--,--,13.8941705,-7.5304775,-3.43936,0,2.924333,
+Mark-to-Market-Performance-Überblick,Data,Aktien,ORCL,0,0,--,--,55.2138146,-7.5529421,-3.42122,0,44.2396525,
+Mark-to-Market-Performance-Überblick,Data,Aktien,QBTS,-10,-15,26.1500,27.6400,33.551619,-1.728807,-5.0955,0,26.727312,
+Mark-to-Market-Performance-Überblick,Data,Aktien,QS,0,40,--,9.0800,24.051004,13.45211356,-1.72154,0,35.78157756,
+Mark-to-Market-Performance-Überblick,Data,Aktien,RDDT,0,2,--,183.9100,75.841968,-10.21432225,-5.17964,0,60.44800575,
+Mark-to-Market-Performance-Überblick,Data,Aktien,RKLB,0,0,--,--,-111.047191,-0.41466618,-5.0899,0,-116.55175718,
+Mark-to-Market-Performance-Überblick,Data,Aktien,SGML,0,0,--,--,-50.63746,17.48896,-3.43058,0,-36.57908,
+Mark-to-Market-Performance-Überblick,Data,Aktien,SIVE,0,100,--,86.7500,364.348545,14.766157,-26.53405183,0,352.58065017,
+Mark-to-Market-Performance-Überblick,Data,Aktien,SNOW,0,2,--,244.1800,118.1724858,1.032168,-1.72028,0,117.4843738,
+Mark-to-Market-Performance-Überblick,Data,Aktien,SOI,0,0,--,--,562,-16.01,-12,0,533.99,
+Mark-to-Market-Performance-Überblick,Data,Aktien,SSRM,0,0,--,--,-8.362743,-3.49883719,-3.44212,0,-15.30370019,
+Mark-to-Market-Performance-Überblick,Data,Aktien,TDW,5,0,50.5100,--,158.9393895,-17.063852,-1.71496,0,140.1605775,
+Mark-to-Market-Performance-Überblick,Data,Aktien,TE,0,0,--,--,-34.9967525,-9.00502375,-3.37556,0,-47.37733625,
+Mark-to-Market-Performance-Überblick,Data,Aktien,TER,0,0,--,--,-17.2173312,-6.1348816,-3.35984,0,-26.7120528,
+Mark-to-Market-Performance-Überblick,Data,Aktien,TMDX,2,0,121.6500,--,-14.4086773,-16.5908048,-6.89914,0,-37.8986221,
+Mark-to-Market-Performance-Überblick,Data,Aktien,TSEM,0,1,--,261.3100,49.0710215,0.8103186,-1.71496,0,48.1663801,
+Mark-to-Market-Performance-Überblick,Data,Aktien,UNH,0,1,--,396.4700,27.7446934,1.1331665,-1.71044,0,27.1674199,
+Mark-to-Market-Performance-Überblick,Data,Aktien,USAR,0,0,--,--,-17.3809364,1.1208714,-3.36678,0,-19.626845,
+Mark-to-Market-Performance-Überblick,Data,Aktien,VALE,0,0,--,--,0,-3.9024195,-3.35692,0,-7.2593395,
+Mark-to-Market-Performance-Überblick,Data,Aktien,VECO,0,0,--,--,156.9436722,-7.1894961,-3.43534,0,146.3188361,
+Mark-to-Market-Performance-Überblick,Data,Aktien,WDC,0,0,--,--,-39.3947334,26.91972211,-3.35984,0,-15.83485129,
+Mark-to-Market-Performance-Überblick,Data,Aktien,WOLF,0,0,--,--,-35.414198,-15.0232904,-3.4397,0,-53.8771884,
+Mark-to-Market-Performance-Überblick,Data,Aktien,WRAP,0,0,--,--,-26.72727,4.923109,-3.44716,0,-25.251321,
+Mark-to-Market-Performance-Überblick,Data,Aktien,WULF,35,0,11.4900,--,201.66075,-11.35289151,-5.14066,0,185.16719849,
+Mark-to-Market-Performance-Überblick,Data,Aktien,XDEF,0,30,--,29.1850,-67.875,-4.885,-8,0,-80.76,
+Mark-to-Market-Performance-Überblick,Data,Aktien,XERS,50,0,7.8500,--,-37.983135,-0.51333,-1.7111,0,-40.207565,
+Mark-to-Market-Performance-Überblick,Data,Aktien,XFAB,0,30,--,10.8800,-27.2,-5.7,-4,0,-36.9,
+Mark-to-Market-Performance-Überblick,Data,Gesamt,,,,,,2456.3610257,-177.04695501,-316.75387183,7.751374,1970.31157286,
+Mark-to-Market-Performance-Überblick,Data,Devisen,CAD,0,-417.75,--,0.61917,-0.5456378,0,0,0,-0.5456378,
+Mark-to-Market-Performance-Überblick,Data,Devisen,EUR,2531.2358625,2885.5668625,1.0000,1.0000,0,0,0,0,0,
+Mark-to-Market-Performance-Überblick,Data,Devisen,SEK,0,-4853.966,--,0.091825,-0.59322578,0,0,0,-0.59322578,
+Mark-to-Market-Performance-Überblick,Data,Devisen,USD,3618.495356,6936.629356,0.85135,0.86128,109.86916493,0,0,0,109.86916493,
+Mark-to-Market-Performance-Überblick,Data,Gesamt,,,,,,108.73030135,0,0,0,108.73030135,
+Mark-to-Market-Performance-Überblick,Data,Gesamt (Alle Vermögenswerte),,,,,,2565.09132705,-177.04695501,-316.75387183,7.751374,2079.04187421,
+Mark-to-Market-Performance-Überblick,Data,Brokers Zinsaufwand und Ertrag,,,,,,,,,,4.31304926,
+Mark-to-Market-Performance-Überblick,Data,Sonstige Gebühren,,,,,,,,,,-0.71,
+Gesamt-G&V des Kontoauszugszeitraums,,,,,,,,,,,,2082.64492347,
+Übersicht  zur realisierten und unrealisierten Performance,Header,Vermögenswertkategorie,Symbol,Kostenanp.,Realisiert S/T-Gewinn,Realisiert S/T-Verlust,Realisiert L/T-Gewinn,Realisiert L/T-Verlust,Realisiert Gesamt,Unrealisiert S/T-Gewinn,Unrealisiert S/T-Verlust,Unrealisiert L/T-Gewinn,Unrealisiert L/T-Verlust,Unrealisiert Gesamt,Gesamt,Code
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,4GLD,0,79.552,-176.2,0,0,-96.648,0,0,0,0,0,-96.648,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,AAOI,0,75.4927377,-23.62723082,0,0,51.86550688,0,0,0,0,0,51.86550688,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,AEHR,0,53.493888,0,0,0,53.493888,0,0,0,0,0,53.493888,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,AMPX,0,20.831744,0,0,0,20.831744,0,0,0,0,0,20.831744,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,ARM,0,0,0,0,0,0,340.1022464,0,0,0,340.1022464,340.1022464,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,ARW,0,0,-25.0942024,0,0,-25.0942024,0,0,0,0,0,-25.0942024,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,ASTS,0,152.061958,0,0,0,152.061958,0,0,0,0,0,152.061958,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,AVAV,0,0,-70.066673,0,0,-70.066673,0,0,0,0,0,-70.066673,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,AXTI,0,17.03881243,0,0,0,17.03881243,0,0,0,0,0,17.03881243,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,BA,0,0,-10.512528,0,0,-10.512528,0,0,0,0,0,-10.512528,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,BEPC,0,0,-57.773258,0,0,-57.773258,0,0,0,0,0,-57.773258,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,BMNR,0,0,-38.16064851,0,0,-38.16064851,0,0,0,0,0,-38.16064851,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,BMY,0,42.213269,0,0,0,42.213269,0,0,0,0,0,42.213269,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,COHR,0,62.89819156,0,0,0,62.89819156,0,0,0,0,0,62.89819156,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,CRCL,0,0,-11.803098,0,0,-11.803098,0,0,0,0,0,-11.803098,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,CRM,0,0,0,0,0,0,13.7546416,0,0,0,13.7546416,13.7546416,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,CRWD,0,8.21311494,0,0,0,8.21311494,0,0,0,0,0,8.21311494,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,CSIQ,0,0,-9.010199,0,0,-9.010199,0,0,0,0,0,-9.010199,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,CTKB,0,0,-56.1025255,0,0,-56.1025255,0,0,0,0,0,-56.1025255,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,EOSE,0,0,-282.13948256,0,0,-282.13948256,0,0,0,0,0,-282.13948256,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,FCX,0,12.256629,0,0,0,12.256629,0,0,0,0,0,12.256629,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,FLNC,0,20.865269,-0.430095,0,0,20.435174,0,0,0,0,0,20.435174,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,FLS,0,0,-8.1065056,0,0,-8.1065056,0,0,0,0,0,-8.1065056,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,HBM,0,0,-9.7463366,0,0,-9.7463366,0,0,0,0,0,-9.7463366,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,HIMS,0,0,-49.67956475,0,0,-49.67956475,0,0,0,0,0,-49.67956475,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,HON,0,0,-11.13000384,0,0,-11.13000384,0,0,0,0,0,-11.13000384,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,HPS.A,0,0,0,0,0,0,150.582144,0,0,0,150.582144,150.582144,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,INTC,0,27.5287068,-10.760832,0,0,16.7678748,0,0,0,0,0,16.7678748,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,IPGP,0,1.3105744,0,0,0,1.3105744,0,0,0,0,0,1.3105744,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,IPWR,0,0,0,0,0,0,0,-18.603648,0,0,-18.603648,-18.603648,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,IREN,0,0,-9.92389475,0,0,-9.92389475,0,0,0,0,0,-9.92389475,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,JAZZ,0,0,-10.2900012,0,0,-10.2900012,0,0,0,0,0,-10.2900012,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,LITE,0,159.4348668,0,0,0,159.4348668,0,0,0,0,0,159.4348668,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,LMND,0,104.80874807,-66.70362612,0,0,38.10512195,0,0,0,0,0,38.10512195,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,LPK,0,93.75,0,0,0,93.75,0,0,0,0,0,93.75,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,LPTH,0,50.834274,0,0,0,50.834274,0,0,0,0,0,50.834274,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,MA,0,10.3753912,0,0,0,10.3753912,0,0,0,0,0,10.3753912,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,MRK,0,142.3837618,0,0,0,142.3837618,0,0,0,0,0,142.3837618,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,MRVL,0,30.951741,0,0,0,30.951741,0,0,0,0,0,30.951741,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,MU,0,192.5032386,-36.91049445,0,0,155.59274415,0,0,0,0,0,155.59274415,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,NBIS,0,20.8110396,0,0,0,20.8110396,0,0,0,0,0,20.8110396,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,NFLX,0,0,-35.51696945,0,0,-35.51696945,0,0,0,0,0,-35.51696945,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,NOW,0,0,0,0,0,0,103.5129368,-23.0004824,0,0,80.5124544,80.5124544,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,NVDA,0,2.38812,-52.70677179,0,0,-50.31865179,4.594536918,0,0,0,4.594536918,-45.724114872,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,ONDS,0,147.3903815,-16.29212,0,0,131.0982615,0,0,0,0,0,131.0982615,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,OPTX,0,3.33514491,-0.17797192,0,0,3.15717299,0,0,0,0,0,3.15717299,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,ORCL,0,45.048674,0,0,0,45.048674,0,0,0,0,0,45.048674,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,QBTS,0,88.420325,0,0,0,88.420325,0,-76.718516,0,0,-76.718516,11.701809,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,QS,0,0,0,0,0,0,35.85336384,0,0,0,35.85336384,35.85336384,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,RDDT,0,0,-4.86612745,0,0,-4.86612745,65.4400544,0,0,0,65.4400544,60.57392695,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,RKLB,0,0,-115.75169372,0,0,-115.75169372,0,0,0,0,0,-115.75169372,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,SGML,0,0,-36.297357,0,0,-36.297357,0,0,0,0,0,-36.297357,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,SIVE,0,287.64022168,-89.18419342,0,0,198.45602826,154.725125,0,0,0,154.725125,353.18115326,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,SNOW,0,0,0,0,0,0,118.0298112,0,0,0,118.0298112,118.0298112,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,SOI,0,545.44,-11.45,0,0,533.99,0,0,0,0,0,533.99,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,SSRM,0,0,-15.32162307,0,0,-15.32162307,0,0,0,0,0,-15.32162307,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,TDW,0,135.27561606,0,0,0,135.27561606,0,0,0,0,0,135.27561606,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,TE,0,0,-47.06630625,0,0,-47.06630625,0,0,0,0,0,-47.06630625,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,TER,0,0,-26.7003144,0,0,-26.7003144,0,0,0,0,0,-26.7003144,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,TMDX,0,0,-50.7952746,0,0,-50.7952746,0,0,0,0,0,-50.7952746,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,TSEM,0,0,0,0,0,0,48.726916,0,0,0,48.726916,48.726916,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,UNH,0,0,0,0,0,0,27.496364,0,0,0,27.496364,27.496364,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,USAR,0,0,-19.70199,0,0,-19.70199,0,0,0,0,0,-19.70199,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,VALE,0,0,-7.2593395,0,0,-7.2593395,0,0,0,0,0,-7.2593395,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,VECO,0,148.41288165,0,0,0,148.41288165,0,0,0,0,0,148.41288165,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,WDC,0,0,-15.81556469,0,0,-15.81556469,0,0,0,0,0,-15.81556469,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,WOLF,0,0,-53.903817,0,0,-53.903817,0,0,0,0,0,-53.903817,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,WRAP,0,0,-25.261581,0,0,-25.261581,0,0,0,0,0,-25.261581,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,WULF,0,143.35717042,-75.7047401,0,0,67.65243032,0,0,0,0,0,67.65243032,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,XDEF,0,0,0,0,0,0,0,-80.76,0,0,-80.76,-80.76,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,XERS,0,1.334658,-1.334658,0,0,0,0,0,0,0,0,0,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Aktien,XFAB,0,0,0,0,0,0,0,-36.9,0,0,-36.9,-36.9,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Gesamt,,0,2927.65314912,-1675.27961346,0,0,1252.37353566,1062.818140158,-235.9826464,0,0,826.835493758,2079.209029418,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Devisen,CAD,0,0,0,0,0,0,1.527173,0,0,0,1.527173,1.527173,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Devisen,SEK,0,0,-2.19405,0,0,-2.19405,2.304666536,-0.002043,0,0,2.302623536,0.108573536,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Devisen,USD,0,219.974043,-134.426153,0,0,85.54789,0,-6.52043093,0,0,-6.52043093,79.02745907,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Gesamt,,0,219.974043,-136.620203,0,0,83.35384,3.831839536,-6.52247393,0,0,-2.690634394,80.663205606,
+Übersicht  zur realisierten und unrealisierten Performance,Data,Gesamt (Alle Vermögenswerte),,0,3147.62719212,-1811.89981646,0,0,1335.72737566,1066.649979694,-242.50512033,0,0,824.144859363,2159.872235023,
+Cash-Bericht,Header,Währungsübersicht,Währung,Gesamt,Wertpapiere,Futures,
+Cash-Bericht,Data,Anfangsbarsaldo,Basiswährungsübersicht,5611.841883831,5611.841883831,0,
+Cash-Bericht,Data,Provisionen,Basiswährungsübersicht,-316.75387183,-316.75387183,0,
+Cash-Bericht,Data,Dividenden,Basiswährungsübersicht,9.1187384,9.1187384,0,
+Cash-Bericht,Data,Broker-Haben- und Sollzinsen,Basiswährungsübersicht,4.31304926,4.31304926,0,
+Cash-Bericht,Data,Handelsgeschäfte (Verkäufe),Basiswährungsübersicht,48885.62196637,48885.62196637,0,
+Cash-Bericht,Data,Handelsgeschäfte (Käufe),Basiswährungsübersicht,-46165.27471038,-46165.27471038,0,
+Cash-Bericht,Data,Sonstige Gebühren,Basiswährungsübersicht,-0.71,-0.71,0,
+Cash-Bericht,Data,Quellensteuer,Basiswährungsübersicht,-1.3673644,-1.3673644,0,
+Cash-Bericht,Data,Gewinn/Verlust aus der Bardevisenumwandlung,Basiswährungsübersicht,128.78360755,128.78360755,0,
+Cash-Bericht,Data,Endbarsaldo,Basiswährungsübersicht,8155.573298786,8155.573298786,0,
+Cash-Bericht,Data,Abgewickelter Endbarsaldo,Basiswährungsübersicht,8155.573298786,8155.573298786,0,
+Cash-Bericht,Data,Starting Collateral Value,Basiswährungsübersicht,0,0,0,
+Cash-Bericht,Data,Nettoaktivität im Wertpapierverleih,Basiswährungsübersicht,-2.511629303,-2.511629303,0,
+Cash-Bericht,Data,Ending Collateral Value,Basiswährungsübersicht,0,0,0,
+Cash-Bericht,Data,Netto-Barsaldo,Basiswährungsübersicht,0,0,0,
+Cash-Bericht,Data,Abgewickelter Netto-Barsaldo,Basiswährungsübersicht,0,0,0,
+Cash-Bericht,Data,Anfangsbarsaldo,CAD,0,0,0,
+Cash-Bericht,Data,Provisionen,CAD,-1,-1,0,
+Cash-Bericht,Data,Broker-Haben- und Sollzinsen,CAD,-2.75,-2.75,0,
+Cash-Bericht,Data,Handelsgeschäfte (Käufe),CAD,-414,-414,0,
+Cash-Bericht,Data,Endbarsaldo,CAD,-417.75,-417.75,0,
+Cash-Bericht,Data,Abgewickelter Endbarsaldo,CAD,-417.75,-417.75,0,
+Cash-Bericht,Data,Anfangsbarsaldo,EUR,2531.2358625,2531.2358625,0,
+Cash-Bericht,Data,Provisionen,EUR,-40,-40,0,
+Cash-Bericht,Data,Broker-Haben- und Sollzinsen,EUR,0.11,0.11,0,
+Cash-Bericht,Data,Handelsgeschäfte (Verkäufe),EUR,4442.551,4442.551,0,
+Cash-Bericht,Data,Handelsgeschäfte (Käufe),EUR,-4047.62,-4047.62,0,
+Cash-Bericht,Data,Sonstige Gebühren,EUR,-0.71,-0.71,0,
+Cash-Bericht,Data,Endbarsaldo,EUR,2885.5668625,2885.5668625,0,
+Cash-Bericht,Data,Abgewickelter Endbarsaldo,EUR,2885.5668625,2885.5668625,0,
+Cash-Bericht,Data,Starting Collateral Value,EUR,0,0,0,
+Cash-Bericht,Data,Nettoaktivität im Wertpapierverleih,EUR,-0,-0,0,
+Cash-Bericht,Data,Ending Collateral Value,EUR,0,0,0,
+Cash-Bericht,Data,Netto-Barsaldo,EUR,0,0,0,
+Cash-Bericht,Data,Abgewickelter Netto-Barsaldo,EUR,0,0,0,
+Cash-Bericht,Data,Anfangsbarsaldo,SEK,0,0,0,
+Cash-Bericht,Data,Provisionen,SEK,-287.736,-287.736,0,
+Cash-Bericht,Data,Broker-Haben- und Sollzinsen,SEK,-12.23,-12.23,0,
+Cash-Bericht,Data,Handelsgeschäfte (Verkäufe),SEK,76586,76586,0,
+Cash-Bericht,Data,Handelsgeschäfte (Käufe),SEK,-81140,-81140,0,
+Cash-Bericht,Data,Endbarsaldo,SEK,-4853.966,-4853.966,0,
+Cash-Bericht,Data,Abgewickelter Endbarsaldo,SEK,-4853.966,-4853.966,0,
+Cash-Bericht,Data,Anfangsbarsaldo,USD,3618.495356,3618.495356,0,
+Cash-Bericht,Data,Provisionen,USD,-292,-292,0,
+Cash-Bericht,Data,Dividenden,USD,10.67,10.67,0,
+Cash-Bericht,Data,Broker-Haben- und Sollzinsen,USD,8.23,8.23,0,
+Cash-Bericht,Data,Handelsgeschäfte (Verkäufe),USD,43810.6334,43810.6334,0,
+Cash-Bericht,Data,Handelsgeschäfte (Käufe),USD,-40217.7994,-40217.7994,0,
+Cash-Bericht,Data,Quellensteuer,USD,-1.6,-1.6,0,
+Cash-Bericht,Data,Endbarsaldo,USD,6936.629356,6936.629356,0,
+Cash-Bericht,Data,Abgewickelter Endbarsaldo,USD,6936.629356,6936.629356,0,
+Offene Positionen,Header,DataDiscriminator,Vermögenswertkategorie,Währung,Symbol,Menge,Multipl.,Einstands Kurs,Kostenbasis,Schlusskurs,Wert,Unrealisierter G/V,Code
+Offene Positionen,Data,Summary,Aktien,CAD,HPS.A,2,1,207.5,415,329.1,658.2,243.2,
+Offene Positionen,Total,,Aktien,CAD,,,,,415,,658.2,243.2,
+Offene Positionen,Total,,Aktien,EUR,,,,,256.95555,,407.537694,150.582144,
+Offene Positionen,Data,Summary,Aktien,EUR,XDEF,30,1,31.877,956.31,29.185,875.55,-80.76,
+Offene Positionen,Data,Summary,Aktien,EUR,XFAB,30,1,12.11,363.3,10.88,326.4,-36.9,
+Offene Positionen,Total,,Aktien,EUR,,,,,1319.61,,1201.95,-117.66,
+Offene Positionen,Data,Summary,Aktien,SEK,SIVE,100,1,69.9,6990,86.75,8675,1685,
+Offene Positionen,Total,,Aktien,SEK,,,,,6990,,8675,1685,
+Offene Positionen,Total,,Aktien,EUR,,,,,641.85675,,796.581875,154.725125,
+Offene Positionen,Data,Summary,Aktien,USD,ARM,2,1,196,392,393.44,786.88,394.88,
+Offene Positionen,Data,Summary,Aktien,USD,CRM,2,1,180.765,361.53,188.75,377.5,15.97,
+Offene Positionen,Data,Summary,Aktien,USD,IPWR,40,1,7.95,318,7.41,296.4,-21.6,
+Offene Positionen,Data,Summary,Aktien,USD,NOW,8,1,107.675,861.4,119.36,954.88,93.48,
+Offene Positionen,Data,Summary,Aktien,USD,NVDA,3,1,216.881818333,650.645455,218.66,655.98,5.334545,
+Offene Positionen,Data,Summary,Aktien,USD,QBTS,-15,1,21.701666667,-325.525,27.64,-414.6,-89.075,
+Offene Positionen,Data,Summary,Aktien,USD,QS,40,1,8.0393,321.572,9.08,363.2,41.628,
+Offene Positionen,Data,Summary,Aktien,USD,RDDT,2,1,145.92,291.84,183.91,367.82,75.98,
+Offene Positionen,Data,Summary,Aktien,USD,SNOW,2,1,175.66,351.32,244.18,488.36,137.04,
+Offene Positionen,Data,Summary,Aktien,USD,TSEM,1,1,204.735,204.735,261.31,261.31,56.575,
+Offene Positionen,Data,Summary,Aktien,USD,UNH,1,1,364.545,364.545,396.47,396.47,31.925,
+Offene Positionen,Total,,Aktien,USD,,,,,3792.062455,,4534.2,742.137545,
+Offene Positionen,Total,,Aktien,EUR,,,,,3266.027551242,,3905.215776,639.188224758,
+Offene Positionen,Total,,Aktien,EUR,,,,,5484.449851242,,6311.285345,826.835493758,
+Devisenpositionen,Header,Vermögenswertkategorie,Währung,Beschreibung,Menge,Einstands Kurs,Kostenbasis in EUR,Schlusskurs,Wert in EUR,Unrealisierter Gewinn/Verlust in EUR,Code
+Devisenpositionen,Data,Devisen,EUR,CAD,-417.75,0.622825709,260.18544,0.61917,-258.658267,1.527173,
+Devisenpositionen,Data,Devisen,EUR,EUR,2885.5668625,0,-2885.5668625,1,2885.5668625,0,
+Devisenpositionen,Data,Devisen,EUR,SEK,-4853.966,0.09229938,448.018051536,0.091825,-445.715428,2.302623536,
+Devisenpositionen,Data,Devisen,EUR,USD,6936.629356,0.86222,-5980.90056293,0.86128,5974.380132,-6.52043093,
+Devisenpositionen,Data,Gesamt,,,,,-8158.263933894,,8155.5732995,-2.690634394,
+Netto-Aktienpositionsübersicht,Header,Vermögenswertkategorie,Währung,Symbol,Beschreibung,Aktien bei IB,Aktien Geliehen,Aktien Verliehen,Netto Aktien
+Netto-Aktienpositionsübersicht,Data,Aktien,CAD,HPS.A,HAMMOND POWER SOLUTIONS INC,2,0,0,2
+Netto-Aktienpositionsübersicht,Data,Aktien,EUR,XDEF,XEUROPE DEFENCE TECHNOLOG 1C,30,0,0,30
+Netto-Aktienpositionsübersicht,Data,Aktien,EUR,XFAB,X-FAB SILICON FOUNDRIES SE,30,0,0,30
+Netto-Aktienpositionsübersicht,Data,Aktien,SEK,SIVE,SIVERS SEMICONDUCTORS AB,100,0,0,100
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,ARM,ARM HOLDINGS PLC-ADR,2,0,0,2
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,CRM,SALESFORCE INC,2,0,0,2
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,IPWR,IDEAL POWER INC,40,0,0,40
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,NOW,SERVICENOW INC,8,0,0,8
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,NVDA,NVIDIA CORP,3,0,0,3
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,QBTS,D-WAVE QUANTUM INC,-15,0,0,-15
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,QS,QUANTUMSCAPE CORP,40,0,0,40
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,RDDT,REDDIT INC-CL A,2,0,0,2
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,SNOW,SNOWFLAKE INC,2,0,0,2
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,TSEM,TOWER SEMICONDUCTOR LTD,1,0,0,1
+Netto-Aktienpositionsübersicht,Data,Aktien,USD,UNH,UNITEDHEALTH GROUP INC,1,0,0,1
+Transaktionen,Header,DataDiscriminator,Vermögenswertkategorie,Währung,Symbol,Datum/Zeit,Menge,T.-Kurs,Schlussk.,Erlös,Prov./Gebühr,Basis,Realisierter G&V,MTM-G&V,Code
+Transaktionen,Data,Order,Aktien,CAD,HPS.A,"2026-04-06, 13:35:01",2,207,210.37,-414,-1,415,0,6.74,O
+Transaktionen,SubTotal,,Aktien,CAD,HPS.A,,2,,,-414,-1,415,0,6.74,
+Transaktionen,Total,,Aktien,CAD,,,,,,-414,-1,415,0,6.74, 
+Transaktionen,Total,,Aktien,EUR,,,,,,-257.84748,-0.62282,258.4703,0,4.1978068, 
+Transaktionen,Data,Order,Aktien,EUR,4GLD,"2026-01-06, 06:44:10",-10,122.5001,123.44,1225.001,-2,-1143.449,79.552,-9.399,C
+Transaktionen,Data,Order,Aktien,EUR,4GLD,"2026-03-09, 04:04:45",10,142.09,141.51,-1420.9,-4,1424.9,0,-5.8,O
+Transaktionen,Data,Order,Aktien,EUR,4GLD,"2026-06-02, 03:10:20",-10,125.27,124.58,1252.7,-4,-1424.9,-176.2,6.9,C
+Transaktionen,SubTotal,,Aktien,EUR,4GLD,,-10,,,1056.801,-10,-1143.449,-96.648,-8.299,
+Transaktionen,Data,Order,Aktien,EUR,LPK,"2026-04-29, 05:09:53",15,18.45,18.85,-276.75,-2,278.75,0,6,O
+Transaktionen,Data,Order,Aktien,EUR,LPK,"2026-05-14, 03:02:25",-15,25.1,24.3,376.5,-4,-278.75,93.75,12,C
+Transaktionen,SubTotal,,Aktien,EUR,LPK,,0,,,99.75,-6,0,93.75,18,
+Transaktionen,Data,Order,Aktien,EUR,SOI,"2026-03-11, 07:47:15",6,48.66,51.3,-291.96,-4,295.96,0,15.84,O
+Transaktionen,Data,Order,Aktien,EUR,SOI,"2026-05-15, 03:07:43",-6,139.1,148.05,834.6,-2,-295.96,536.64,-53.7,C;IM;P
+Transaktionen,Data,Order,Aktien,EUR,SOI,"2026-05-18, 10:20:05",2,144.95,140.25,-289.9,-2,291.9,0,-9.4,IA;O
+Transaktionen,Data,Order,Aktien,EUR,SOI,"2026-05-20, 09:57:10",3,153.5,158,-460.5,-2,462.5,0,13.5,O
+Transaktionen,Data,Order,Aktien,EUR,SOI,"2026-06-01, 11:23:33",-5,150.75,147.2,753.75,-2,-754.4,-2.65,17.75,C
+Transaktionen,SubTotal,,Aktien,EUR,SOI,,0,,,545.99,-12,0,533.99,-16.01,
+Transaktionen,Data,Order,Aktien,EUR,XDEF,"2026-01-08, 03:28:54",15,32.925,32.675,-493.88,-4,497.88,0,-3.755,O
+Transaktionen,Data,Order,Aktien,EUR,XDEF,"2026-03-20, 12:21:38",15,30.295,30.22,-454.43,-4,458.43,0,-1.13,O
+Transaktionen,SubTotal,,Aktien,EUR,XDEF,,30,,,-948.31,-8,956.31,0,-4.885,
+Transaktionen,Data,Order,Aktien,EUR,XFAB,"2026-05-27, 07:03:15",20,12.26,12,-245.2,-2,247.2,0,-5.2,O
+Transaktionen,Data,Order,Aktien,EUR,XFAB,"2026-05-28, 09:54:32",10,11.41,11.36,-114.1,-2,116.1,0,-0.5,IA;O
+Transaktionen,SubTotal,,Aktien,EUR,XFAB,,30,,,-359.3,-4,363.3,0,-5.7,
+Transaktionen,Total,,Aktien,EUR,,,,,,394.931,-40,176.161,531.092,-16.894, 
+Transaktionen,Data,Order,Aktien,SEK,SIVE,"2026-05-20, 04:57:37","1,500",49.46,54,-74190,-74.19,74264.19,0,6810,O
+Transaktionen,Data,Order,Aktien,SEK,SIVE,"2026-05-20, 05:54:03","-1,100",48.678181818,54,53546,-53.546,-54460.406,-967.952,-5854,C;P
+Transaktionen,Data,Order,Aktien,SEK,SIVE,"2026-05-20, 09:10:21",-200,51.7,54,10340,-40,-9901.892,398.108,-460,C
+Transaktionen,Data,Order,Aktien,SEK,SIVE,"2026-06-01, 10:23:57",-100,59.25,60.85,5925,-40,-4950.946,934.054,-160,C
+Transaktionen,Data,Order,Aktien,SEK,SIVE,"2026-06-02, 03:02:56",-100,67.75,97.45,6775,-40,-4950.946,1784.054,-2970,C
+Transaktionen,Data,Order,Aktien,SEK,SIVE,"2026-06-02, 03:03:06",100,69.5,97.45,-6950,-40,6990,0,2795,O;P
+Transaktionen,SubTotal,,Aktien,SEK,SIVE,,100,,,-4554,-287.736,6990,2148.264,161,
+Transaktionen,Total,,Aktien,SEK,,,,,,-4554,-287.736,6990,2148.264,161, 
+Transaktionen,Total,,Aktien,EUR,,,,,,-418.168973,-26.534051832,643.159053086,198.456028254,14.766157, 
+Transaktionen,Data,Order,Aktien,USD,AAOI,"2026-03-05, 10:32:00",1,98.68,101.14,-98.68,-2,100.68,0,2.46,O
+Transaktionen,Data,Order,Aktien,USD,AAOI,"2026-03-10, 13:51:30",2,123.4835,120.49,-246.967,-2,248.967,0,-5.987,IA;O
+Transaktionen,Data,Order,Aktien,USD,AAOI,"2026-04-10, 12:08:27",-5,146.72,150.6,733.6,-2,-349.647,88.513,-19.4,C;O;P
+Transaktionen,Data,Order,Aktien,USD,AAOI,"2026-04-22, 15:04:45",4,146.261,149.42,-585.044,-2,293.44,-0.082,12.636,C;IA;O
+Transaktionen,Data,Order,Aktien,USD,AAOI,"2026-04-23, 13:42:22",-2,134,137.73,268,-2,-293.522,-27.522,-7.46,C
+Transaktionen,SubTotal,,Aktien,USD,AAOI,,0,,,70.909,-10,-0.082,60.909,-17.751,
+Transaktionen,Data,Order,Aktien,USD,AEHR,"2026-04-06, 13:41:57",4,51.54,52.16,-206.16,-2,208.16,0,2.48,O
+Transaktionen,Data,Order,Aktien,USD,AEHR,"2026-04-10, 11:43:43",-4,68.22,70.43,272.88,-2,-208.16,62.72,-8.84,C
+Transaktionen,SubTotal,,Aktien,USD,AEHR,,0,,,66.72,-4,0,62.72,-6.36,
+Transaktionen,Data,Order,Aktien,USD,AMPX,"2026-04-13, 15:52:09",20,18.37,18.39,-367.4,-2,369.4,0,0.4,IM;O;P
+Transaktionen,Data,Order,Aktien,USD,AMPX,"2026-04-28, 09:31:05",-20,19.79,19.69,395.8,-2,-369.4,24.4,2,C
+Transaktionen,SubTotal,,Aktien,USD,AMPX,,0,,,28.4,-4,0,24.4,2.4,
+Transaktionen,Data,Order,Aktien,USD,ARM,"2026-04-22, 15:18:06",2,195,196.57,-390,-2,392,0,3.14,O
+Transaktionen,SubTotal,,Aktien,USD,ARM,,2,,,-390,-2,392,0,3.14,
+Transaktionen,Data,Order,Aktien,USD,ARW,"2026-02-13, 15:49:43",2,155.96,156.19,-311.92,-2,313.92,0,0.46,O
+Transaktionen,Data,Order,Aktien,USD,ARW,"2026-03-03, 10:34:56",-2,143.39,145.85,286.78,-2,-313.92,-29.14,-4.92,C
+Transaktionen,SubTotal,,Aktien,USD,ARW,,0,,,-25.14,-4,0,-29.14,-4.46,
+Transaktionen,Data,Order,Aktien,USD,ASTS,"2026-01-12, 10:29:27",-5,94.66,98.39,473.3,-2,-293.9,177.4,-18.65,C
+Transaktionen,SubTotal,,Aktien,USD,ASTS,,-5,,,473.3,-2,-293.9,177.4,-18.65,
+Transaktionen,Data,Order,Aktien,USD,AVAV,"2026-01-20, 15:43:41",1,331.42,330.89,-331.42,-2,333.42,0,-0.53,O
+Transaktionen,Data,Order,Aktien,USD,AVAV,"2026-02-11, 09:41:10",-1,252.24,243.42,252.24,-2,-333.42,-83.18,8.82,C
+Transaktionen,SubTotal,,Aktien,USD,AVAV,,0,,,-79.18,-4,0,-83.18,8.29,
+Transaktionen,Data,Order,Aktien,USD,AXTI,"2026-03-10, 13:54:00",5,46.1678,44.3,-230.839,-2,232.839,0,-9.339,IA;O
+Transaktionen,Data,Order,Aktien,USD,AXTI,"2026-04-02, 14:01:04",-5,50.9,52.84,254.5,-2,-232.839,19.661,-9.7,C;P
+Transaktionen,SubTotal,,Aktien,USD,AXTI,,0,,,23.661,-4,0,19.661,-19.039,
+Transaktionen,Data,Order,Aktien,USD,BA,"2026-01-20, 15:46:17",1,248.76,249,-248.76,-2,250.76,0,0.24,O
+Transaktionen,Data,Order,Aktien,USD,BA,"2026-02-11, 10:05:12",-1,240.28,236.26,240.28,-2,-250.76,-12.48,4.02,C
+Transaktionen,SubTotal,,Aktien,USD,BA,,0,,,-8.48,-4,0,-12.48,4.26,
+Transaktionen,Data,Order,Aktien,USD,BEPC,"2026-01-12, 15:03:59",-10,38.63,38.74,386.3,-2,-451.7,-67.4,-1.1,C;P
+Transaktionen,SubTotal,,Aktien,USD,BEPC,,-10,,,386.3,-2,-451.7,-67.4,-1.1,
+Transaktionen,Data,Order,Aktien,USD,BMNR,"2026-01-12, 10:54:40",-10,30.84,31.13,308.4,-2,-347.593,-41.193,-2.9,C
+Transaktionen,Data,Order,Aktien,USD,BMNR,"2026-03-10, 13:41:42",10,21.1393,20.73,-211.393,-2,213.393,0,-4.093,IA;O
+Transaktionen,Data,Order,Aktien,USD,BMNR,"2026-04-10, 11:44:02",-10,21.205,21.28,212.05,-2,-213.393,-3.343,-0.75,C
+Transaktionen,SubTotal,,Aktien,USD,BMNR,,-10,,,309.057,-6,-347.593,-44.536,-7.743,
+Transaktionen,Data,Order,Aktien,USD,BMY,"2026-01-08, 15:23:53",10,55.86,55.9,-558.6,-2,560.6,0,0.4,O
+Transaktionen,Data,Order,Aktien,USD,BMY,"2026-02-09, 10:26:45",-10,61.29,60.77,612.9,-2,-560.6,50.3,5.2,C;P
+Transaktionen,SubTotal,,Aktien,USD,BMY,,0,,,54.3,-4,0,50.3,5.6,
+Transaktionen,Data,Order,Aktien,USD,COHR,"2026-03-10, 13:52:08",1,271.082,260.64,-271.082,-2,273.082,0,-10.442,IA;O
+Transaktionen,Data,Order,Aktien,USD,COHR,"2026-04-22, 15:10:08",-1,348.71,350.47,348.71,-2,-273.082,73.628,-1.76,C
+Transaktionen,SubTotal,,Aktien,USD,COHR,,0,,,77.628,-4,0,73.628,-12.202,
+Transaktionen,Data,Order,Aktien,USD,CRCL,"2026-03-05, 10:32:34",2,107.525,105.74,-215.05,-2,217.05,0,-3.57,O
+Transaktionen,Data,Order,Aktien,USD,CRCL,"2026-03-24, 12:02:28",-2,102.675,101.17,205.35,-2,-217.05,-13.7,3.01,C
+Transaktionen,SubTotal,,Aktien,USD,CRCL,,0,,,-9.7,-4,0,-13.7,-0.56,
+Transaktionen,Data,Order,Aktien,USD,CRM,"2026-05-18, 10:12:54",2,179.765,179.48,-359.53,-2,361.53,0,-0.57,O
+Transaktionen,SubTotal,,Aktien,USD,CRM,,2,,,-359.53,-2,361.53,0,-0.57,
+Transaktionen,Data,Order,Aktien,USD,CRWD,"2026-03-05, 10:32:25",1,421.48,426.16,-421.48,-2,423.48,0,4.68,O
+Transaktionen,Data,Order,Aktien,USD,CRWD,"2026-04-08, 10:16:13",-1,435.0582,426.51,435.0582,-2,-423.48,9.5782,8.5482,C;IA
+Transaktionen,SubTotal,,Aktien,USD,CRWD,,0,,,13.5782,-4,0,9.5782,13.2282,
+Transaktionen,Data,Order,Aktien,USD,CSIQ,"2026-06-03, 09:30:00",15,20.1,19.53,-301.5,-2,303.5,0,-8.55,O
+Transaktionen,Data,Order,Aktien,USD,CSIQ,"2026-06-03, 09:30:15",-15,19.67,19.53,295.05,-2,-303.5,-10.45,2.1,C
+Transaktionen,SubTotal,,Aktien,USD,CSIQ,,0,,,-6.45,-4,0,-10.45,-6.45,
+Transaktionen,Data,Order,Aktien,USD,CTKB,"2026-02-09, 09:32:37",-50,4.391,4.46,219.55,-2,-284.4,-66.85,-3.45,C
+Transaktionen,SubTotal,,Aktien,USD,CTKB,,-50,,,219.55,-2,-284.4,-66.85,-3.45,
+Transaktionen,Data,Order,Aktien,USD,EOSE,"2026-03-09, 09:30:02",-80,6.05,6.17,484,-2,-482,0,-9.6,O
+Transaktionen,Data,Order,Aktien,USD,EOSE,"2026-03-09, 09:30:03",80,6.06,6.17,-484.8,-2,482,-4.8,8.8,C
+Transaktionen,Data,Order,Aktien,USD,EOSE,"2026-03-09, 10:44:09",-40,6.06225,6.17,242.49,-2,-240.49,0,-4.31,IM;O;P
+Transaktionen,Data,Order,Aktien,USD,EOSE,"2026-03-19, 10:04:13",-20,5.205,5.52,104.1,-2,-102.1,0,-6.3,O
+Transaktionen,Data,Order,Aktien,USD,EOSE,"2026-04-06, 13:43:14",-30,4.785,4.84,143.55,-2,-141.55,0,-1.65,O
+Transaktionen,Data,Order,Aktien,USD,EOSE,"2026-04-13, 15:55:17",45,6.185,6.16,-278.325,-2,266.015,-14.31,-1.125,C
+Transaktionen,Data,Order,Aktien,USD,EOSE,"2026-05-07, 15:11:02",-45,6.275,6.36,282.375,-2,-280.375,0,-3.825,O
+Transaktionen,Data,Order,Aktien,USD,EOSE,"2026-05-11, 12:27:27",60,8.985,8.57,-539.1,-2,311.583333,-229.516667,-24.9,C
+Transaktionen,Data,Order,Aktien,USD,EOSE,"2026-05-13, 11:49:33",30,8.9382,8.28,-268.146,-2,186.916667,-83.229333,-19.746,C
+Transaktionen,SubTotal,,Aktien,USD,EOSE,,0,,,-313.856,-18,-0,-331.856,-62.656,
+Transaktionen,Data,Order,Aktien,USD,FCX,"2026-01-20, 15:54:51",10,59.855,60.07,-598.55,-2,600.55,0,2.15,O
+Transaktionen,Data,Order,Aktien,USD,FCX,"2026-02-12, 11:32:15",-10,61.71,62.04,617.1,-2,-600.55,14.55,-3.3,C
+Transaktionen,SubTotal,,Aktien,USD,FCX,,0,,,18.55,-4,0,14.55,-1.15,
+Transaktionen,Data,Order,Aktien,USD,FLNC,"2026-01-06, 17:33:37",-12,21.8,21.83,261.6,-2,-236.72,22.88,-0.36,C
+Transaktionen,Data,Order,Aktien,USD,FLNC,"2026-05-07, 15:13:17",10,19.4,18.97,-194,-2,196,0,-4.3,O;P
+Transaktionen,Data,Order,Aktien,USD,FLNC,"2026-05-15, 09:30:06",-10,19.9,20.77,199,-2,-196,1,-8.7,C
+Transaktionen,SubTotal,,Aktien,USD,FLNC,,-12,,,266.6,-6,-236.72,23.88,-13.36,
+Transaktionen,Data,Order,Aktien,USD,FLS,"2026-01-13, 10:53:41",4,74.93,74.84,-299.72,-2,301.72,0,-0.36,O;P
+Transaktionen,Data,Order,Aktien,USD,FLS,"2026-01-14, 10:34:36",-4,73.57,75.15,294.28,-2,-301.72,-9.44,-6.32,C
+Transaktionen,SubTotal,,Aktien,USD,FLS,,0,,,-5.44,-4,0,-9.44,-6.68,
+Transaktionen,Data,Order,Aktien,USD,HBM,"2026-02-09, 09:44:19",20,25.1685,25.91,-503.37,-2,505.37,0,14.83,IA;O
+Transaktionen,Data,Order,Aktien,USD,HBM,"2026-02-12, 11:24:16",-20,24.79,25.39,495.8,-2,-505.37,-11.57,-12,C
+Transaktionen,SubTotal,,Aktien,USD,HBM,,0,,,-7.57,-4,0,-11.57,2.83,
+Transaktionen,Data,Order,Aktien,USD,HIMS,"2026-03-10, 14:17:55",15,22.59,23.47,-338.85,-2,340.85,0,13.2,O
+Transaktionen,Data,Order,Aktien,USD,HIMS,"2026-04-02, 14:09:44",-15,19.035,19.14,285.525,-2,-340.85,-57.325,-1.575,C
+Transaktionen,SubTotal,,Aktien,USD,HIMS,,0,,,-53.325,-4,0,-57.325,11.625,
+Transaktionen,Data,Order,Aktien,USD,HON,"2026-03-04, 09:52:25",2,239.5348,245.97,-479.0696,-2,481.0696,0,12.8704,IA;O
+Transaktionen,Data,Order,Aktien,USD,HON,"2026-04-10, 11:32:59",-2,235.01,235.04,470.02,-2,-481.0696,-13.0496,-0.06,C
+Transaktionen,SubTotal,,Aktien,USD,HON,,0,,,-9.0496,-4,0,-13.0496,12.8104,
+Transaktionen,Data,Order,Aktien,USD,INTC,"2026-01-12, 15:59:18",8,44.105,44.06,-352.84,-2,354.84,0,-0.36,O
+Transaktionen,Data,Order,Aktien,USD,INTC,"2026-01-20, 15:32:30",-8,48.64,48.56,389.12,-2,-354.84,32.28,0.64,C
+Transaktionen,Data,Order,Aktien,USD,INTC,"2026-01-20, 15:47:11",10,48.6,48.56,-486,-2,488,0,-0.4,O;P
+Transaktionen,Data,Order,Aktien,USD,INTC,"2026-02-10, 11:39:21",-10,47.72,47.13,477.2,-2,-488,-12.8,5.9,C
+Transaktionen,SubTotal,,Aktien,USD,INTC,,0,,,27.48,-8,0,19.48,5.78,
+Transaktionen,Data,Order,Aktien,USD,IPGP,"2026-05-21, 09:30:11",3,120,120.52,-360,-2,362,0,1.56,O
+Transaktionen,Data,Order,Aktien,USD,IPGP,"2026-06-03, 15:57:36",-3,121.84,121.62,365.52,-2,-362,1.52,0.66,C
+Transaktionen,SubTotal,,Aktien,USD,IPGP,,0,,,5.52,-4,0,1.52,2.22,
+Transaktionen,Data,Order,Aktien,USD,IPWR,"2026-05-27, 05:10:45",40,7.9,8.99,-316,-2,318,0,43.6,O;P
+Transaktionen,SubTotal,,Aktien,USD,IPWR,,40,,,-316,-2,318,0,43.6,
+Transaktionen,Data,Order,Aktien,USD,IREN,"2026-02-04, 15:13:28",5,45.33,44.94,-226.65,-2,228.65,0,-1.95,O
+Transaktionen,Data,Order,Aktien,USD,IREN,"2026-02-09, 10:41:14",-5,43.765,46.15,218.825,-2,-228.65,-11.825,-11.925,C
+Transaktionen,SubTotal,,Aktien,USD,IREN,,0,,,-7.825,-4,0,-11.825,-13.875,
+Transaktionen,Data,Order,Aktien,USD,JAZZ,"2026-02-05, 15:13:44",-1,162.64,163.15,162.64,-2,-172.76,-12.12,-0.51,C
+Transaktionen,SubTotal,,Aktien,USD,JAZZ,,-1,,,162.64,-2,-172.76,-12.12,-0.51,
+Transaktionen,Data,Order,Aktien,USD,LITE,"2026-03-04, 10:05:56",1,670.63,680.8,-670.63,-2,672.63,0,10.17,O
+Transaktionen,Data,Order,Aktien,USD,LITE,"2026-04-13, 12:47:47",-1,862.11,871.18,862.11,-2,-672.63,187.48,-9.07,C
+Transaktionen,SubTotal,,Aktien,USD,LITE,,0,,,191.48,-4,0,187.48,1.1,
+Transaktionen,Data,Order,Aktien,USD,LMND,"2026-01-22, 11:52:00",-100,99.4108,96.57,9941.08,-2,-9815.8785,123.2015,284.08,C;IA;O;P
+Transaktionen,Data,Order,Aktien,USD,LMND,"2026-01-22, 11:54:30",97,99.605,96.57,-9661.685,-2,9642.8185,-20.8665,-294.395,C;P
+Transaktionen,Data,Order,Aktien,USD,LMND,"2026-01-23, 15:00:21",3,92.58,93.25,-277.74,-2,279.74,0,2.01,O;P
+Transaktionen,Data,Order,Aktien,USD,LMND,"2026-02-09, 10:46:17",-3,74.47,72.8,223.41,-2,-279.74,-58.330001,5.01,C
+Transaktionen,SubTotal,,Aktien,USD,LMND,,-3,,,225.065,-8,-173.06,44.004999,-3.295,
+Transaktionen,Data,Order,Aktien,USD,LPTH,"2026-04-29, 09:30:00",20,12.71,12.19,-254.2,-2,256.2,0,-10.4,O
+Transaktionen,Data,Order,Aktien,USD,LPTH,"2026-05-27, 09:33:55",-20,15.865,17.61,317.3,-2,-256.2,59.1,-34.9,C
+Transaktionen,SubTotal,,Aktien,USD,LPTH,,0,,,63.1,-4,0,59.1,-45.3,
+Transaktionen,Data,Order,Aktien,USD,MA,"2026-01-13, 09:30:25",-2,555.17,544.99,1110.34,-2,-1096.26,12.08,20.36,C
+Transaktionen,SubTotal,,Aktien,USD,MA,,-2,,,1110.34,-2,-1096.26,12.08,20.36,
+Transaktionen,Data,Order,Aktien,USD,MRK,"2026-02-09, 10:13:47",-10,118.23,117.65,1182.3,-2,-1010.64,169.66,5.8,C
+Transaktionen,SubTotal,,Aktien,USD,MRK,,-10,,,1182.3,-2,-1010.64,169.66,5.8,
+Transaktionen,Data,Order,Aktien,USD,MRVL,"2026-04-08, 15:07:24",3,113.76,114.45,-341.28,-2,343.28,0,2.07,O
+Transaktionen,Data,Order,Aktien,USD,MRVL,"2026-04-10, 11:47:29",-3,127.19,128.49,381.57,-2,-343.28,36.29,-3.9,C
+Transaktionen,SubTotal,,Aktien,USD,MRVL,,0,,,40.29,-4,0,36.29,-1.83,
+Transaktionen,Data,Order,Aktien,USD,MU,"2026-01-12, 10:36:10",-2,344.84,345.87,689.68,-2,-463.1,224.58,-2.06,C;P
+Transaktionen,Data,Order,Aktien,USD,MU,"2026-01-22, 12:05:05",1,389.04,397.58,-389.04,-2,391.04,0,8.54,O
+Transaktionen,Data,Order,Aktien,USD,MU,"2026-01-22, 12:05:49",1,389.445,397.58,-389.445,-2,391.445,0,8.135,O
+Transaktionen,Data,Order,Aktien,USD,MU,"2026-02-10, 09:37:05",-2,370.29,373.25,740.58,-2,-782.485,-43.905,-5.92,C
+Transaktionen,SubTotal,,Aktien,USD,MU,,-2,,,651.775,-8,-463.1,180.675,8.695,
+Transaktionen,Data,Order,Aktien,USD,NBIS,"2026-03-12, 10:09:05",2,108.08,108.04,-216.16,-2,218.16,0,-0.08,O
+Transaktionen,Data,Order,Aktien,USD,NBIS,"2026-04-08, 10:19:25",-2,122.215,125,244.43,-2,-218.16,24.27,-5.57,C
+Transaktionen,SubTotal,,Aktien,USD,NBIS,,0,,,28.27,-4,0,24.27,-5.65,
+Transaktionen,Data,Order,Aktien,USD,NFLX,"2026-01-12, 10:40:40",-6,89.7407,89.41,538.4442,-2,-575.7986,-39.3544,1.9842,C;IA
+Transaktionen,Data,Order,Aktien,USD,NFLX,"2026-03-05, 10:31:27",3,98.29,99.17,-294.87,-2,296.87,0,2.64,O
+Transaktionen,Data,Order,Aktien,USD,NFLX,"2026-04-08, 10:21:47",-3,98.93,99.39,296.79,-2,-296.87,-2.08,-1.38,C
+Transaktionen,SubTotal,,Aktien,USD,NFLX,,-6,,,540.3642,-6,-575.7986,-41.4344,3.2442,
+Transaktionen,Data,Order,Aktien,USD,NOW,"2026-04-13, 12:39:26",3,88.7,89.06,-266.1,-2,268.1,0,1.08,O
+Transaktionen,Data,Order,Aktien,USD,NOW,"2026-05-18, 10:10:05",2,103.2575,103.42,-206.515,-2,208.515,0,0.325,O;P
+Transaktionen,Data,Order,Aktien,USD,NOW,"2026-06-02, 15:58:54",3,127.595,127.65,-382.785,-2,384.785,0,0.165,O
+Transaktionen,SubTotal,,Aktien,USD,NOW,,8,,,-855.4,-6,861.4,0,1.57,
+Transaktionen,Data,Order,Aktien,USD,NVDA,"2026-01-22, 12:00:17",2,185.55,184.84,-371.1,-2,373.1,0,-1.42,IM;O;P
+Transaktionen,Data,Order,Aktien,USD,NVDA,"2026-04-10, 11:47:50",-2,188.95,188.63,377.9,-2,-373.1,2.8,0.64,C
+Transaktionen,Data,Order,Aktien,USD,NVDA,"2026-06-03, 09:55:18",11,217.3486,214.75,-2390.8346,-2,2392.8346,0,-28.5846,IA;O
+Transaktionen,Data,Order,Aktien,USD,NVDA,"2026-06-03, 09:55:20",11,217.29,214.75,-2390.19,-2,2392.19,0,-27.94,O;P
+Transaktionen,Data,Order,Aktien,USD,NVDA,"2026-06-03, 09:55:48",11,216.7,214.75,-2383.7,-2,2385.7,0,-21.45,O
+Transaktionen,Data,Order,Aktien,USD,NVDA,"2026-06-03, 10:46:46",-30,215.365,214.75,6460.95,-2,-6520.079145,-61.129145,18.45,C
+Transaktionen,SubTotal,,Aktien,USD,NVDA,,3,,,-696.9746,-12,650.645455,-58.329145,-60.3046,
+Transaktionen,Data,Order,Aktien,USD,ONDS,"2026-01-12, 10:29:39",-30,13.19,13.19,395.7,-2,-221.75,171.95,0,C
+Transaktionen,Data,Order,Aktien,USD,ONDS,"2026-03-12, 10:11:01",25,10.25,10.33,-256.25,-2,258.25,0,2,O
+Transaktionen,Data,Order,Aktien,USD,ONDS,"2026-04-08, 10:22:53",-25,9.65,9.45,241.25,-2,-258.25,-19,5,C
+Transaktionen,SubTotal,,Aktien,USD,ONDS,,-30,,,380.7,-6,-221.75,152.95,7,
+Transaktionen,Data,Order,Aktien,USD,OPTX,"2026-04-06, 13:49:31",35,9.25,9.11,-323.75,-2,325.75,0,-4.9,O;P
+Transaktionen,Data,Order,Aktien,USD,OPTX,"2026-04-24, 15:38:42",-35,9.47,9.58,331.45,-2,-325.75,3.7,-3.85,C
+Transaktionen,SubTotal,,Aktien,USD,OPTX,,0,,,7.7,-4,0,3.7,-8.75,
+Transaktionen,Data,Order,Aktien,USD,ORCL,"2026-04-13, 12:39:15",2,152.525,155.62,-305.05,-2,307.05,0,6.19,O
+Transaktionen,Data,Order,Aktien,USD,ORCL,"2026-05-20, 09:32:10",-2,180.71,188.16,361.42,-2,-307.05,52.37,-14.9,C
+Transaktionen,SubTotal,,Aktien,USD,ORCL,,0,,,56.37,-4,0,52.37,-8.71,
+Transaktionen,Data,Order,Aktien,USD,QBTS,"2026-02-04, 15:55:19",-10,20.11,20.11,201.1,-2,-199.1,0,0,O
+Transaktionen,Data,Order,Aktien,USD,QBTS,"2026-04-14, 15:57:53",20,16.955,16.97,-339.1,-2,445.4,104.3,0.3,C
+Transaktionen,Data,Order,Aktien,USD,QBTS,"2026-05-07, 15:11:59",-15,21.835,21.99,327.525,-2,-325.525,0,-2.325,O
+Transaktionen,SubTotal,,Aktien,USD,QBTS,,-5,,,189.525,-6,-79.225,104.3,-2.025,
+Transaktionen,Data,Order,Aktien,USD,QS,"2026-05-21, 10:17:06",40,7.9893,8.38,-319.572,-2,321.572,0,15.628,IA;O
+Transaktionen,SubTotal,,Aktien,USD,QS,,40,,,-319.572,-2,321.572,0,15.628,
+Transaktionen,Data,Order,Aktien,USD,RDDT,"2026-03-10, 13:41:11",2,136.8275,134.13,-273.655,-2,275.655,0,-5.395,IA;O
+Transaktionen,Data,Order,Aktien,USD,RDDT,"2026-04-02, 14:12:06",-2,136.02,136,272.04,-2,-275.655,-5.615,0.04,C
+Transaktionen,Data,Order,Aktien,USD,RDDT,"2026-05-22, 09:31:16",2,144.92,141.67,-289.84,-2,291.84,0,-6.5,O
+Transaktionen,SubTotal,,Aktien,USD,RDDT,,2,,,-291.455,-6,291.84,-5.615,-11.855,
+Transaktionen,Data,Order,Aktien,USD,RKLB,"2026-01-12, 15:57:26",4,87.9888,87.9,-351.9552,-2,353.9552,0,-0.3552,IA;O
+Transaktionen,Data,Order,Aktien,USD,RKLB,"2026-01-23, 10:54:47",3,91.71,88.9,-275.13,-2,277.13,0,-8.43,O
+Transaktionen,Data,Order,Aktien,USD,RKLB,"2026-02-11, 09:36:07",-7,70.81,69.62,495.67,-2,-631.0852,-137.4152,8.33,C;P
+Transaktionen,SubTotal,,Aktien,USD,RKLB,,0,,,-131.4152,-6,0,-137.4152,-0.4552,
+Transaktionen,Data,Order,Aktien,USD,SGML,"2026-01-05, 10:39:51",20,14.175,15.2,-283.5,-2,285.5,0,20.5,IM;O;P
+Transaktionen,Data,Order,Aktien,USD,SGML,"2026-01-16, 09:48:53",-20,12.27,12.27,245.4,-2,-285.5,-42.1,0,C
+Transaktionen,SubTotal,,Aktien,USD,SGML,,0,,,-38.1,-4,0,-42.1,20.5,
+Transaktionen,Data,Order,Aktien,USD,SNOW,"2026-05-27, 09:30:02",2,174.66,175.26,-349.32,-2,351.32,0,1.2,O
+Transaktionen,SubTotal,,Aktien,USD,SNOW,,2,,,-349.32,-2,351.32,0,1.2,
+Transaktionen,Data,Order,Aktien,USD,SSRM,"2026-01-13, 09:45:21",10,24.1771,23.84,-241.771,-2,243.771,0,-3.371,IM;O;P
+Transaktionen,Data,Order,Aktien,USD,SSRM,"2026-01-16, 10:26:09",-10,22.8,22.87,228,-2,-243.771,-17.771,-0.7,C
+Transaktionen,SubTotal,,Aktien,USD,SSRM,,0,,,-13.771,-4,0,-17.771,-4.071,
+Transaktionen,Data,Order,Aktien,USD,TDW,"2026-04-08, 09:42:43",-5,83.86,87.84,419.3,-2,-259.5405,157.7595,-19.9,C
+Transaktionen,SubTotal,,Aktien,USD,TDW,,-5,,,419.3,-2,-259.5405,157.7595,-19.9,
+Transaktionen,Data,Order,Aktien,USD,TE,"2026-01-23, 10:54:20",25,9.215,8.5,-230.375,-2,232.375,0,-17.875,O
+Transaktionen,Data,Order,Aktien,USD,TE,"2026-02-11, 10:57:05",-25,7.14,6.85,178.5,-2,-232.375,-55.875,7.25,C
+Transaktionen,SubTotal,,Aktien,USD,TE,,0,,,-51.875,-4,0,-55.875,-10.625,
+Transaktionen,Data,Order,Aktien,USD,TER,"2026-02-09, 10:01:46",4,307.5,310.01,-1230,-2,1232,0,10.04,O
+Transaktionen,Data,Order,Aktien,USD,TER,"2026-02-10, 09:49:12",-4,300.56,304.89,1202.24,-2,-1232,-31.76,-17.32,C
+Transaktionen,SubTotal,,Aktien,USD,TER,,0,,,-27.76,-4,0,-31.76,-7.28,
+Transaktionen,Data,Order,Aktien,USD,TMDX,"2026-03-04, 10:01:23",1,148.935,147.66,-148.935,-2,150.935,0,-1.275,O
+Transaktionen,Data,Order,Aktien,USD,TMDX,"2026-03-09, 09:31:07",-2,126.59,134.77,253.18,-2,-259.28,-8.1,-16.36,C
+Transaktionen,Data,Order,Aktien,USD,TMDX,"2026-03-18, 15:23:09",1,112.085,113.21,-112.085,-2,114.085,0,1.125,O
+Transaktionen,Data,Order,Aktien,USD,TMDX,"2026-04-08, 15:07:10",-2,107.95,109.36,215.9,-2,-265.02,-51.12,-2.82,C
+Transaktionen,SubTotal,,Aktien,USD,TMDX,,-2,,,208.06,-8,-259.28,-59.22,-19.33,
+Transaktionen,Data,Order,Aktien,USD,TSEM,"2026-04-08, 10:55:16",1,202.735,203.68,-202.735,-2,204.735,0,0.945,O
+Transaktionen,SubTotal,,Aktien,USD,TSEM,,1,,,-202.735,-2,204.735,0,0.945,
+Transaktionen,Data,Order,Aktien,USD,UNH,"2026-05-05, 14:28:56",1,362.545,363.87,-362.545,-2,364.545,0,1.325,O
+Transaktionen,SubTotal,,Aktien,USD,UNH,,1,,,-362.545,-2,364.545,0,1.325,
+Transaktionen,Data,Order,Aktien,USD,USAR,"2026-01-27, 15:34:16",2,26.62,26.35,-53.24,-2,55.24,0,-0.54,O
+Transaktionen,Data,Order,Aktien,USD,USAR,"2026-04-10, 11:49:51",-2,17.07,16.15,34.14,-2,-55.24,-23.1,1.84,C
+Transaktionen,SubTotal,,Aktien,USD,USAR,,0,,,-19.1,-4,0,-23.1,1.3,
+Transaktionen,Data,Order,Aktien,USD,VALE,"2026-02-09, 09:35:56",30,16.65,16.79,-499.5,-2,501.5,0,4.2,O
+Transaktionen,Data,Order,Aktien,USD,VALE,"2026-02-09, 10:08:35",-30,16.495,16.79,494.85,-2,-501.5,-8.65,-8.85,C
+Transaktionen,SubTotal,,Aktien,USD,VALE,,0,,,-4.65,-4,0,-8.65,-4.65,
+Transaktionen,Data,Order,Aktien,USD,VECO,"2026-04-08, 10:54:10",9,36.935,38.1,-332.415,-2,334.415,0,10.485,O
+Transaktionen,Data,Order,Aktien,USD,VECO,"2026-05-15, 09:30:22",-9,56.55,58.64,508.95,-2,-334.415,172.535,-18.81,C;P
+Transaktionen,SubTotal,,Aktien,USD,VECO,,0,,,176.535,-4,0,172.535,-8.325,
+Transaktionen,Data,Order,Aktien,USD,WDC,"2026-02-09, 09:42:23",2,278.385,285.99,-556.77,-2,558.77,0,15.21,O
+Transaktionen,Data,Order,Aktien,USD,WDC,"2026-02-10, 09:39:50",-2,270.9787,262.56,541.9574,-2,-558.77,-18.8126,16.8374,C;IA
+Transaktionen,SubTotal,,Aktien,USD,WDC,,0,,,-14.8126,-4,0,-18.8126,32.0474,
+Transaktionen,Data,Order,Aktien,USD,WOLF,"2026-05-27, 09:30:11",4,70.675,63.26,-282.7,-2,284.7,0,-29.66,O
+Transaktionen,Data,Order,Aktien,USD,WOLF,"2026-06-01, 09:34:26",-4,56,52.95,224,-2,-284.7,-62.7,12.2,C
+Transaktionen,SubTotal,,Aktien,USD,WOLF,,0,,,-58.7,-4,0,-62.7,-17.46,
+Transaktionen,Data,Order,Aktien,USD,WRAP,"2026-01-15, 12:43:49",100,3.215,3.1,-321.5,-2,323.5,0,-11.5,O
+Transaktionen,Data,Order,Aktien,USD,WRAP,"2026-01-16, 09:45:43",-100,2.962,2.79,296.2,-2,-323.5,-29.3,17.2,C
+Transaktionen,SubTotal,,Aktien,USD,WRAP,,0,,,-25.3,-4,0,-29.3,5.7,
+Transaktionen,Data,Order,Aktien,USD,WULF,"2026-01-12, 10:54:34",-35,13.542388571,13.81,473.9836,-2,-539.575,-67.5914,-9.3664,C;IM;P
+Transaktionen,Data,Order,Aktien,USD,WULF,"2026-03-04, 09:56:08",20,15.4293,15.37,-308.586,-2,310.586,0,-1.186,IA;O
+Transaktionen,Data,Order,Aktien,USD,WULF,"2026-05-13, 13:18:08",-20,22.985,23.12,459.7,-2,-310.586,147.114,-2.7,C
+Transaktionen,SubTotal,,Aktien,USD,WULF,,-35,,,625.0976,-6,-539.575,79.5226,-13.2524,
+Transaktionen,Data,Order,Aktien,USD,XERS,"2026-01-06, 17:35:29",-50,6.948,6.96,347.4,-2,-345.4,0,-0.6,C;P
+Transaktionen,SubTotal,,Aktien,USD,XERS,,-50,,,347.4,-2,-345.4,0,-0.6,
+Transaktionen,Total,,Aktien,USD,,,,,,3592.834,-292,-2693.196645,607.719354,-208.036, 
+Transaktionen,Total,,Aktien,EUR,,,,,,3001.43270898,-249.597,-2229.482264404,522.825506677,-179.11691882, 
+Gebühren,Header,Subtitle,Währung,Datum,Beschreibung,Betrag
+Gebühren,Data,Sonstige Gebühren,EUR,2026-03-26,XETRA-GOLD MAINTENANCE FEE FOR 2026-03-25 FOR MAR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-03-27,XETRA-GOLD MAINTENANCE FEE FOR 2026-03-26 FOR MAR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-03-30,XETRA-GOLD MAINTENANCE FEE FOR 2026-03-27 FOR MAR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-03-30,XETRA-GOLD MAINTENANCE FEE FOR 2026-03-28 FOR MAR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-03-30,XETRA-GOLD MAINTENANCE FEE FOR 2026-03-29 FOR MAR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-03-31,XETRA-GOLD MAINTENANCE FEE FOR 2026-03-30 FOR MAR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-01,XETRA-GOLD MAINTENANCE FEE FOR 2026-03-31 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-02,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-01 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-06,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-02 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-06,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-03 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-06,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-04 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-06,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-05 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-07,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-06 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-08,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-07 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-09,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-08 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-10,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-09 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-13,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-10 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-13,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-11 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-13,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-12 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-14,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-13 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-15,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-14 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-16,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-15 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-17,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-16 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-20,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-17 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-20,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-18 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-20,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-19 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-21,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-20 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-22,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-21 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-23,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-22 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-24,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-23 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-27,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-24 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-27,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-25 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-27,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-26 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-28,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-27 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-29,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-28 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-04-30,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-29 FOR APR 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-01,XETRA-GOLD MAINTENANCE FEE FOR 2026-04-30 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-04,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-01 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-04,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-02 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-04,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-03 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-05,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-04 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-06,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-05 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-07,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-06 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-08,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-07 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-11,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-08 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-11,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-09 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-11,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-10 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-12,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-11 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-13,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-12 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-14,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-13 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-15,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-14 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-18,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-15 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-18,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-16 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-18,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-17 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-19,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-18 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-20,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-19 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-21,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-20 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-22,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-21 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-26,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-22 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-26,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-23 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-26,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-24 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-26,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-25 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-27,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-26 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-28,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-27 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-05-29,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-28 FOR MAY 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-06-01,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-29 FOR JUN 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-06-01,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-30 FOR JUN 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-06-01,XETRA-GOLD MAINTENANCE FEE FOR 2026-05-31 FOR JUN 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-06-02,XETRA-GOLD MAINTENANCE FEE FOR 2026-06-01 FOR JUN 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-06-03,XETRA-GOLD MAINTENANCE FEE FOR 2026-06-02 FOR JUN 2026,-0.01
+Gebühren,Data,Sonstige Gebühren,EUR,2026-06-04,XETRA-GOLD MAINTENANCE FEE FOR 2026-06-03 FOR JUN 2026,-0.01
+Gebühren,Data,Gesamt,,,,-0.71
+Dividenden,Header,Währung,Datum,Beschreibung,Betrag
+Dividenden,Data,USD,2026-01-08,MRK(US58933Y1055) Bardividende USD 0.85 pro Aktie (Ordentliche Dividende),8.5
+Dividenden,Data,USD,2026-01-14,MU(US5951121038) Bardividende USD 0.115 pro Aktie (Ordentliche Dividende),0.23
+Dividenden,Data,USD,2026-02-09,MA(US57636Q1040) Bardividende USD 0.87 pro Aktie (Ordentliche Dividende),1.74
+Dividenden,Data,USD,2026-04-01,NVDA(US67066G1040) Bardividende USD 0.01 pro Aktie (Ordentliche Dividende),0.02
+Dividenden,Data,USD,2026-04-30,MRVL(US5738741041) Bardividende USD 0.06 pro Aktie (Ordentliche Dividende),0.18
+Dividenden,Data,Gesamt,,,10.67
+Dividenden,Data,Gesamtwert in EUR,,,9.1187384
+Quellensteuer,Header,Währung,Datum,Beschreibung,Betrag,Code
+Quellensteuer,Data,USD,2026-01-08,MRK(US58933Y1055) Bardividende USD 0.85 pro Aktie - US Steuer,-1.28,
+Quellensteuer,Data,USD,2026-01-14,MU(US5951121038) Bardividende USD 0.115 pro Aktie - US Steuer,-0.03,
+Quellensteuer,Data,USD,2026-02-09,MA(US57636Q1040) Bardividende USD 0.87 pro Aktie - US Steuer,-0.26,
+Quellensteuer,Data,USD,2026-04-30,MRVL(US5738741041) Bardividende USD 0.06 pro Aktie - US Steuer,-0.03,
+Quellensteuer,Data,Gesamt,,,-1.6,
+Quellensteuer,Data,Gesamtwert in EUR,,,-1.3673644,
+Zinsen,Header,Währung,Datum,Beschreibung,Betrag
+Zinsen,Data,CAD,2026-05-05,CAD Sollzinsen für Apr-2026,-1.2
+Zinsen,Data,CAD,2026-06-03,CAD Sollzinsen für Mai-2026,-1.55
+Zinsen,Data,Gesamt,,,-2.75
+Zinsen,Data,Gesamtwert in EUR,,,-1.7151395
+Zinsen,Data,EUR,2026-03-04,EUR Zinsen für von IBKR verwaltete Wertpapiere (SYEP) für Feb-2026,0.04
+Zinsen,Data,EUR,2026-04-06,EUR Zinsen für von IBKR verwaltete Wertpapiere (SYEP) für Mär-2026,0.07
+Zinsen,Data,Gesamt,,,0.11
+Zinsen,Data,SEK,2026-06-03,SEK Sollzinsen für Mai-2026,-12.23
+Zinsen,Data,Gesamt,,,-12.23
+Zinsen,Data,Gesamtwert in EUR,,,-1.12097734
+Zinsen,Data,USD,2026-01-06,USD Leihgebühren für Dez-2025,-0.03
+Zinsen,Data,USD,2026-03-04,USD Leihgebühren für Feb-2026,-0.18
+Zinsen,Data,USD,2026-04-06,USD Leihgebühren für Mär-2026,-0.11
+Zinsen,Data,USD,2026-04-06,USD Zinsen für von IBKR verwaltete Wertpapiere (SYEP) für Mär-2026,0.23
+Zinsen,Data,USD,2026-05-05,USD Leihgebühren für Apr-2026,-0.13
+Zinsen,Data,USD,2026-05-05,USD Zinsen für von IBKR verwaltete Wertpapiere (SYEP) für Apr-2026,8.43
+Zinsen,Data,USD,2026-06-03,USD Leihgebühren für Mai-2026,-0.11
+Zinsen,Data,USD,2026-06-03,USD Zinsen für von IBKR verwaltete Wertpapiere (SYEP) für Mai-2026,0.13
+Zinsen,Data,Gesamt,,,8.23
+Zinsen,Data,Gesamtwert in EUR,,,7.0391661
+Zinsen,Data,Gesamt Zinsen in EUR,,,4.31304926
+Aufgelaufene Zinsen,Header,Währung,Feldname,Feldwert
+Aufgelaufene Zinsen,Data,Basiswährungsübersicht,Aufgelaufener Anfangssaldo,0
+Aufgelaufene Zinsen,Data,Basiswährungsübersicht,Aufgelaufene Zinsen,4.32920074
+Aufgelaufene Zinsen,Data,Basiswährungsübersicht,Umwandlung aufgelaufener Beträge,-4.31304926
+Aufgelaufene Zinsen,Data,Basiswährungsübersicht,FX-Umrechnung,0.04537127
+Aufgelaufene Zinsen,Data,Basiswährungsübersicht,Aufgelaufener Endsaldo,0.06152275
+Aufgelaufene Zinsen,Data,CAD,Aufgelaufener Anfangssaldo,0
+Aufgelaufene Zinsen,Data,CAD,Aufgelaufene Zinsen,-2.75
+Aufgelaufene Zinsen,Data,CAD,Umwandlung aufgelaufener Beträge,2.75
+Aufgelaufene Zinsen,Data,CAD,Aufgelaufener Endsaldo,0
+Aufgelaufene Zinsen,Data,CAD,Aufgelaufener Endsaldo inEUR,0
+Aufgelaufene Zinsen,Data,EUR,Aufgelaufener Anfangssaldo,0
+Aufgelaufene Zinsen,Data,EUR,Aufgelaufene Zinsen,0.11
+Aufgelaufene Zinsen,Data,EUR,Umwandlung aufgelaufener Beträge,-0.11
+Aufgelaufene Zinsen,Data,EUR,Aufgelaufener Endsaldo,0
+Aufgelaufene Zinsen,Data,SEK,Aufgelaufener Anfangssaldo,0
+Aufgelaufene Zinsen,Data,SEK,Aufgelaufene Zinsen,-11.56
+Aufgelaufene Zinsen,Data,SEK,Umwandlung aufgelaufener Beträge,12.23
+Aufgelaufene Zinsen,Data,SEK,Aufgelaufener Endsaldo,0.67
+Aufgelaufene Zinsen,Data,SEK,Aufgelaufener Endsaldo inEUR,0.06152275
+Aufgelaufene Zinsen,Data,USD,Aufgelaufener Anfangssaldo,0
+Aufgelaufene Zinsen,Data,USD,Aufgelaufene Zinsen,8.23
+Aufgelaufene Zinsen,Data,USD,Umwandlung aufgelaufener Beträge,-8.23
+Aufgelaufene Zinsen,Data,USD,Aufgelaufener Endsaldo,0
+Aufgelaufene Zinsen,Data,USD,Aufgelaufener Endsaldo inEUR,0
+Veränderung im Dividendenanfall,Header,Vermögenswertkategorie,Währung,Symbol,Datum,Ex-Tag,Zahlungsdatum,Menge,Steuer,Gebühr,Bruttosatz,Bruttobetrag,Nettobetrag,Code
+Veränderung im Dividendenanfall,Data,Anfangsstand der angefallenen Dividenden inEUR,,,,,,,,,,,6.317017,
+Veränderung im Dividendenanfall,Data,Aktien,USD,MA,2026-01-08,2026-01-09,2026-02-09,2,0.26,0,0.87,1.74,1.48,Po
+Veränderung im Dividendenanfall,Data,Aktien,USD,MA,2026-02-09,2026-01-09,2026-02-09,2,-0.26,0,0.87,-1.74,-1.48,Re
+Veränderung im Dividendenanfall,Data,Aktien,USD,MRK,2026-01-08,2025-12-15,2026-01-08,10,-1.28,0,0.85,-8.5,-7.22,Re
+Veränderung im Dividendenanfall,Data,Aktien,USD,MRVL,2026-04-09,2026-04-10,2026-04-30,3,0.03,0,0.06,0.18,0.15,Po
+Veränderung im Dividendenanfall,Data,Aktien,USD,MRVL,2026-04-30,2026-04-10,2026-04-30,3,-0.03,0,0.06,-0.18,-0.15,Re
+Veränderung im Dividendenanfall,Data,Aktien,USD,MU,2026-01-14,2025-12-29,2026-01-14,2,-0.03,0,0.115,-0.23,-0.2,Re
+Veränderung im Dividendenanfall,Data,Aktien,USD,NVDA,2026-03-10,2026-03-11,2026-04-01,2,0,0,0.01,0.02,0.02,Po
+Veränderung im Dividendenanfall,Data,Aktien,USD,NVDA,2026-04-01,2026-03-11,2026-04-01,2,0,0,0.01,-0.02,-0.02,Re
+Veränderung im Dividendenanfall,Data,Aktien,USD,NVDA,2026-06-03,2026-06-04,2026-06-26,3,0.11,0,0.25,0.75,0.64,Po
+Veränderung im Dividendenanfall,Data,Gesamt,,,,,,,-1.2,0,,-7.98,-6.78,
+Veränderung im Dividendenanfall,Data,Gesamtwert in EUR,,,,,,,-1.0235562,0,,-6.806366,-5.7828098,
+Veränderung im Dividendenanfall,Data,Endstand der angefallenen Dividenden inEUR,,,,,,,,,,,0.5512192,
+Details zu Leihgebühren,Header,Währung,Abwicklungsdatum,Symbol,Menge,Kurs,Wert,Gebührensatz (%),Leihgebühr,Code
+Details zu Leihgebühren,Data,USD,2025-12-02,QBTS,17,22,374,0.4218,0,Po
+Details zu Leihgebühren,Data,USD,2025-12-02,UBER,6,89,534,0.4081,-0.01,Po
+Details zu Leihgebühren,Data,USD,2025-12-03,QBTS,17,23,391,0.4563,0,Po
+Details zu Leihgebühren,Data,USD,2025-12-03,UBER,6,90,540,0.3949,-0.01,Po
+Details zu Leihgebühren,Data,USD,2025-12-04,QBTS,17,26,442,0.4913,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-05,QBTS,20,21,420,0.448,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-09,QBTS,20,22,440,0.4235,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-10,QBTS,20,22,440,0.485,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-11,QBTS,20,21,420,0.5474,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-12,QBTS,20,21,420,0.4515,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-13,QBTS,20,20,400,0.4643,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-14,QBTS,20,20,400,0.4643,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-15,QBTS,20,20,400,0.4643,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-16,QBTS,20,20,400,0.4643,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-17,QBTS,20,21,420,0.4392,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-19,QBTS,20,20,400,0.4949,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-20,QBTS,20,20,400,0.463,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-21,QBTS,20,20,400,0.463,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-22,QBTS,20,20,400,0.463,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-23,QBTS,20,19,380,0.4873,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-26,QBTS,20,21,420,0.4398,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-27,QBTS,20,21,420,0.4956,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-02-28,QBTS,20,21,420,0.4956,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-01,QBTS,20,21,420,0.4956,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-03,QBTS,20,20,400,0.4584,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-04,QBTS,20,19,380,0.4967,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-05,QBTS,20,20,400,0.4687,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-09,QBTS,20,19,380,0.5095,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-10,EOSE,40,7,280,0.4337,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-10,QBTS,20,20,400,0.5702,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-12,EOSE,40,7,280,0.5124,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-12,QBTS,20,20,400,0.4286,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-16,EOSE,40,6,240,0.5111,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-16,QBTS,20,18,360,0.4566,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-17,EOSE,40,6,240,0.44,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-17,QBTS,20,18,360,0.4554,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-18,EOSE,40,6,240,0.5362,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-18,QBTS,20,18,360,0.4861,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-23,EOSE,60,6,360,0.4627,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-23,QBTS,20,17,340,0.5569,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-24,EOSE,60,6,360,0.5369,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-24,QBTS,20,17,340,0.4883,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-25,EOSE,60,6,360,0.6161,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-25,QBTS,20,17,340,0.5942,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-26,EOSE,60,6,360,0.5782,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-03-26,QBTS,20,17,340,0.483,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-27,EOSE,60,5,300,0.4297,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-27,QBTS,20,15,300,0.4519,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-28,EOSE,60,5,300,0.4297,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-28,QBTS,20,15,300,0.4519,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-29,EOSE,60,5,300,0.4297,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-29,QBTS,20,15,300,0.4519,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-30,EOSE,60,5,300,0.5315,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-30,QBTS,20,15,300,0.4681,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-31,EOSE,60,5,300,0.5242,0,Po
+Details zu Leihgebühren,Data,USD,2026-03-31,QBTS,20,14,280,0.5247,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-01,EOSE,60,6,360,0.4721,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-01,QBTS,20,15,300,0.6214,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-07,EOSE,90,5,450,0.4384,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-07,QBTS,20,15,300,0.4447,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-08,EOSE,90,5,450,0.4353,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-08,QBTS,20,15,300,0.4344,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-09,EOSE,90,5,450,0.5124,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-09,QBTS,20,15,300,0.4834,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-10,EOSE,90,7,630,0.6168,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-10,QBTS,20,15,300,0.477,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-11,EOSE,90,7,630,0.6168,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-11,QBTS,20,15,300,0.477,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-12,EOSE,90,7,630,0.6168,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-12,QBTS,20,15,300,0.477,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-13,AAOI,2,154,308,0.281,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-13,EOSE,90,6,540,0.5907,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-13,QBTS,20,15,300,0.4693,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-14,AAOI,2,157,314,0.2697,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-14,EOSE,45,7,315,0.5776,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-14,QBTS,20,15,300,0.544,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-15,AAOI,2,150,300,0.26,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-15,EOSE,45,7,315,0.5604,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-16,AAOI,2,146,292,0.2566,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-16,EOSE,45,8,360,0.5394,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-17,AAOI,2,161,322,0.25,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-17,EOSE,45,8,360,0.4955,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-18,AAOI,2,161,322,0.25,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-18,EOSE,45,8,360,0.4955,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-19,AAOI,2,161,322,0.25,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-19,EOSE,45,8,360,0.4955,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-20,AAOI,2,163,326,0.2566,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-20,EOSE,45,8,360,0.4987,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-21,AAOI,2,167,334,0.26,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-21,EOSE,45,8,360,0.6043,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-22,AAOI,2,154,308,0.25,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-22,EOSE,45,8,360,0.6191,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-23,EOSE,45,8,360,0.5151,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-04-24,EOSE,45,8,360,0.445,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-25,EOSE,45,8,360,0.445,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-26,EOSE,45,8,360,0.445,0,Po
+Details zu Leihgebühren,Data,USD,2026-04-28,EOSE,45,8,360,0.4466,0,Po
+Details zu Leihgebühren,Data,USD,2026-05-06,EOSE,45,7,315,0.4811,0,Po
+Details zu Leihgebühren,Data,USD,2026-05-08,EOSE,90,7,630,0.4618,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-05-08,QBTS,15,23,345,0.5886,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-05-09,EOSE,90,7,630,0.4618,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-05-09,QBTS,15,23,345,0.5886,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-05-10,EOSE,90,7,630,0.4618,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-05-10,QBTS,15,23,345,0.5886,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-05-11,EOSE,90,9,810,0.5354,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-05-11,QBTS,15,24,360,0.4572,0,Po
+Details zu Leihgebühren,Data,USD,2026-05-28,QBTS,15,29,435,0.4742,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-05-29,QBTS,15,31,465,0.4871,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-05-30,QBTS,15,31,465,0.4871,-0.01,Po
+Details zu Leihgebühren,Data,USD,2026-05-31,QBTS,15,31,465,0.4871,-0.01,Po
+Details zu Leihgebühren,Data,Gesamt,,,,,,,-0.56,
+Details zu Leihgebühren,Data,Gesamtwert in EUR,,,,,,,-0.4796995,
+Stock Yield Enhancement Program Securities Lent Activity,Header,Vermögenswertkategorie,Währung,Symbol,Datum,Beschreibung, ,Transaktions ID-Nummer,Menge,Sicherheitsbetrag
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-02-16,Zuteilung des neuen Darlehens, ,SLB.116886872,-12,401.310138249
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-02-17,Zuteilung der Darlehensrendite, ,SLB.116886872,12,-401.310138249
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-02-17,Zuteilung des neuen Darlehens, ,SLB.116942815,-9,305.282716981
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-02-18,Zuteilung der Darlehensrendite, ,SLB.116942815,9,-305.282716981
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-02-18,Zuteilung des neuen Darlehens, ,SLB.117004418,-9,304.951415094
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-02-19,Zuteilung der Darlehensrendite, ,SLB.117004418,9,-304.951415094
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-02-19,Zuteilung des neuen Darlehens, ,SLB.117066999,-9,313.976716981
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-02-20,Zuteilung der Darlehensrendite, ,SLB.117066999,9,-313.976716981
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-02,Zuteilung des neuen Darlehens, ,SLB.117511074,-12,407.106009419
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-03,Zuteilung der Darlehensrendite, ,SLB.117511074,12,-407.106009419
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-03,Zuteilung des neuen Darlehens, ,SLB.117575178,-9,307.88099521
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-04,Zuteilung der Darlehensrendite, ,SLB.117575178,9,-307.88099521
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-04,Zuteilung des neuen Darlehens, ,SLB.117644264,-11,367.810322284
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-05,Zuteilung der Darlehensrendite, ,SLB.117644264,11,-367.810322284
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-10,Zuteilung des neuen Darlehens, ,SLB.117898163,-10,336.735
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-11,Zuteilung der Darlehensrendite, ,SLB.117898163,10,-336.735
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-11,Zuteilung des neuen Darlehens, ,SLB.117961499,-10,342.562998172
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-11,Zuteilung des neuen Darlehens, ,SLB.117961509,-1,34.256319018
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-12,Zuteilung der Darlehensrendite, ,SLB.117961499,10,-342.562998172
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,EUR,XDEF,2026-03-12,Zuteilung der Darlehensrendite, ,SLB.117961509,1,-34.256319018
+Stock Yield Enhancement Program Securities Lent Activity,Data,Gesamt,,,,,,,,-0
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,HIMS,2026-03-25,Zuteilung des neuen Darlehens, ,SLB.118685452,-15,330
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,HIMS,2026-03-26,Zuteilung der Darlehensrendite, ,SLB.118685452,15,-330
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,HIMS,2026-03-27,Zuteilung des neuen Darlehens, ,SLB.118826374,-15,330
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,HIMS,2026-03-30,Zuteilung der Darlehensrendite, ,SLB.118826374,15,-330
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-22,Zuteilung des neuen Darlehens, ,SLB.121503373,-3,369
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-25,Zuteilung der Darlehensrendite, ,SLB.121503373,3,-369
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-25,Zuteilung des neuen Darlehens, ,SLB.121544647,-3,366
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-26,Zuteilung der Darlehensrendite, ,SLB.121544647,3,-366
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-26,Zuteilung des neuen Darlehens, ,SLB.121604108,-3,366
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-27,Zuteilung der Darlehensrendite, ,SLB.121604108,3,-366
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-27,Zuteilung des neuen Darlehens, ,SLB.121680483,-3,369
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-28,Zuteilung der Darlehensrendite, ,SLB.121680483,3,-369
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-28,Zuteilung des neuen Darlehens, ,SLB.121746887,-3,360
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-29,Zuteilung der Darlehensrendite, ,SLB.121746887,3,-360
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-05-29,Zuteilung des neuen Darlehens, ,SLB.121815181,-3,360
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-06-01,Zuteilung der Darlehensrendite, ,SLB.121815181,3,-360
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-06-01,Zuteilung des neuen Darlehens, ,SLB.121884387,-3,351
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-06-02,Zuteilung der Darlehensrendite, ,SLB.121884387,3,-351
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-06-02,Zuteilung des neuen Darlehens, ,SLB.121945353,-3,354
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,IPGP,2026-06-03,Zuteilung der Darlehensrendite, ,SLB.121945353,3,-354
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,ONDS,2026-03-18,Zuteilung des neuen Darlehens, ,SLB.118330660,-25,300
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,ONDS,2026-03-19,Zuteilung der Darlehensrendite, ,SLB.118330660,25,-300
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,ONDS,2026-03-23,Zuteilung des neuen Darlehens, ,SLB.118541838,-25,275
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,ONDS,2026-03-24,Zuteilung der Darlehensrendite, ,SLB.118541838,25,-275
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,ONDS,2026-04-08,Zuteilung des neuen Darlehens, ,SLB.119347197,-25,250
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,ONDS,2026-04-09,Zuteilung der Darlehensrendite, ,SLB.119347197,25,-250
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-07,Zuteilung des neuen Darlehens, ,SLB.119268901,-11,110
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-08,Zuteilung der Darlehensrendite, ,SLB.119268901,11,-110
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-08,Zuteilung des neuen Darlehens, ,SLB.119348045,-11,99
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-09,Zuteilung der Darlehensrendite, ,SLB.119348045,11,-99
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-09,Zuteilung des neuen Darlehens, ,SLB.119416988,-11,99
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-10,Zuteilung der Darlehensrendite, ,SLB.119416988,11,-99
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-10,Zuteilung des neuen Darlehens, ,SLB.119480760,-19,190
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-13,Zuteilung der Darlehensrendite, ,SLB.119480760,19,-190
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-13,Zuteilung des neuen Darlehens, ,SLB.119547829,-25,250
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-14,Zuteilung der Darlehensrendite, ,SLB.119547829,25,-250
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-14,Zuteilung des neuen Darlehens, ,SLB.119609835,-34,408
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-15,Zuteilung der Darlehensrendite, ,SLB.119609835,34,-408
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-15,Zuteilung des neuen Darlehens, ,SLB.119688020,-35,420
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-16,Zuteilung der Darlehensrendite, ,SLB.119688020,35,-420
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-16,Zuteilung des neuen Darlehens, ,SLB.119750981,-35,420
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-17,Zuteilung der Darlehensrendite, ,SLB.119750981,35,-420
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-17,Zuteilung des neuen Darlehens, ,SLB.119814179,-32,384
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-20,Zuteilung der Darlehensrendite, ,SLB.119814179,32,-384
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-20,Zuteilung des neuen Darlehens, ,SLB.119881460,-34,340
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-21,Zuteilung der Darlehensrendite, ,SLB.119881460,34,-340
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-21,Zuteilung des neuen Darlehens, ,SLB.119959006,-30,300
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-22,Zuteilung der Darlehensrendite, ,SLB.119959006,30,-300
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-22,Zuteilung des neuen Darlehens, ,SLB.120023643,-33,330
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-23,Zuteilung der Darlehensrendite, ,SLB.120023643,33,-330
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-23,Zuteilung des neuen Darlehens, ,SLB.120090858,-31,372
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-24,Zuteilung der Darlehensrendite, ,SLB.120090858,31,-372
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-24,Zuteilung des neuen Darlehens, ,SLB.120161037,-34,374
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,OPTX,2026-04-27,Zuteilung der Darlehensrendite, ,SLB.120161037,34,-374
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-11,Zuteilung des neuen Darlehens, ,SLB.117978969,-1,134
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-12,Zuteilung der Darlehensrendite, ,SLB.117978969,1,-134
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-12,Zuteilung des neuen Darlehens, ,SLB.118046477,-1,132
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-13,Zuteilung der Darlehensrendite, ,SLB.118046477,1,-132
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-13,Zuteilung des neuen Darlehens, ,SLB.118113011,-1,124
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-16,Zuteilung der Darlehensrendite, ,SLB.118113011,1,-124
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-16,Zuteilung des neuen Darlehens, ,SLB.118181881,-1,126
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-17,Zuteilung der Darlehensrendite, ,SLB.118181881,1,-126
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-17,Zuteilung des neuen Darlehens, ,SLB.118251286,-1,128
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-18,Zuteilung der Darlehensrendite, ,SLB.118251286,1,-128
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-18,Zuteilung des neuen Darlehens, ,SLB.118319837,-1,128
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-19,Zuteilung der Darlehensrendite, ,SLB.118319837,1,-128
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-23,Zuteilung des neuen Darlehens, ,SLB.118530264,-2,234
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-24,Zuteilung der Darlehensrendite, ,SLB.118530264,2,-234
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-24,Zuteilung des neuen Darlehens, ,SLB.118602279,-2,230
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-25,Zuteilung der Darlehensrendite, ,SLB.118602279,2,-230
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-25,Zuteilung des neuen Darlehens, ,SLB.118673748,-2,224
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-26,Zuteilung der Darlehensrendite, ,SLB.118673748,2,-224
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-27,Zuteilung des neuen Darlehens, ,SLB.118815081,-2,210
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-30,Zuteilung der Darlehensrendite, ,SLB.118815081,2,-210
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-30,Zuteilung des neuen Darlehens, ,SLB.118881058,-2,204
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,TMDX,2026-03-31,Zuteilung der Darlehensrendite, ,SLB.118881058,2,-204
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-03-20,Zuteilung des neuen Darlehens, ,SLB.118452317,-2,38
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-03-23,Zuteilung der Darlehensrendite, ,SLB.118452317,2,-38
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-03-24,Zuteilung des neuen Darlehens, ,SLB.118597797,-2,36
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-03-25,Zuteilung der Darlehensrendite, ,SLB.118597797,2,-36
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-03-25,Zuteilung des neuen Darlehens, ,SLB.118669187,-2,34
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-03-26,Zuteilung der Darlehensrendite, ,SLB.118669187,2,-34
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-03-27,Zuteilung des neuen Darlehens, ,SLB.118810407,-2,34
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-03-30,Zuteilung der Darlehensrendite, ,SLB.118810407,2,-34
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-03-31,Zuteilung des neuen Darlehens, ,SLB.118952508,-2,30
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-04-01,Zuteilung der Darlehensrendite, ,SLB.118952508,2,-30
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-04-07,Zuteilung des neuen Darlehens, ,SLB.119260801,-2,32
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,USAR,2026-04-08,Zuteilung der Darlehensrendite, ,SLB.119260801,2,-32
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,VECO,2026-05-06,Zuteilung des neuen Darlehens, ,SLB.120682125,-9,459
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,VECO,2026-05-07,Zuteilung der Darlehensrendite, ,SLB.120682125,9,-459
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WOLF,2026-05-28,Zuteilung des neuen Darlehens, ,SLB.121742333,-2,130
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WOLF,2026-05-29,Zuteilung der Darlehensrendite, ,SLB.121742333,2,-130
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WOLF,2026-05-29,Zuteilung des neuen Darlehens, ,SLB.121810198,-3,201
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WOLF,2026-06-01,Zuteilung der Darlehensrendite, ,SLB.121810198,3,-201
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WOLF,2026-06-01,Zuteilung des neuen Darlehens, ,SLB.121880161,-4,244
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WOLF,2026-06-02,Zuteilung der Darlehensrendite, ,SLB.121880161,4,-244
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-09,Zuteilung des neuen Darlehens, ,SLB.119412789,-20,380
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-10,Zuteilung der Darlehensrendite, ,SLB.119412789,20,-380
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-10,Zuteilung des neuen Darlehens, ,SLB.119480801,-20,400
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-13,Zuteilung der Darlehensrendite, ,SLB.119480801,20,-400
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-13,Zuteilung des neuen Darlehens, ,SLB.119548267,-20,400
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-14,Zuteilung der Darlehensrendite, ,SLB.119548267,20,-400
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-15,Zuteilung des neuen Darlehens, ,SLB.119685710,-20,440
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-16,Zuteilung der Darlehensrendite, ,SLB.119685710,20,-440
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-20,Zuteilung des neuen Darlehens, ,SLB.119877291,-20,440
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-21,Zuteilung der Darlehensrendite, ,SLB.119877291,20,-440
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-22,Zuteilung des neuen Darlehens, ,SLB.120024731,-20,420
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-23,Zuteilung der Darlehensrendite, ,SLB.120024731,20,-420
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-28,Zuteilung des neuen Darlehens, ,SLB.120294041,-20,440
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-04-29,Zuteilung der Darlehensrendite, ,SLB.120294041,20,-440
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-05-06,Zuteilung des neuen Darlehens, ,SLB.120693178,-20,480
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,USD,WULF,2026-05-07,Zuteilung der Darlehensrendite, ,SLB.120693178,20,-480
+Stock Yield Enhancement Program Securities Lent Activity,Data,Gesamt,,,,,,,,0
+Stock Yield Enhancement Program Securities Lent Activity,Data,Gesamtwert in EUR,,,,,,,,-1.7085
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,SEK,SIVE,2026-06-03,Zuteilung des neuen Darlehens, ,SLB.122006182,-47,4809.157500366
+Stock Yield Enhancement Program Securities Lent Activity,Data,Aktien,SEK,SIVE,2026-06-04,Zuteilung der Darlehensrendite, ,SLB.122006182,47,-4809.157500366
+Stock Yield Enhancement Program Securities Lent Activity,Data,Gesamt,,,,,,,,0
+Stock Yield Enhancement Program Securities Lent Activity,Data,Gesamtwert in EUR,,,,,,,,-0.803129303
+Stock Yield Enhancement Program Securities Lent Interest Details,Header,Währung,Abwicklungsdatum,Symbol,Anfangsdatum,Menge,Sicherheitsbetrag,Market-based Rate (%),Zinssatz für Sicherheitsleistung des Kunden (%),Zinsen An den Kunden gezahlt,Code
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,EUR,2026-02-16,XDEF,2026-02-16,-12,401.310138,2.23,1.12,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,EUR,2026-02-17,XDEF,2026-02-17,-9,305.282717,2.23,1.12,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,EUR,2026-02-18,XDEF,2026-02-18,-9,304.951415,2.23,1.12,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,EUR,2026-02-19,XDEF,2026-02-19,-9,313.976717,2.23,1.12,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,EUR,2026-03-02,XDEF,2026-03-02,-12,407.106009,2.23,1.12,0.02,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,EUR,2026-03-03,XDEF,2026-03-03,-9,307.880995,2.23,1.12,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,EUR,2026-03-04,XDEF,2026-03-04,-11,367.810322,2.23,1.12,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,EUR,2026-03-10,XDEF,2026-03-10,-10,336.735,2.23,1.12,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,EUR,2026-03-11,XDEF,2026-03-11,-10,342.562998,2.23,1.12,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,EUR,2026-03-11,XDEF,2026-03-11,-1,34.256319,2.23,1.12,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,Gesamt,,,,,,,,0.11,
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,SEK,2026-06-03,SIVE,2026-06-03,-47,4809.1575,47.63,23.82,3.18,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,Gesamt,,,,,,,,3.18,
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,Gesamtwert in EUR,,,,,,,,0.2920035,
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-12,TMDX,2026-03-12,-1,132,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-16,TMDX,2026-03-16,-1,126,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-17,TMDX,2026-03-17,-1,128,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-18,ONDS,2026-03-18,-25,300,1.67,0.84,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-18,TMDX,2026-03-18,-1,128,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-23,ONDS,2026-03-23,-25,275,1.66,0.83,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-23,TMDX,2026-03-23,-2,234,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-24,TMDX,2026-03-24,-2,230,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-24,USAR,2026-03-24,-2,36,0.22,0.11,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-25,HIMS,2026-03-25,-15,330,0.15,0.08,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-25,TMDX,2026-03-25,-2,224,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-25,USAR,2026-03-25,-2,34,0.23,0.12,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-27,HIMS,2026-03-27,-15,330,0.14,0.07,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-27,TMDX,2026-03-27,-2,210,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-27,USAR,2026-03-27,-2,34,0.22,0.11,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-28,HIMS,2026-03-27,-15,330,0.14,0.07,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-28,TMDX,2026-03-27,-2,210,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-28,USAR,2026-03-27,-2,34,0.22,0.11,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-29,HIMS,2026-03-27,-15,330,0.14,0.07,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-29,TMDX,2026-03-27,-2,210,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-29,USAR,2026-03-27,-2,34,0.22,0.11,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-30,TMDX,2026-03-30,-2,204,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-03-31,USAR,2026-03-31,-2,30,0.22,0.11,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-07,OPTX,2026-04-07,-11,110,96.31,48.16,0.15,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-07,USAR,2026-04-07,-2,32,0.22,0.11,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-08,ONDS,2026-04-08,-25,250,1.4,0.7,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-08,OPTX,2026-04-08,-11,99,95.39,47.7,0.13,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-09,OPTX,2026-04-09,-11,99,94.87,47.44,0.13,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-09,WULF,2026-04-09,-20,380,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-10,OPTX,2026-04-10,-19,190,97.43,48.72,0.26,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-10,WULF,2026-04-10,-20,400,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-11,OPTX,2026-04-10,-19,190,97.43,48.72,0.26,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-11,WULF,2026-04-10,-20,400,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-12,OPTX,2026-04-10,-19,190,97.43,48.72,0.26,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-12,WULF,2026-04-10,-20,400,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-13,OPTX,2026-04-13,-25,250,97.46,48.73,0.34,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-13,WULF,2026-04-13,-20,400,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-14,OPTX,2026-04-14,-34,408,97.89,48.95,0.56,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-15,OPTX,2026-04-15,-35,420,99.82,49.91,0.58,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-15,WULF,2026-04-15,-20,440,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-16,OPTX,2026-04-16,-35,420,99.52,49.76,0.58,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-17,OPTX,2026-04-17,-32,384,99.29,49.65,0.53,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-18,OPTX,2026-04-17,-32,384,99.29,49.65,0.53,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-19,OPTX,2026-04-17,-32,384,99.29,49.65,0.53,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-20,OPTX,2026-04-20,-34,340,101.15,50.58,0.48,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-20,WULF,2026-04-20,-20,440,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-21,OPTX,2026-04-21,-30,300,98.44,49.22,0.41,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-22,OPTX,2026-04-22,-33,330,99.15,49.58,0.46,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-22,WULF,2026-04-22,-20,420,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-23,OPTX,2026-04-23,-31,372,103.13,51.57,0.54,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-24,OPTX,2026-04-24,-34,374,102.04,51.02,0.53,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-25,OPTX,2026-04-24,-34,374,102.04,51.02,0.53,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-26,OPTX,2026-04-24,-34,374,102.04,51.02,0.53,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-04-28,WULF,2026-04-28,-20,440,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-05-06,VECO,2026-05-06,-9,459,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-05-06,WULF,2026-05-06,-20,480,0.1,0.05,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-05-28,IPGP,2026-05-28,-3,360,0.15,0.08,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-05-28,WOLF,2026-05-28,-2,130,6.58,3.29,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-05-29,IPGP,2026-05-29,-3,360,0.15,0.08,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-05-29,WOLF,2026-05-29,-3,201,6.54,3.27,0.02,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-05-30,IPGP,2026-05-29,-3,360,0.15,0.08,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-05-30,WOLF,2026-05-29,-3,201,6.54,3.27,0.02,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-05-31,IPGP,2026-05-29,-3,360,0.15,0.08,0.01,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,USD,2026-05-31,WOLF,2026-05-29,-3,201,6.54,3.27,0.02,Po
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,Gesamt,,,,,,,,8.79,
+Stock Yield Enhancement Program Securities Lent Interest Details,Data,Gesamtwert in EUR,,,,,,,,7.4856763,
+Informationen zum Finanzinstrument,Header,Vermögenswertkategorie,Symbol,Beschreibung,Conid,Wertpapier-ID,Basiswert,Börse,Multiplikator,Typ,Code
+Informationen zum Finanzinstrument,Data,Aktien,4GLD,XETRA-GOLD,50784405,DE000A0S9GB0,4GLD,IBIS,1,ETF,
+Informationen zum Finanzinstrument,Data,Aktien,AAOI,APPLIED OPTOELECTRONICS INC,135423662,US03823U1025,AAOI,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,AEHR,AEHR TEST SYSTEMS,4725941,US00760J1088,AEHR,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,AMPX,AMPRIUS TECHNOLOGIES INC,585323053,US03214Q1085,AMPX,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,ARM,ARM HOLDINGS PLC-ADR,653400472,US0420682058,ARM,NASDAQ,1,ADR,
+Informationen zum Finanzinstrument,Data,Aktien,ARW,ARROW ELECTRONICS INC,4568,US0427351004,ARW,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,ASTS,AST SPACEMOBILE INC,480745767,US00217D1000,ASTS,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,AVAV,AEROVIRONMENT INC,42464367,US0080731088,AVAV,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,AXTI,AXT INC,4726868,US00246W1036,AXTI,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,BA,BOEING CO/THE,4762,US0970231058,BA,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,BEPC,BROOKFIELD RENEWABLE CORP,751356948,CA11285B1085,BEPC,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,BMNR,BITMINE IMMERSION TECHNOLOGI,785071865,US09175A2069,BMNR,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,BMY,BRISTOL-MYERS SQUIBB CO,5111,US1101221083,BMY,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,COHR,COHERENT CORP,584127832,US19247G1076,COHR,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,CRCL,CIRCLE INTERNET GROUP INC,789044667,US1725731079,CRCL,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,CRM,SALESFORCE INC,29624264,US79466L3024,CRM,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,CRWD,CROWDSTRIKE HOLDINGS INC - A,370757467,US22788C1053,CRWD,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,CSIQ,CANADIAN SOLAR INC,41498671,CA1366351098,CSIQ,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,CTKB,CYTEK BIOSCIENCES INC,504262805,US23285D1090,CTKB,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,EOSE,EOS ENERGY ENTERPRISES INC,455592457,US29415C1018,EOSE,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,FCX,FREEPORT-MCMORAN INC,7089,US35671D8570,FCX,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,FLNC,FLUENCE ENERGY INC,523222620,US34379V1035,FLNC,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,FLS,FLOWSERVE CORP,6477749,US34354P1057,FLS,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,HBM,HUDBAY MINERALS INC,38590542,CA4436281022,HBM,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,HIMS,HIMS & HERS HEALTH INC,466188387,US4330001060,HIMS,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,HON,HONEYWELL INTERNATIONAL INC,4350,US4385161066,HON,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,HPS.A,HAMMOND POWER SOLUTIONS INC,14891177,CA4085491039,HPS.A,TSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,INTC,INTEL CORP,270639,US4581401001,INTC,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,IPGP,IPG PHOTONICS CORP,41891895,US44980X1090,IPGP,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,IPWR,IDEAL POWER INC,380121499,US4516222035,IPWR,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,IREN,IREN LTD,526906130,AU0000185993,IREN,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,JAZZ,JAZZ PHARMACEUTICALS PLC,100430853,IE00B4Q5ZN47,JAZZ,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,LITE,LUMENTUM HOLDINGS INC,201113895,US55024U1097,LITE,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,LMND,LEMONADE INC,430625913,US52567D1072,LMND,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,LPK,LPKF LASER & ELECTRONICS SE,4344629,DE0006450000,LPK,IBIS,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,LPTH,LIGHTPATH TECHNOLOGIES INC-A,4814342,US5322578056,LPTH,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,MA,MASTERCARD INC - A,38685693,US57636Q1040,MA,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,MRK,MERCK & CO INC,70101545,US58933Y1055,MRK,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,MRVL,MARVELL TECHNOLOGY INC,483492393,US5738741041,MRVL,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,MU,MICRON TECHNOLOGY INC,9939,US5951121038,MU,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,NBIS,NEBIUS GROUP NV,88819736,NL0009805522,NBIS,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,NFLX,NETFLIX INC,15124833,US64110L1061,NFLX,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,NOW,SERVICENOW INC,109911821,US81762P1021,NOW,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,NVDA,NVIDIA CORP,4815747,US67066G1040,NVDA,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,ONDS,ONDAS INC,455415330,US68236H2040,ONDS,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,OPTX,SYNTEC OPTICS HOLDINGS INC,664690505,US87169M1053,OPTX,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,ORCL,ORACLE CORP,272800,US68389X1054,ORCL,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,QBTS,D-WAVE QUANTUM INC,578031277,US26740W1099,QBTS,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,QS,QUANTUMSCAPE CORP,457599435,US74767V1098,QS,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,RDDT,REDDIT INC-CL A,692025016,US75734B1008,RDDT,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,RKLB,ROCKET LAB CORP,787273575,US7731211089,RKLB,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,SGML,SIGMA LITHIUM CORP,511477158,CA8265991023,SGML,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,SIVE,SIVERS SEMICONDUCTORS AB,408903947,SE0003917798,SIVE,SFB,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,SNOW,SNOWFLAKE INC,444884769,US8334451098,SNOW,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,SOI,S.O.I.T.E.C.,261734723,FR0013227113,SOI,SBF,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,SSRM,SSR MINING INC,284632520,CA7847301032,SSRM,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,TDW,TIDEWATER INC,284447308,US88642R1095,TDW,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,TE,T1 ENERGY INC,674590140,US35834F1049,TE,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,TER,TERADYNE INC,12729,US8807701029,TER,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,TMDX,TRANSMEDICS GROUP INC,364036140,US89377M1099,TMDX,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,TSEM,TOWER SEMICONDUCTOR LTD,111792216,IL0010823792,TSEM,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,UNH,UNITEDHEALTH GROUP INC,13272,US91324P1021,UNH,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,USAR,USA RARE EARTH INC,768545231,US91733P1075,USAR,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,VALE,VALE SA-SP ADR,60581038,US91912E1055,VALE,NYSE,1,ADR,
+Informationen zum Finanzinstrument,Data,Aktien,VECO,VEECO INSTRUMENTS INC,275708,US9224171002,VECO,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,WDC,WESTERN DIGITAL CORP,13681,US9581021055,WDC,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,WOLF,WOLFSPEED INC,817815740,US97785W1062,WOLF,NYSE,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,WRAP,WRAP TECHNOLOGIES INC,319808443,US98212N1072,WRAP,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,WULF,TERAWULF INC,532497563,US88080T1043,WULF,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,XDEF,XEUROPE DEFENCE TECHNOLOG 1C,810306238,LU3061478973,XDEF,IBIS2,1,ETF,
+Informationen zum Finanzinstrument,Data,Aktien,XERS,XERIS BIOPHARMA HOLDINGS INC,519131055,US98422E1038,XERS,NASDAQ,1,COMMON,
+Informationen zum Finanzinstrument,Data,Aktien,XFAB,X-FAB SILICON FOUNDRIES SE,272103757,BE0974310428,XFAB,SBF,1,COMMON,
+Codes,Header,Code,Bedeutung,Code (Forts.),Bedeutung (Forts.)
+Codes,Data,A,Zuordnung
+Codes,Data,ADR,Aufgelaufene ADR-Gebühren
+Codes,Data,AEx,Automatische Ausübung für Dividenden-bezogene Empfehlung
+Codes,Data,AFx,AutoFX conversion resulting from trading
+Codes,Data,Adj,Anpassung
+Codes,Data,Al,Zuteilung
+Codes,Data,Aw,Externe Transaktion
+Codes,Data,B,Automatische Zwangseindeckung
+Codes,Data,Bo,Direktleihe
+Codes,Data,C,Schlusstransaktion
+Codes,Data,CD,Barzustellung
+Codes,Data,CP,Komplexe Position
+Codes,Data,Ca,Storniert
+Codes,Data,Co,Korrigierte Transaktion
+Codes,Data,Cx,Diese Transaktion war ganz oder teilweise ein Cross-Trade mit dem Broker als Doppel-Intermediär für zwei Kunden des Brokers
+Codes,Data,DT,Discounted Trade
+Codes,Data,De,Delivery or Conversion Action
+Codes,Data,ETF,ETF - Creation/Redemption
+Codes,Data,Ep,Resultierte aus einer abgelaufenen Position
+Codes,Data,Ex,Ausübung
+Codes,Data,FP,"Broker acted as agent for the fractional share portion of this trade, which was executed by a Broker affiliate as principal."
+Codes,Data,FPA,Broker acted as agent for both the fractional share portion and the whole share portion of this trade; the fractional share portion was executed by a Broker Affiliate as principal.
+Codes,Data,G,Handel in garantiertem Kontosegment
+Codes,Data,GEA,Exercise or Assignment resulting from offsetting positions
+Codes,Data,HC,Auswahl der höchsten Steuerbasis für Kosten
+Codes,Data,HFI,Auf Hedgefonds übertragene Anlage
+Codes,Data,HFR,Rücknahme aus dem Hedgefonds
+Codes,Data,I,Interner Transfer
+Codes,Data,IA,Diese Transaktion wurde gegen eine verbundene Gesellschaft des Brokers ausgeführt
+Codes,Data,IM,A portion of the order was executed against a Broker affiliate; A broker acted as agent on a portion.
+Codes,Data,INV,Anlagentransfer vom Anleger
+Codes,Data,IPO,This transaction was executed as part of an IPO in which Broker was a member of the selling group and is classified as a Principal trade.
+Codes,Data,L,Vom Broker angefordert (Marginverstoß)
+Codes,Data,LD,Angepasst anhand des Verlusts aus einem nicht abzugsfähigen Wash Sale
+Codes,Data,LF,Liquidation of fractional position by IB
+Codes,Data,LI,"Steuerbasisauswahl: Last In, First Out (LIFO)"
+Codes,Data,LT,Langfristiger G/V
+Codes,Data,Lo,Direktes Darlehen
+Codes,Data,M,Manuell vom Broker eingegeben
+Codes,Data,MEx,Manuelle Ausübung für Dividenden-bezogene Empfehlung
+Codes,Data,ML,Auswahl der Steuerbasis zur Maximierung von Verlusten
+Codes,Data,MLG,Auswahl der Steuerbasis zur Maximierung von langfristigen Gewinnen
+Codes,Data,MLL,Auswahl der Steuerbasis zur Maximierung von langfristigen Verlusten
+Codes,Data,MSG,Auswahl der Steuerbasis zur Maximierung von kurzfristigen Gewinnen
+Codes,Data,MSL,Auswahl der Steuerbasis zur Maximierung von kurzfristigen Verlusten
+Codes,Data,O,Eröffnungstransaktion
+Codes,Data,Off,Yes and No contracts offset to $1.00 cash settlement
+Codes,Data,P,Teilausführung
+Codes,Data,PE,Perpetual Investment
+Codes,Data,PI,Kursverbesserung
+Codes,Data,PTA,Post Trade Allocation
+Codes,Data,Po,Verbuchung aufgelaufener Zinsen oder Dividenden
+Codes,Data,Pr,Diese Transaktion wurde ganz oder teilweise durch die Börse als Cross-Trade zwischen dem Broker und einer verbundenen Gesellschaft des Brokers ausgeführt und wird daher als Principal Trade (Transaktion auf eigene Rechnung) und nicht als Agency Trade (Geschäft auf Kundenrechnung) eingestuft
+Codes,Data,R,Dividenden-Wiederanlage
+Codes,Data,RED,Rückzahlung an Anleger
+Codes,Data,RI,Sparplan
+Codes,Data,RP,"Broker acted as agent for the fractional share portion of this trade, which was executed by a Broker affiliate as riskless principal."
+Codes,Data,RPA,Broker acted as agent for both the fractional share portion and the whole share portion of this trade; the fractional share portion was executed by a Broker Affiliate as riskless principal.
+Codes,Data,Rb,Rebill
+Codes,Data,Re,Umwandlung aufgelaufener Zinsen oder Dividenden
+Codes,Data,Ri,Rückerstattung
+Codes,Data,S0,Contract settled to zero value
+Codes,Data,S1,Contract settled to $1.00
+Codes,Data,SF,Trade is subject to IBKR Lite Surcharge Fee if volume of such trades exceeds 10% of the total monthly Lite trade volume
+Codes,Data,SI,Diese Order wurde durch den Broker vermittelt
+Codes,Data,SL,Auswahl der Bemessungsgrundlage für spezifische Posten
+Codes,Data,SO,Diese Order wurde als vermittelt durch den einführenden Broker markiert
+Codes,Data,SS,Der Kunde hat diese Transaktion für eine verkürzte Abwicklung gekennzeichnet. Es kann daher zu einer Ausführung oberhalb des vorherrschenden Marktkurses kommen.
+Codes,Data,ST,Kurzfristiger G/V
+Codes,Data,T,Transfer
+Codes,Data,Un,Noch nicht investierte Aktien aus der Gewährung von Bezugsrechten
+Codes,Data,XCH,Mutual Fund Exchange Transaction
+Hinweise/Rechtshinweise,Header,Typ,Hinweis
+Hinweise/Rechtshinweise,Data,Hinweise,"Stock exchange transactions generally settle on the trade date plus one business day (T+1). Options, futures and US open-end mutual fund transactions also settle on trade date plus one business day. Some exchanges and other transaction types may have longer or shorter settlement periods. Ending settled cash reflects the cash that has actually settled."
+Hinweise/Rechtshinweise,Data,Hinweise,Die geltenden Anforderungen für den Erst- und Mindesteinschuss können Sie dem Kontoübersichtsfenster in der Trader Workstation entnehmen.
+Hinweise/Rechtshinweise,Data,Hinweise,"Mengen, vor denen das Vorzeichen „-“ angezeigt wird, stellen Verkaufstransaktionen dar. Bei anderen Transaktionen handelt es sich um Käufe."
+Hinweise/Rechtshinweise,Data,Hinweise,"For shares traded on US markets, Interactive Brokers Ireland Limited (IBIE) acts as agent in executing the fractional portion of your order. In certain circumstances, IBIE routes that portion to an affiliate, which may execute it either as principal or riskless principal. If an IB affiliate executes as i) principal, the order will be executed at the price displayed for the opposite side of the NBBO from your order (the offer if you are buying and the bid if you are selling) at the time of execution, ii) riskless principal, the affiliate will execute that portion of your order at the price it receives for the execution of the whole share. The way in which the fractional portion of the order is executed is indicated by the codes associated with the trade. For shares traded on European Markets, IBIE will generally act as counterparty for any fractional portion of your order for shares, which it will execute as principal, for a total consideration which is equal to (or better than), the total consideration for the execution of a full share available at the European trading venues and SIs to which IBIE has access. In certain circumstances, IBIE may route a full share order to the available European trading venues acting in an Agency capacity and the fractional portion of the order will be allocated to your account at the price traded in the trading venue and the remaining fractional portion will be allocated to an affiliate. "
+Hinweise/Rechtshinweise,Data,Hinweise,Im Fall von teilweisen Ausführungen werden Provisionen auf die ausgeführte Gesamtmenge der ursprünglichen Order erhoben. Die Provision wird ausschließlich bei der ersten teilweisen Ausführung angezeigt.
+Hinweise/Rechtshinweise,Data,Hinweise,Die Transaktionsausführungszeiten werden auf Basis der Zeitzone „Eastern Time” angezeigt.
+Hinweise/Rechtshinweise,Data,Hinweise,Applicable fees for your transactions are available on the IB website at www.interactivebrokers.com/en/accounts/fees/exchangeAndRegulatoryFees.php.
+Hinweise/Rechtshinweise,Data,Hinweise,"Borrow Fee Rate represents the cost to borrow stock expressed in percent per annum. It is applied to the collateral value on the stock borrow contract and is separate from any interest earned on credit cash balances. Similarly, Loan Fee Rate represents the benefit to lend stock. A positive rate indicates a cost to the borrower/benefit to the lender and a negative rate indicates a benefit to the borrower/cost to the lender. In general, the fee rates for hard-to-borrow stocks are higher than for normal availability stocks."
+Hinweise/Rechtshinweise,Data,Hinweise,"Der Zinssatz auf Sicherheitsleistungen von Kunden stellt die gezahlten Zinsen auf Sicherheitsleistungen dar, die an das Kundenkonto übermittelt werden und aus dem Aktienverleih erhalten wurden. Ein positiver Zinssatz zeigt einen Vorteil für den Verleiher an."
+Hinweise/Rechtshinweise,Data,Hinweise,"Die Schlusskurse auf diesem Auszug sind indikativer Natur und können aus externen Quellen stammen. Interactive Brokers leistet jedoch keine Gewähr für die Richtigkeit der von den externen Quellen angebotenen Kurse. Aufgrund unterschiedlicher Zeitzonen ist es möglich, dass bestimmte Nicht-US-Investmentfonds Schlusskurse nach der Erstellung des Kontoauszuges bereitstellen und die Schlusskurse für solche Fonds werden die Kurse des Vortages widerspiegeln."
+Hinweise/Rechtshinweise,Data,Hinweise,Alle Marktdaten- und Recherchedienste werden über Global Financial Information Services (GmbH) bereitgestellt.
+Hinweise/Rechtshinweise,Data,Hinweise,Die Marktdaten werden von Global Financial Information Services (GmbH) bereitgestellt. Im Namen von Global Financial Information Services (GmbH) erhebt Ihr regionaler Broker Beträge für Gebühren und Steuern für solche Daten. Hinweis: In Bezug auf die Bereitstellung dieser Dienste tragen Sie die Verantwortung für jegliche zutreffenden Steuern.
+Hinweise/Rechtshinweise,Data,Hinweise,Directive 2014/65/EU and its implementing measures (MiFID II) applies to all client funds and client financial instruments (Client Assets) on this statement except those Client Assets that are not classified as segregated assets and funds derived from trading Crypto-Assets. IBIE is also subject to the client asset requirements set out in the Central Bank (Supervision and Enforcement) Act 2013 (Section 48(1))(Investment Firms) Regulations 2023 (=S.I. No. 10 of 2023).Client assets that are not classified as segregated securities comprise securities lent under the Stock Yield Enhancement Programme as identified in the IBKR Managed Securities Lent section of this statement and Client Assets noted as Not Segregated in the Collateral for Customer Borrowing section of this statement. Funds derived from trading Crypto-Assets include funds from sell transactions. IBIE applies the MiFID II Client Asset protection requirements to funds and instruments that are not subject to MiFID II in the same way as it applies those requirements to Client Assets.
+Hinweise/Rechtshinweise,Data,Hinweise,"The stated interest, commission, and/or fee rates on the Interactive Brokers website are for direct clients of Interactive Brokers. Clients introduced through another broker may be subject to a different rate at the election of the client’s introducing broker. Clients should contact their introducing broker about the rates that will apply to their account."
+Hinweise/Rechtshinweise,Data,Hinweise,RUS denotes Ruble balances that have been restricted by Russian authorities.
+Hinweise/Rechtshinweise,Data,Mutual Fund Notes,"All purchase and sales of mutual funds are calculated against the published NAV (Net Asset Value) of the underlying fund and is displayed on this confirmation as the ""C. Price"" (Closing Price). Due to any fees charged by a fund and/or any share rounding, the net price you pay may vary from the published NAV and is shown on this confirmation as the ""T. Price"" (Trade Price)."
+Hinweise/Rechtshinweise,Data,Hinweise zu festverzinslichen Produkten,"Call features for bonds or preferred stocks may affect the yield. For zero coupon, compound interest and multiplier securities, there are no periodic payments and securities may be callable below maturity value without notice to holder unless registered. For asset-backed securities, the actual yield may vary depending on the speed at which the underlying note is pre-paid. For additional information regarding bond yield, please contact the IB Help Desk at: ibkr.com/help. If this debt security is unrated by a nationally recognized statistical rating organization, it may pose a high risk of default. You should consult an independent advisor to determine whether unrated bonds are appropriate for your portfolio in light of your goals and your financial circumstances. Fees charged by bond trading centers are included in the cost of bond transactions."
+Hinweise/Rechtshinweise,Data,Rechtshinweise,"Bitte melden Sie über das nachstehende Kontaktformular umgehend jegliche Fehler oder Diskrepanzen in diesem Auszug oder Ihrem Konto an Interactive Brokers und CapTrader GmbH. Falls Sie jegliche Fehler telefonisch mitteilen, sollten Sie jegliche mündliche Kommunikation schriftlich bestätigen, damit Ihre Rechte geschützt werden, einschließlich Ihre Rechte gemäß des Irish Investor Compensation Scheme.CapTrader GmbH, www.captrader.com, 0800-8723370"
+Hinweise/Rechtshinweise,Data,Rechtshinweise,"Unless otherwise noted, IBIE role is acted as agent in the execution of the above transactions. IBIE may execute your trades through affiliates or third-party brokers who are members of the relevant exchange or market center. Please see the IBIE CAKID Bank Account List at www.ibkr.ie/cakid for custody details."
+Hinweise/Rechtshinweise,Data,Rechtshinweise,"IBIE fungiert als risikoloser Akteur (""riskless principal"") bei Devisentransaktionen und CFDs. Solche Transaktionen werden gegen ein verbundenes Unternehmen von IBIE ausgeführt, das als Auftraggeber bei solchen Transaktionen fungiert und entweder über eine Long- oder Short-Position verfügt und möglicherweise in Verbindung mit dieser Transaktion einen Gewinn bzw. Verlust erzielt hat."
+Hinweise/Rechtshinweise,Data,Rechtshinweise,"IBIE routes orders in US Financial instruments through its US affiliate, IBLLC. IBLLC accepts liquidity rebates or other order flow payments from Alternative Trading Systems, market makers and exchanges for certain orders in US stocks. IBLLC receives payment for some US option orders pursuant to exchange-mandated marketing fee programs or other arrangements."
+Hinweise/Rechtshinweise,Data,Rechtshinweise,"Bitte informieren Sie CapTrader GmbH möglichst zeitnah über wichtige Änderungen in Ihren Anlagezielen, Ihrer finanziellen Situationen oder Ihren Umständen."
+Hinweise/Rechtshinweise,Data,Rechtshinweise,"Interactive Brokers Ireland Limited (""IBIE"") ist ein Mitglied der Irish Investor Compensation Scheme. IBIE erbringt Ausführungs-, Clearing- und Carrying-Dienstleistungen für Ihr Konto gemäß einer Vereinbarung mit CapTrader GmbH. Wie bei allen Wertpapierfirmen zahlt die Irish Investor Compensation Scheme im Falle eines Ausfalls eines Broker-Dealers eine Entschädigung an die Kunden (vorbehaltlich bestimmter Grenzen), nicht gegen den Verlust des Marktwertes der Wertpapiere. Nicht alle Verluste werden abgedeckt, da es Höchstgrenzen für die Entschädigung gibt."
+Hinweise/Rechtshinweise,Data,Rechtshinweise,"Ein aktueller Finanzbericht von IBIE ist für Ihre persönliche Einsichtnahme bei www.interactivebrokers.ie oder in ihrem Büro verfügbar, oder eine Kopie des Finanzberichts wird Ihnen auf Ihre schriftliche Anfrage hin zugesandt."
+Hinweise/Rechtshinweise,Data,Rechtshinweise,"IBIE is a member of the Investor Compensation Scheme, which provides protection for customers in the event of the failure of IBIE. Further information on the Investor Compensation Scheme can be found at  www.investorcompensation.ie."
+Hinweise/Rechtshinweise,Data,Rechtshinweise,IBIE ist ein Unternehmen nach irischem Recht und beim Irish Companies Registration Office mit der Unternehmensregistrierungsnummer 657406 eingetragen.
+Hinweise/Rechtshinweise,Data,Rechtshinweise,IBIE wird von der Central Bank of Ireland reguliert.
+Hinweise/Rechtshinweise,Data,Rechtshinweise,"IBIE's Registered Office address is North Dock One, 91/92 North Wall Quay, Dublin 1, D01 H7V7."
+Hinweise/Rechtshinweise,Data,Rechtshinweise,"IBIE is included in the Central Bank of Ireland's register of authorised firms under number C423427. The CBI's address is New Wapping Street, North Wall Quay, Dublin 1, D01 F7X3. The CBI's website is www.centralbank.ie."

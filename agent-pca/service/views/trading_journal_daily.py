@@ -18,11 +18,11 @@ def get_chart_data_daily(symbol: str, timeframe: str, limit: int) -> dict:
     columns = ["timestamp", "open", "high", "low", "close", "volume"]
     
     try:
-        r = httpx.get(f"{postgrest_url}/pta_execution_log?event_type=in.(FILL,CASH_TRANSFER)&order=created_at.asc")
+        r = httpx.get(f"{postgrest_url}/pta_execution_log?event_type=in.(FILL,CASH_TRANSFER)&order=created_at.asc&limit=50000")
         r.raise_for_status()
         exec_logs = r.json()
         
-        r_rates = httpx.get(f"{postgrest_url}/exchange_rates?base_currency=eq.EUR&order=date.asc")
+        r_rates = httpx.get(f"{postgrest_url}/exchange_rates?base_currency=eq.EUR&order=date.asc&limit=50000")
         r_rates.raise_for_status()
         rates_data = r_rates.json()
     except Exception as e:
@@ -170,7 +170,7 @@ def get_chart_data_daily(symbol: str, timeframe: str, limit: int) -> dict:
         # Reset data
         data = []
         try:
-            r = httpx.get(f"{postgrest_url}/pta_trade_history?order=close_time.asc")
+            r = httpx.get(f"{postgrest_url}/pta_trade_history?order=close_time.asc&limit=50000")
             r.raise_for_status()
             trades = r.json()
         except Exception:

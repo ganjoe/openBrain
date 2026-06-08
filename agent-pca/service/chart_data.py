@@ -11,9 +11,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 # Import View Controllers
-from .views.default import get_chart_data_default
-from .views.trading_journal_daily import get_chart_data_daily
-from .views.trading_journal_events import get_chart_data_events
+from views.default import get_chart_data_default
+from views.trading_journal_daily import get_chart_data_daily
+from views.trading_journal_events import get_chart_data_events
 
 logger = logging.getLogger("pca.chart_data")
 router = APIRouter()
@@ -38,10 +38,10 @@ async def get_chart_data(
         if layout == "trading_journal_events":
             return get_chart_data_events(symbol, timeframe, limit)
         elif layout == "trading_journal_daily":
-            return get_chart_data_daily(symbol, timeframe, limit)
+            # Now that we have Parquet caching, we can load it just like a default ticker!
+            return get_chart_data_default(symbol, timeframe, limit, features)
         else:
-            # Fallback to daily if layout is unknown or empty, to keep existing behavior
-            return get_chart_data_daily(symbol, timeframe, limit)
+            return get_chart_data_default(symbol, timeframe, limit, features)
 
     # 2. Default behavior for normal tickers (AAPL, TSLA, etc.)
     return get_chart_data_default(symbol, timeframe, limit, features)

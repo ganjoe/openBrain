@@ -362,7 +362,7 @@ services:
       PARQUET_BASE_PATH: /parquet
       PORT: "8791"
     volumes:
-      - /home/daniel/stock-data-node/data/parquet:/parquet:ro
+      - /home/daniel/stock-data-node/data/parquet:/parquet
     ports:
       - "8791:8791"
     extra_hosts:

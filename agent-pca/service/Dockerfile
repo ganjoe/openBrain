@@ -8,6 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY *.py ./
+COPY views/ ./views/
+COPY scripts/ ./scripts/
 
 EXPOSE 8791
 
