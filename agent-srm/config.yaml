@@ -1,0 +1,19 @@
+# Senior Risk Manager — Nexus Agent Configuration
+# Agent identity is defined ONLY here. Never hardcode IDs in source code.
+
+agent:
+  id: "srm"
+  name: "Senior Risk Manager"
+  display_name: "SRM"
+
+mqtt:
+  broker_url: "mqtt://nexus-broker:1883"
+  # Topics are derived from agent.id at runtime — do not hardcode here
+  lwt_topic: "agents/status"
+  lwt_payload: '{"agent":"srm","status":"offline","unix":0}'
+
+mcp:
+  # Local MCP servers this agent can call directly via HTTP
+  local_servers:
+    - url: "http://mcp-srm:8793"
+      label: "openbrain-srm-memory"

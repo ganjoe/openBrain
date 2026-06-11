@@ -225,6 +225,61 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # --- MCP Server: SRM agent endpoint ---
+  mcp-srm:
+    build:
+      context: ./agent-srm/mcp-server
+      dockerfile: Dockerfile
+    container_name: openbrain-mcp-srm
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+    volumes:
+      - ./agent-srm/metadata-prompt.txt:/app/metadata-prompt.txt:ro
+      - ./agent-srm/mcp-server/stdio.ts:/app/stdio.ts:ro
+    environment:
+      SUPABASE_URL: http://gateway:80
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_EMBED_MODEL: qwen3-embedding:8b
+      LM_STUDIO_URL: http://host.docker.internal:1234
+      PORT: "8793"
+      AGENT_ID: "srm"
+      GLOBAL_BRAIN_ACCESS: "true"
+    ports:
+      - "8793:8793"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # --- SRM Bot: Senior Risk Manager ---
+  agent-srm-bot:
+    build:
+      context: ./agent-srm/bot
+      dockerfile: Dockerfile
+    container_name: openbrain-srm-bot
+    restart: unless-stopped
+    depends_on:
+      - nexus-broker
+      - mcp-srm
+    volumes:
+      - ./agent-srm/prompt.txt:/app/prompt.txt:ro
+      - ./agent-srm/config.yaml:/app/config.yaml:ro
+    environment:
+      CONFIG_PATH: /app/config.yaml
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      LM_STUDIO_URL: http://host.docker.internal:1234
+      POSTGREST_URL: http://postgrest:3000
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   # --- CCO MCP Server ---
   mcp-cco:
     build:

@@ -52,7 +52,7 @@ export function registerMinerviniTools(server: McpServer) {
                 return { content: [{ type: "text", text: "No valid parameters provided to update." }] };
             }
 
-            const { error } = await supabase.from("minervini_risk_parameters").update(updateData).eq("id", 1);
+            const { error } = await supabase.from("pta_risk_parameters").update(updateData).eq("id", 1);
             if (error) {
                 return { content: [{ type: "text", text: `Error updating parameters: ${error.message}` }], isError: true };
             }
@@ -74,7 +74,7 @@ export function registerMinerviniTools(server: McpServer) {
             }
 
             // 1. Load Risk Parameters from DB
-            const { data: riskParams } = await supabase.from("minervini_risk_parameters").select("*").eq("id", 1).single();
+            const { data: riskParams } = await supabase.from("pta_risk_parameters").select("*").eq("id", 1).single();
             const baseRiskPct = riskParams?.base_risk_pct ?? 1.0;
             const maxPosSizePct = riskParams?.max_position_size_pct ?? 25.0;
             const maxCoreRiskPct = riskParams?.max_core_risk_pct ?? 6.0;
