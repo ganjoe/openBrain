@@ -240,6 +240,7 @@ services:
       gateway:
         condition: service_started
     volumes:
+      - ./agent-srm/mcp-server:/app
       - ./agent-srm/metadata-prompt.txt:/app/metadata-prompt.txt:ro
       - ./agent-srm/mcp-server/stdio.ts:/app/stdio.ts:ro
     environment:

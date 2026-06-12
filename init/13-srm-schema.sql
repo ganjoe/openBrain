@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS srm_portfolio (
     -- Fixe Risikoparameter (Limits)
     max_crisk_pct NUMERIC,
     max_heat_pct NUMERIC,
+    min_r NUMERIC,
+    max_days NUMERIC,
+    max_crisk_pos_pct NUMERIC,
     
     -- Zeitstempel
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -56,7 +59,12 @@ CREATE TABLE srm_trades (
     heat_eur NUMERIC,
     heat_pct NUMERIC,
     pnl NUMERIC,
-    commission NUMERIC
+    commission NUMERIC,
+    status TEXT,
+    r_value NUMERIC,
+    tp NUMERIC,
+    target_r NUMERIC,
+    days NUMERIC
 );
 
 -- Permissions

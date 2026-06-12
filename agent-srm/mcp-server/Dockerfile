@@ -12,4 +12,4 @@ COPY . .
 EXPOSE 8793
 
 # Start FastAPI server
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8793"]
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8793", "--reload"]
