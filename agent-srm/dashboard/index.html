@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRM Live Portfolio</title>
+    <!-- Use Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        html {
+            font-size: 40%;
+        }
+
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --success: #10b981;
+            --danger: #ef4444;
+            --border: #334155;
+            --radius: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            line-height: 1.6;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        /* Time Machine Controls */
+        .time-machine {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        .time-machine input[type="date"] {
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            outline: none;
+            color-scheme: dark;
+        }
+
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Portfolio Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            padding: 1.5rem;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 1.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .stat-sub {
+            font-size: 1.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            margin-top: 0.75rem;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.5s ease-out;
+        }
+
+        .progress-fill.danger { background: var(--danger); }
+        .progress-fill.success { background: var(--success); }
+
+        /* Table */
+        .table-container {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: rgba(0, 0, 0, 0.2);
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 1.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .positive { color: var(--success); }
+        .negative { color: var(--danger); }
+
+        .ticker-badge {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--accent);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 1.5rem;
+        }
+
+        .link-icon {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 1.2rem;
+            transition: color 0.2s;
+        }
+
+        .link-icon:hover {
+            color: var(--text-main);
+        }
+
+        #loadingOverlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(4px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        /* Modal */
+        .modal {
+            position: fixed;
+            z-index: 2000;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: var(--bg-card);
+            padding: 2rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            width: 80%;
+            max-width: 600px;
+            position: relative;
+        }
+        .close-modal {
+            position: absolute;
+            top: 1rem; right: 1.5rem;
+            color: var(--text-muted);
+            font-size: 2rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-modal:hover { color: var(--text-main); }
+    </style>
+</head>
+<body>
+    <div id="loadingOverlay"><div class="spinner"></div></div>
+
+    <div id="tradeModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">Trade Details</h2>
+            <pre id="modalBody" style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 1.2rem; margin-top: 1rem; color: var(--text-main);"></pre>
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>SRM Live Portfolio</h1>
+            <div class="time-machine">
+                <span style="color: var(--text-muted); font-size: 1.5rem;">Backtest Engine</span>
+                <button class="btn" id="btnPrevDay">&larr; Prev</button>
+                <input type="date" id="targetDate" value="2023-01-01">
+                <button class="btn" id="btnNextDay">Next &rarr;</button>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Net Asset Value</div>
+                <div class="stat-value" id="valNav">-- €</div>
+                <div class="stat-sub">Cash: <span id="valCash">-- €</span> (<span id="valCashPct">--</span>%)</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-label">Portfolio Heat</div>
+                <div class="stat-value" id="valHeatPct">--%</div>
+                <div class="progress-bar">
+                    <div class="progress-fill danger" id="barHeat" style="width: 0%"></div>
+                </div>
+                <div class="stat-sub" id="valHeatEur">-- €</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-label">Core Risk</div>
+                <div class="stat-value" id="valCriskPct">--%</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="barCrisk" style="width: 0%"></div>
+                </div>
+                <div class="stat-sub" id="valCriskEur">-- €</div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Status</th>
+                        <th>Shares</th>
+                        <th>Entry / Current</th>
+                        <th>SL / TP</th>
+                        <th>PnL</th>
+                        <th>R-Multiple</th>
+                        <th>Heat</th>
+                        <th>Logs</th>
+                    </tr>
+                </thead>
+                <tbody id="positionsTableBody">
+                    <tr><td colspan="9" style="text-align:center; color: var(--text-muted);">Loading data...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let supabaseClient = null;
+
+        async function showTradeDetails(tradeId) {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            const { data, error } = await supabaseClient.from('srm_trades').select('*').eq('trade_id', tradeId).single();
+            document.getElementById('loadingOverlay').style.display = 'none';
+            if (data) {
+                document.getElementById('modalTitle').textContent = `Trade ID: ${tradeId} - ${data.ticker}`;
+                document.getElementById('modalBody').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('tradeModal').style.display = 'flex';
+            } else {
+                alert('Could not load trade details: ' + (error?.message || 'Unknown error'));
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('tradeModal').style.display = 'none';
+        }
+
+        function formatCurrency(val) {
+            return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(val || 0);
+        }
+
+        function formatNumber(val, decimals=2) {
+            return Number(val || 0).toFixed(decimals);
+        }
+
+        function getColorClass(val) {
+            if(val > 0) return 'positive';
+            if(val < 0) return 'negative';
+            return '';
+        }
+
+        async function init() {
+            // Fetch config from Python Backend
+            const res = await fetch('/api/config');
+            const config = await res.json();
+            
+            supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseKey);
+            
+            // Set today to date input
+            document.getElementById('targetDate').value = new Date().toISOString().split('T')[0];
+            
+            await loadData();
+            
+            // Setup real-time listener for srm_live_positions
+            supabaseClient.channel('custom-all-channel')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'srm_trades' }, loadData)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'srm_portfolio' }, loadData)
+                .subscribe();
+        }
+
+        async function loadData() {
+            const targetDateStr = document.getElementById('targetDate').value;
+            const targetDate = new Date(targetDateStr);
+
+            // 1. Load config max limits
+            const { data: portData } = await supabaseClient.from('srm_portfolio').select('max_heat_pct, max_crisk_pct').limit(1).single();
+
+            // 2. Fetch all trades to build the ledger
+            const { data: allTrades } = await supabaseClient.from('srm_trades').select('*').order('ticker');
+            
+            let realized_capital = 0.0;
+            let invested_capital = 0.0;
+            let open_pnl = 0.0;
+            let total_heat_eur = 0.0;
+            let total_crisk_eur = 0.0;
+            
+            const activeTrades = [];
+            
+            if (allTrades && allTrades.length > 0) {
+                allTrades.forEach(trade => {
+                    const plannedStr = trade.planned || '2000-01-01';
+                    const plannedDate = new Date(plannedStr);
+                    
+                    if (plannedDate > targetDate) return; // Skip trades from the future
+                    
+                    let isClosedThen = false;
+                    if (trade.status === 'closed') {
+                        if (trade.closed) {
+                            const closedDate = new Date(trade.closed);
+                            if (closedDate <= targetDate) {
+                                isClosedThen = true;
+                            }
+                        } else {
+                            isClosedThen = true;
+                        }
+                    }
+                    
+                    if (isClosedThen) {
+                        realized_capital += (trade.pnl || 0.0);
+                    } else {
+                        // It is active at the target date!
+                        activeTrades.push(trade);
+                        invested_capital += (trade.cbase || 0.0) * (trade.nos || 0);
+                        open_pnl += (trade.pnl || 0.0);
+                        total_heat_eur += (trade.heat_eur || 0.0);
+                        total_crisk_eur += (trade.crisk_eur || 0.0);
+                    }
+                });
+            }
+            
+            const cash = realized_capital - invested_capital;
+            const liveNav = realized_capital + open_pnl;
+
+            // Render stats
+            document.getElementById('valNav').textContent = formatCurrency(liveNav);
+            document.getElementById('valCash').textContent = formatCurrency(cash);
+            document.getElementById('valCashPct').textContent = liveNav > 0 ? formatNumber((cash / liveNav) * 100) : "0.00";
+            
+            const liveHeatPct = liveNav > 0 ? (total_heat_eur / liveNav) * 100 : 0;
+            const liveCriskPct = liveNav > 0 ? (total_crisk_eur / liveNav) * 100 : 0;
+            
+            const maxHeatPct = (portData && portData.max_heat_pct <= 1.0) ? portData.max_heat_pct * 100 : (portData ? portData.max_heat_pct : 15.0);
+            const maxCriskPct = (portData && portData.max_crisk_pct <= 1.0) ? portData.max_crisk_pct * 100 : (portData ? portData.max_crisk_pct : 1.25);
+            
+            document.getElementById('valHeatPct').innerHTML = `${formatNumber(liveHeatPct)}% <span style="font-size: 1.75rem; color: var(--text-muted);">/ ${formatNumber(maxHeatPct)}% max</span>`;
+            document.getElementById('valHeatEur').textContent = formatCurrency(total_heat_eur);
+            const heatBarWidth = (liveHeatPct / maxHeatPct) * 100;
+            const heatBar = document.getElementById('barHeat');
+            heatBar.style.width = Math.min(100, heatBarWidth) + '%';
+            heatBar.className = heatBarWidth > 100 ? 'progress-fill danger' : 'progress-fill success';
+            
+            document.getElementById('valCriskPct').innerHTML = `${formatNumber(liveCriskPct)}% <span style="font-size: 1.75rem; color: var(--text-muted);">/ ${formatNumber(maxCriskPct)}% max</span>`;
+            document.getElementById('valCriskEur').textContent = formatCurrency(total_crisk_eur);
+            const criskBarWidth = (liveCriskPct / maxCriskPct) * 100;
+            const criskBar = document.getElementById('barCrisk');
+            criskBar.style.width = Math.min(100, criskBarWidth) + '%';
+            criskBar.className = criskBarWidth > 100 ? 'progress-fill danger' : 'progress-fill success';
+
+            const tbody = document.getElementById('positionsTableBody');
+            tbody.innerHTML = '';
+            
+            if(activeTrades.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: var(--text-muted);">No open positions</td></tr>';
+                return;
+            }
+
+            // Check data status
+            const currentTargetDate = document.getElementById('targetDate').value;
+            let dataStatus = {};
+            try {
+                const res = await fetch(`/api/check_data?date=${currentTargetDate}`);
+                if (res.ok) {
+                    dataStatus = await res.json();
+                }
+            } catch(e) {}
+
+            activeTrades.forEach(pos => {
+                const tr = document.createElement('tr');
+                
+                let dot = '';
+                if(dataStatus[pos.ticker] === 'green') dot = '<span style="color:var(--success); font-size:1.2rem; margin-left:0.5rem" title="Kurs für dieses Datum vorhanden">🟢</span>';
+                else if(dataStatus[pos.ticker] === 'yellow') dot = '<span style="color:#eab308; font-size:1.2rem; margin-left:0.5rem" title="Kein Kurs für dieses exakte Datum (Wochenende/Feiertag), nutze letzten Kurs">🟡</span>';
+                else if(dataStatus[pos.ticker] === 'red') dot = '<span style="color:var(--danger); font-size:1.2rem; margin-left:0.5rem" title="Keine Daten/Parquet-Datei für diesen Ticker gefunden">🔴</span>';
+                
+                tr.innerHTML = `
+                    <td><span class="ticker-badge">${pos.ticker}</span>${dot}</td>
+                    <td>${pos.status.toUpperCase()}</td>
+                    <td>${pos.nos}</td>
+                    <td>$${formatNumber(pos.cbase)} &rarr; <b>$${formatNumber(pos.current_price)}</b></td>
+                    <td style="color:var(--text-muted)">$${formatNumber(pos.sl)} / $${formatNumber(pos.tp)}</td>
+                    <td class="${getColorClass(pos.pnl)}">${formatCurrency(pos.pnl)}</td>
+                    <td class="${getColorClass(pos.rmultiple)}">${formatNumber(pos.rmultiple, 1)}R</td>
+                    <td>${formatCurrency(pos.heat_eur)} <span style="color:var(--text-muted);font-size:1.5rem">(${formatNumber(pos.heat_pct)}%)</span></td>
+                    <td><a href="#" title="Trade ${pos.trade_id} Details" class="link-icon" onclick="showTradeDetails(${pos.trade_id}); return false;">&#128269;</a></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function triggerAdvanceTime(daysDelta) {
+            const dateInput = document.getElementById('targetDate');
+            let currentDate = new Date(dateInput.value);
+            // Change date
+            currentDate.setDate(currentDate.getDate() + daysDelta);
+            const targetDateStr = currentDate.toISOString().split('T')[0];
+            dateInput.value = targetDateStr;
+
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            try {
+                const res = await fetch('/api/advance_time', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_date: targetDateStr })
+                });
+                const result = await res.json();
+                console.log('Advanced time:', result);
+                // loadData will be triggered by Supabase realtime, but we can call it manually to be safe
+                await loadData();
+            } catch (err) {
+                alert('Error advancing time: ' + err.message);
+            } finally {
+                document.getElementById('loadingOverlay').style.display = 'none';
+            }
+        }
+
+        document.getElementById('btnPrevDay').addEventListener('click', () => triggerAdvanceTime(-1));
+        document.getElementById('btnNextDay').addEventListener('click', () => triggerAdvanceTime(1));
+
+        // Start
+        init();
+    </script>
+</body>
+</html>
