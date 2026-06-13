@@ -1,0 +1,5 @@
+root       98490  0.0  0.1 1861240 92432 ?       Ssl  Jun12   1:18 /usr/local/bin/python3.12 /usr/local/bin/uvicorn main:app --host 0.0.0.0 --port 8791 --log-level info
+root       98497  0.1  0.1 447324 70364 ?        Ssl  Jun12   3:31 /usr/local/bin/python3.12 /usr/local/bin/uvicorn main:app --host 0.0.0.0 --port 7734
+root     1178824  0.0  0.0 104400 27300 ?        Ssl  22:22   0:00 /usr/local/bin/python3.11 /usr/local/bin/uvicorn server:app --host 0.0.0.0 --port 8793 --reload
+daniel   1309232 16.3  0.2 1726672 149588 pts/8  Sl   23:28   0:02 /home/daniel/openBrain/agent-srm/dashboard-backend/venv/bin/python3 /home/daniel/openBrain/agent-srm/dashboard-backend/venv/bin/uvicorn main:app --port 8794 --host 0.0.0.0
+daniel   1309892  0.0  0.0   6912  2576 pts/2    S+   23:28   0:00 grep --color=auto uvicorn

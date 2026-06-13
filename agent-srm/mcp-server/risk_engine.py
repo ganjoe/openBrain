@@ -1,5 +1,6 @@
 from typing import List, Dict, Any
-
+import pandas as pd
+from datetime import datetime, timezone
 class PortfolioObject:
     def __init__(self, data: Dict[str, Any]):
         """
@@ -45,15 +46,20 @@ class PortfolioObject:
         available_pct = max(0.0, self.max_crisk_pct - self.current_crisk_pct)
         return (available_pct / 100.0) * self.nav
         
-    def recalculate_totals(self):
+    def recalculate_totals(self, target_date=None):
         """
         Recalculates current heat, crisk, and asset value based on active trades.
         """
         total_heat_eur = 0.0
         total_crisk_eur = 0.0
         for t in self.active_trades:
-            # Heat is dynamic risk: (current_price - sl) * nos
-            heat = (t.current_price - t.sl) * t.nos
+            # Heat is dynamic risk
+            if target_date is not None:
+                active_sl = t.get_active_sl(target_date)
+            else:
+                active_sl = t.sl
+                
+            heat = (t.current_price - active_sl) * t.nos
             total_heat_eur += heat
             total_crisk_eur += t.crisk_eur
 
@@ -82,14 +88,17 @@ class TradeObject:
         # Handle 'price' from user input or 'cbase' from DB
         self.price = float(data.get("price") or data.get("cbase") or 0.0)
         self.sl = float(data.get("sl", 0.0))
+        self.sl_history = data.get("sl_history") or []
         self.commission = float(data.get("commission", 0.0))
         self.days = int(data.get("days", 0))
         self.nos = int(data.get("nos") or 0)
         self.status = data.get("status", "planned")
         
-        # Risk per share
-        self.r_per_share = max(0.0001, self.price - self.sl)
-        self.sl_distance_pct = (self.r_per_share / self.price) * 100
+        # Initial Core Risk per share uses the INITIAL SL
+        # If sl_history has items, the first item is the initial SL
+        initial_sl = self.sl_history[0].get("sl", self.sl) if self.sl_history else self.sl
+        self.r_per_share = max(0.0001, self.price - initial_sl)
+        self.sl_distance_pct = (self.r_per_share / self.price) * 100 if self.price > 0 else 0.0
         
         self.tp = data.get("tp")
         self.target_r = data.get("target_r")
@@ -109,6 +118,24 @@ class TradeObject:
         self.current_price = self.price
         self.current_r_multiple = 0.0
         self.current_pnl = 0.0
+
+    def get_active_sl(self, target_date) -> float:
+        """
+        Returns the active stop loss for the given target_date.
+        target_date can be a string (ISO format) or a pandas Timestamp/datetime object.
+        """
+        if not self.sl_history:
+            return self.sl
+            
+        # Convert target_date to string prefix for easy comparison (e.g. '2023-01-01')
+        target_date_str = str(target_date)[:10]
+        
+        active_sl = self.sl_history[0].get("sl", self.sl)
+        for entry in self.sl_history:
+            entry_date_str = str(entry.get("date", "2000-01-01"))[:10]
+            if entry_date_str <= target_date_str:
+                active_sl = entry.get("sl", active_sl)
+        return float(active_sl)
 
     def update_current_price(self, new_price: float):
         """
@@ -131,20 +158,25 @@ class TradeObject:
             
         # Limit 1a: Position Core Risk
         allowed_pos_crisk_eur = portfolio.get_max_crisk_pos_eur()
-        nos_pos_crisk = int(allowed_pos_crisk_eur / self.r_per_share)
+        nos_pos_crisk_raw = allowed_pos_crisk_eur / self.r_per_share
+        nos_pos_crisk = int(nos_pos_crisk_raw)
         
         # Limit 1b: Total Portfolio Core Risk
         allowed_total_crisk_eur = portfolio.get_available_crisk_eur()
-        nos_total_crisk = int(allowed_total_crisk_eur / self.r_per_share)
+        nos_total_crisk_raw = allowed_total_crisk_eur / self.r_per_share
+        nos_total_crisk = int(nos_total_crisk_raw)
         
         # Limit 2: Portfolio Heat
         allowed_heat_eur = portfolio.get_available_heat_eur()
-        nos_heat = int(allowed_heat_eur / self.r_per_share)
+        nos_heat_raw = allowed_heat_eur / self.r_per_share
+        nos_heat = int(nos_heat_raw)
         
         # Limit 3: Cash (Accounting for commission)
         if portfolio.cash > self.commission:
-            nos_cash = int((portfolio.cash - self.commission) / self.price)
+            nos_cash_raw = (portfolio.cash - self.commission) / self.price
+            nos_cash = int(nos_cash_raw)
         else:
+            nos_cash_raw = 0.0
             nos_cash = 0
             
         # Limit 4: Max positions
@@ -159,10 +191,10 @@ class TradeObject:
         
         # Determine limiting factor
         limits = {
-            "Position Core Risk Limit": nos_pos_crisk,
-            "Portfolio Core Risk Limit": nos_total_crisk,
-            "Portfolio Heat Limit": nos_heat,
-            "Cash Limit": nos_cash,
+            "Position Core Risk Limit": round(nos_pos_crisk_raw, 1),
+            "Portfolio Core Risk Limit": round(nos_total_crisk_raw, 1),
+            "Portfolio Heat Limit": round(nos_heat_raw, 1),
+            "Cash Limit": round(nos_cash_raw, 1),
             "Max Positions Limit": "Reached" if nos_max_positions == 0 else "OK"
         }
         
@@ -182,7 +214,25 @@ class TradeObject:
                     "limiting_factors": limits,
                     "message": "Discovery complete. Limit reached. Cannot buy shares."
                 }
-            return {"error": f"Cannot buy shares. Requested: {requested_nos}, Allowed: {max_nos}. Check limits."}
+            
+            # Find which limit caused the rejection
+            limiting_reason = "Unknown Limit"
+            if nos_cash == 0:
+                limiting_reason = "Cash Limit (Insufficient Funds)"
+            elif nos_pos_crisk == 0:
+                limiting_reason = "Position Core Risk Limit"
+            elif nos_total_crisk == 0:
+                limiting_reason = "Portfolio Core Risk Limit"
+            elif nos_heat == 0:
+                limiting_reason = "Portfolio Heat Limit"
+            elif nos_max_positions == 0:
+                limiting_reason = "Max Positions Limit Reached"
+                
+            return {
+                "error": "REJECTED_LIMIT_REACHED",
+                "message": f"Cannot buy shares. Requested: {requested_nos}, Allowed: {max_nos}. Limiting Factor: {limiting_reason}.",
+                "limits": limits
+            }
             
         trade_cost = (actual_nos * self.price) + self.commission
         cash_after = portfolio.cash - trade_cost
@@ -237,3 +287,87 @@ class TradeObject:
             res["requested_nos"] = requested_nos
             
         return res
+
+class PortfolioRepository:
+    @staticmethod
+    def load_portfolio_and_trades(client, target_date: str = None) -> PortfolioObject:
+        if not client:
+            raise Exception("Database not connected.")
+            
+        res = client.table("srm_portfolio").select("*").limit(1).execute()
+        if not res.data:
+            raise Exception("No portfolio found in srm_portfolio table.")
+            
+        port_data = res.data[0]
+        
+        if port_data.get("portfolio_id") is not None:
+            trades_res = client.table("srm_trades").select("*").eq("portfolio_id", port_data["portfolio_id"]).execute()
+            all_trades = trades_res.data or []
+        else:
+            all_trades = []
+            
+        if target_date is None:
+            target_date = datetime.now(timezone.utc).isoformat()
+            
+        t_date_pd = pd.to_datetime(target_date, utc=True)
+        
+        realized_capital = 0.0
+        invested_capital = 0.0
+        active_trades = []
+        
+        for t_data in all_trades:
+            planned_str = t_data.get("planned")
+            if not planned_str:
+                planned = pd.to_datetime("2000-01-01", utc=True)
+            else:
+                planned = pd.to_datetime(planned_str, utc=True)
+                
+            if planned > t_date_pd:
+                continue
+                
+            status = t_data.get("status")
+            closed_date_str = t_data.get("closed")
+            
+            # Determine if trade was closed ON OR BEFORE the target date
+            is_closed_then = False
+            if status == "closed":
+                if closed_date_str:
+                    closed_date = pd.to_datetime(closed_date_str, utc=True)
+                    if closed_date <= t_date_pd:
+                        is_closed_then = True
+                else:
+                    is_closed_then = True
+                    
+            if is_closed_then:
+                realized_capital += float(t_data.get("pnl") or 0.0)
+            else:
+                trade = TradeObject(t_data)
+                active_trades.append(trade)
+                invested_capital += float(t_data.get("cbase") or 0.0) * int(t_data.get("nos") or 0)
+                
+        cash = realized_capital - invested_capital
+        port_data["nav"] = realized_capital # Base NAV
+        port_data["cash"] = cash
+        
+        portfolio = PortfolioObject(port_data)
+        portfolio.active_trades = active_trades
+                        
+        return portfolio
+
+    @staticmethod
+    def save_portfolio(client, portfolio: PortfolioObject):
+        if not client or not portfolio.portfolio_id:
+            return
+            
+        cash_pct = (portfolio.cash / portfolio.nav * 100) if portfolio.nav > 0 else 0.0
+        
+        client.table("srm_portfolio").update({
+            "nav": portfolio.nav,
+            "cash": portfolio.cash,
+            "cash_pct": cash_pct,
+            "heat_pct": portfolio.current_heat_pct,
+            "heat_eur": (portfolio.current_heat_pct / 100.0) * portfolio.nav,
+            "crisk_pct": portfolio.current_crisk_pct,
+            "crisk_eur": (portfolio.current_crisk_pct / 100.0) * portfolio.nav
+        }).eq("portfolio_id", portfolio.portfolio_id).execute()
+

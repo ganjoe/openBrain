@@ -1,0 +1,3 @@
+Columns: Index(['timestamp', 'open', 'high', 'low', 'close', 'volume'], dtype='str')
+Index name: None
+Index type: <class 'pandas.RangeIndex'>

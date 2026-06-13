@@ -389,65 +389,40 @@
 
         async function loadData() {
             const targetDateStr = document.getElementById('targetDate').value;
-            const targetDate = new Date(targetDateStr);
 
-            // 1. Load config max limits
-            const { data: portData } = await supabaseClient.from('srm_portfolio').select('max_heat_pct, max_crisk_pct').limit(1).single();
-
-            // 2. Fetch all trades to build the ledger
-            const { data: allTrades } = await supabaseClient.from('srm_trades').select('*').order('ticker');
-            
-            let realized_capital = 0.0;
-            let invested_capital = 0.0;
-            let open_pnl = 0.0;
-            let total_heat_eur = 0.0;
-            let total_crisk_eur = 0.0;
-            
-            const activeTrades = [];
-            
-            if (allTrades && allTrades.length > 0) {
-                allTrades.forEach(trade => {
-                    const plannedStr = trade.planned || '2000-01-01';
-                    const plannedDate = new Date(plannedStr);
-                    
-                    if (plannedDate > targetDate) return; // Skip trades from the future
-                    
-                    let isClosedThen = false;
-                    if (trade.status === 'closed') {
-                        if (trade.closed) {
-                            const closedDate = new Date(trade.closed);
-                            if (closedDate <= targetDate) {
-                                isClosedThen = true;
-                            }
-                        } else {
-                            isClosedThen = true;
-                        }
-                    }
-                    
-                    if (isClosedThen) {
-                        realized_capital += (trade.pnl || 0.0);
-                    } else {
-                        // It is active at the target date!
-                        activeTrades.push(trade);
-                        invested_capital += (trade.cbase || 0.0) * (trade.nos || 0);
-                        open_pnl += (trade.pnl || 0.0);
-                        total_heat_eur += (trade.heat_eur || 0.0);
-                        total_crisk_eur += (trade.crisk_eur || 0.0);
-                    }
+            // Fetch portfolio state from backend
+            let data = null;
+            try {
+                const res = await fetch('/api/portfolio_state', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target_date: targetDateStr })
                 });
+                if(!res.ok) throw new Error(await res.text());
+                data = await res.json();
+            } catch(e) {
+                console.error("Failed to load portfolio state:", e);
+                return;
             }
+
+            const activeTrades = data.trades;
+            const port = data.portfolio;
             
-            const cash = realized_capital - invested_capital;
-            const liveNav = realized_capital + open_pnl;
+            const liveNav = port.nav;
+            const cash = port.cash;
+            const cashPct = port.cash_pct;
+            const total_heat_eur = port.heat_eur;
+            const liveHeatPct = port.heat_pct;
+            const total_crisk_eur = port.crisk_eur;
+            const liveCriskPct = port.crisk_pct;
 
             // Render stats
             document.getElementById('valNav').textContent = formatCurrency(liveNav);
             document.getElementById('valCash').textContent = formatCurrency(cash);
-            document.getElementById('valCashPct').textContent = liveNav > 0 ? formatNumber((cash / liveNav) * 100) : "0.00";
+            document.getElementById('valCashPct').textContent = formatNumber(cashPct);
             
-            const liveHeatPct = liveNav > 0 ? (total_heat_eur / liveNav) * 100 : 0;
-            const liveCriskPct = liveNav > 0 ? (total_crisk_eur / liveNav) * 100 : 0;
-            
+            // Load config max limits
+            const { data: portData } = await supabaseClient.from('srm_portfolio').select('max_heat_pct, max_crisk_pct').limit(1).single();
             const maxHeatPct = (portData && portData.max_heat_pct <= 1.0) ? portData.max_heat_pct * 100 : (portData ? portData.max_heat_pct : 15.0);
             const maxCriskPct = (portData && portData.max_crisk_pct <= 1.0) ? portData.max_crisk_pct * 100 : (portData ? portData.max_crisk_pct : 1.25);
             
@@ -491,12 +466,30 @@
                 else if(dataStatus[pos.ticker] === 'yellow') dot = '<span style="color:#eab308; font-size:1.2rem; margin-left:0.5rem" title="Kein Kurs für dieses exakte Datum (Wochenende/Feiertag), nutze letzten Kurs">🟡</span>';
                 else if(dataStatus[pos.ticker] === 'red') dot = '<span style="color:var(--danger); font-size:1.2rem; margin-left:0.5rem" title="Keine Daten/Parquet-Datei für diesen Ticker gefunden">🔴</span>';
                 
+                // Calculate active_sl for targetDate
+                let active_sl = pos.sl;
+                if (pos.sl_history && pos.sl_history.length > 0) {
+                    active_sl = pos.sl_history[0].sl || pos.sl;
+                    const targetDateStr = currentTargetDate; // YYYY-MM-DD
+                    for (let entry of pos.sl_history) {
+                        const entryDateStr = (entry.date || "2000-01-01").substring(0, 10);
+                        if (entryDateStr <= targetDateStr) {
+                            active_sl = entry.sl || active_sl;
+                        }
+                    }
+                }
+
+                let displayStatus = pos.status.toUpperCase();
+                if (pos.status === 'closed') {
+                    displayStatus = `<span style="color:var(--text-muted); font-size: 1.5rem;">CLOSED ${pos.closed ? new Date(pos.closed).toLocaleDateString('de-DE') : ''}</span>`;
+                }
+
                 tr.innerHTML = `
                     <td><span class="ticker-badge">${pos.ticker}</span>${dot}</td>
-                    <td style="font-size: 1.5rem;">${pos.status.toUpperCase()}</td>
+                    <td style="font-size: 1.5rem;">${displayStatus}</td>
                     <td style="font-size: 1.5rem;">${pos.nos}</td>
                     <td style="font-size: 1.5rem;">$${formatNumber(pos.cbase)} &rarr; <b>$${formatNumber(pos.current_price)}</b></td>
-                    <td style="color:var(--text-muted); font-size: 2rem;">$${formatNumber(pos.sl)} / $${formatNumber(pos.tp)}</td>
+                    <td style="color:var(--text-muted); font-size: 2rem;">$${formatNumber(active_sl)} / $${formatNumber(pos.tp)}</td>
                     <td class="${getColorClass(pos.pnl)}" style="font-size: 1.5rem;">${formatCurrency(pos.pnl)}</td>
                     <td class="${getColorClass(pos.rmultiple)}" style="font-size: 1.5rem;">${formatNumber(pos.rmultiple, 1)}R</td>
                     <td style="font-size: 1.5rem;">${formatCurrency(pos.heat_eur)} <span style="color:var(--text-muted);font-size:1.5rem">(${formatNumber(pos.heat_pct)}%)</span></td>
@@ -518,19 +511,7 @@
 
             clearTimeout(advanceTimer);
             advanceTimer = setTimeout(async () => {
-                try {
-                    const res = await fetch('/api/advance_time', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ target_date: targetDateStr })
-                    });
-                    const result = await res.json();
-                    console.log('Advanced time:', result);
-                    // loadData will be triggered by Supabase realtime, but we can call it manually to be safe
-                    await loadData();
-                } catch (err) {
-                    alert('Error advancing time: ' + err.message);
-                }
+                await loadData();
             }, 300);
         }
 

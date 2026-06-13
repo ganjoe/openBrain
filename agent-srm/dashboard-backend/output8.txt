@@ -1,0 +1,1 @@
+[{'current_price': 230.0, 'status': 'closed', 'pnl': -50.0}]

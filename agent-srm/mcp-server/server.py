@@ -3,7 +3,7 @@ import json
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-from risk_engine import PortfolioObject, TradeObject
+from risk_engine import PortfolioObject, TradeObject, PortfolioRepository
 from supabase import create_client, Client
 import requests
 import pandas as pd
@@ -51,69 +51,7 @@ def error_response(req_id, message):
         }
     }
 
-def load_portfolio_and_trades(client: Client, target_date: str = None) -> PortfolioObject:
-    if not client:
-        raise Exception("Database not connected.")
-        
-    res = client.table("srm_portfolio").select("*").limit(1).execute()
-    if not res.data:
-        raise Exception("No portfolio found in srm_portfolio table.")
-        
-    port_data = res.data[0]
-    
-    if port_data.get("portfolio_id") is not None:
-        trades_res = client.table("srm_trades").select("*").eq("portfolio_id", port_data["portfolio_id"]).execute()
-        all_trades = trades_res.data or []
-    else:
-        all_trades = []
-        
-    if target_date is None:
-        target_date = datetime.now(timezone.utc).isoformat()
-        
-    t_date_pd = pd.to_datetime(target_date, utc=True)
-    
-    realized_capital = 0.0
-    invested_capital = 0.0
-    active_trades = []
-    
-    for t_data in all_trades:
-        planned_str = t_data.get("planned")
-        if not planned_str:
-            planned = pd.to_datetime("2000-01-01", utc=True)
-        else:
-            planned = pd.to_datetime(planned_str, utc=True)
-            
-        if planned > t_date_pd:
-            continue
-            
-        status = t_data.get("status")
-        closed_date_str = t_data.get("closed")
-        
-        # Determine if trade was closed ON OR BEFORE the target date
-        is_closed_then = False
-        if status == "closed":
-            if closed_date_str:
-                closed_date = pd.to_datetime(closed_date_str, utc=True)
-                if closed_date <= t_date_pd:
-                    is_closed_then = True
-            else:
-                is_closed_then = True
-                
-        if is_closed_then:
-            realized_capital += float(t_data.get("pnl") or 0.0)
-        else:
-            trade = TradeObject(t_data)
-            active_trades.append(trade)
-            invested_capital += float(t_data.get("cbase") or 0.0) * int(t_data.get("nos") or 0)
-            
-    cash = realized_capital - invested_capital
-    port_data["nav"] = realized_capital # Base NAV
-    port_data["cash"] = cash
-    
-    portfolio = PortfolioObject(port_data)
-    portfolio.active_trades = active_trades
-                    
-    return portfolio
+
 
 @app.post("/")
 async def handle_mcp_request(req: JsonRpcRequest):
@@ -160,6 +98,19 @@ async def handle_mcp_request(req: JsonRpcRequest):
                         }
                     },
                     {
+                        "name": "update_stoploss",
+                        "description": "Update the stop loss for an active trade.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "trade_id": {"type": "number", "description": "ID of the trade to update"},
+                                "new_sl": {"type": "number", "description": "New stop loss price"},
+                                "date": {"type": "string", "description": "Optional: Date of the update (YYYY-MM-DD). Defaults to today."}
+                            },
+                            "required": ["trade_id", "new_sl"]
+                        }
+                    },
+                    {
                         "name": "commit_transaction",
                         "description": "Log a cash deposit or withdrawal as a closed trade.",
                         "inputSchema": {
@@ -177,7 +128,9 @@ async def handle_mcp_request(req: JsonRpcRequest):
                         "description": "Get current portfolio state, balances, and risk parameters (heat and crisk allowed).",
                         "inputSchema": {
                             "type": "object",
-                            "properties": {},
+                            "properties": {
+                                "target_date": {"type": "string", "description": "Optional: Date to get portfolio status for, format YYYY-MM-DD. Defaults to today."}
+                            },
                             "required": []
                         }
                     }
@@ -191,15 +144,21 @@ async def handle_mcp_request(req: JsonRpcRequest):
         
         if tool_name == "get_portfolio":
             try:
-                portfolio = load_portfolio_and_trades(supabase)
+                target_date_arg = args.get("target_date")
+                if target_date_arg:
+                    target_date_val = pd.to_datetime(target_date_arg, utc=True).isoformat()
+                else:
+                    target_date_val = datetime.now(timezone.utc).isoformat()
+                    
+                portfolio = PortfolioRepository.load_portfolio_and_trades(supabase, target_date_val)
                 portfolio.recalculate_totals()
                 
-                cash_pct = (portfolio.cash / portfolio.nav * 100) if portfolio.nav > 0 else 0.0
+                PortfolioRepository.save_portfolio(supabase, portfolio)
                 
                 portfolio_info = {
                     "nav": portfolio.nav,
                     "cash": portfolio.cash,
-                    "cash_pct": cash_pct,
+                    "cash_pct": (portfolio.cash / portfolio.nav * 100) if portfolio.nav > 0 else 0.0,
                     "current_heat_pct": portfolio.current_heat_pct,
                     "max_heat_pct": portfolio.max_heat_pct,
                     "available_heat_pct": portfolio.get_available_heat_pct(),
@@ -236,7 +195,13 @@ async def handle_mcp_request(req: JsonRpcRequest):
 
         elif tool_name == "simulate_trade":
             try:
-                portfolio = load_portfolio_and_trades(supabase)
+                planned_date_arg = args.get("planned_date")
+                if planned_date_arg:
+                    planned_date_val = pd.to_datetime(planned_date_arg, utc=True).isoformat()
+                else:
+                    planned_date_val = datetime.now(timezone.utc).isoformat()
+                    
+                portfolio = PortfolioRepository.load_portfolio_and_trades(supabase, planned_date_val)
                 portfolio.recalculate_totals()
                 
                 # Build trade dict from args to initialize TradeObject
@@ -257,7 +222,8 @@ async def handle_mcp_request(req: JsonRpcRequest):
                 impact = trade.validate(portfolio, requested_nos=nos)
                 
                 if "error" in impact:
-                    telemetry_msg = f"❌ **Simulation fehlgeschlagen**: {impact['error']}"
+                    err_msg = impact.get("message", impact["error"])
+                    telemetry_msg = f"❌ **Simulation fehlgeschlagen**: {err_msg}"
                 elif impact.get("status") == "discovery_success":
                     limits = impact.get('limiting_factors', {})
                     telemetry_msg = (f"🔍 **Risiko-Limits für {impact['ticker']} (Preis: {impact['price']}, SL: {impact['stop_loss']})**\n"
@@ -310,7 +276,7 @@ async def handle_mcp_request(req: JsonRpcRequest):
                 else:
                     planned_date_val = datetime.now(timezone.utc).isoformat()
                     
-                portfolio = load_portfolio_and_trades(supabase, planned_date_val)
+                portfolio = PortfolioRepository.load_portfolio_and_trades(supabase, planned_date_val)
                 portfolio.recalculate_totals()
                 
                 trade_data_args = {
@@ -327,7 +293,8 @@ async def handle_mcp_request(req: JsonRpcRequest):
                 impact = trade.validate(portfolio, requested_nos=nos)
                 
                 if "error" in impact:
-                    return error_response(req.id, impact["error"])
+                    err_msg = impact.get("message", impact["error"])
+                    return error_response(req.id, err_msg)
                 
                 p_impact = impact["portfolio_impact"]
                 trade_cost = impact["trade_cost_eur"]
@@ -364,6 +331,7 @@ async def handle_mcp_request(req: JsonRpcRequest):
                     "cbase": trade.price,
                     "nos": nos,
                     "sl": trade.sl,
+                    "sl_history": [{"date": planned_date_val, "sl": trade.sl}],
                     "tp": trade.tp,
                     "target_r": trade.target_r,
                     "r_value": trade.r_per_share,
@@ -379,7 +347,7 @@ async def handle_mcp_request(req: JsonRpcRequest):
                 }
                 supabase.table("srm_trades").insert(db_trade_data).execute()
                 
-                # NOTE: We no longer update srm_portfolio nav/cash because it is dynamically calculated.
+                PortfolioRepository.save_portfolio(supabase, portfolio)
                 
                 telemetry_msg = (f"💾 **Trade auf {trade.ticker} gebucht! [{status_val.upper()}]**\n"
                                  f"*{nos} Shares @ {trade.price} (SL: {trade.sl}, TP: {round(trade.tp, 2)} / {round(trade.target_r, 2)}R)*\n\n"
@@ -430,9 +398,21 @@ async def handle_mcp_request(req: JsonRpcRequest):
                     "tp": 0.0,
                     "pnl": amount,
                     "crisk_eur": 0.0,
-                    "heat_eur": 0.0
+                    "heat_eur": 0.0,
+                    "target_r": 0.0,
+                    "r_value": 0.0,
+                    "commission": 0.0,
+                    "rmultiple": 0.0,
+                    "rmultiple_pct": 0.0,
+                    "crisk_pct": 0.0,
+                    "heat_pct": 0.0,
+                    "sl_history": [],
+                    "days": 0
                 }
-                supabase.table("srm_trades").insert(db_trade_data).execute()
+                res = supabase.table("srm_trades").insert(db_trade_data).execute()
+                
+                if getattr(res, "error", None) is not None:
+                    return error_response(req.id, f"Error committing transaction: {res.error}")
                 
                 telemetry_msg = f"💸 **{t_type}** in Höhe von {amount} EUR am {date_val} verbucht."
                 send_telemetry(telemetry_msg)
@@ -449,5 +429,48 @@ async def handle_mcp_request(req: JsonRpcRequest):
                 
             except Exception as e:
                 return error_response(req.id, f"Error committing transaction: {str(e)}")
+                
+        elif tool_name == "update_stoploss":
+            try:
+                trade_id = args.get("trade_id")
+                new_sl = float(args.get("new_sl"))
+                date_val = args.get("date")
+                
+                if date_val:
+                    date_iso = pd.to_datetime(date_val, utc=True).isoformat()
+                else:
+                    date_iso = datetime.now(timezone.utc).isoformat()
+
+                # Get existing trade
+                res = supabase.table("srm_trades").select("*").eq("trade_id", trade_id).single().execute()
+                if not res.data:
+                    return error_response(req.id, f"Trade {trade_id} not found.")
+                
+                trade_data = res.data
+                sl_history = trade_data.get("sl_history") or []
+                
+                # Append new SL
+                sl_history.append({"date": date_iso, "sl": new_sl})
+                
+                # Update DB
+                supabase.table("srm_trades").update({
+                    "sl": new_sl,
+                    "sl_history": sl_history
+                }).eq("trade_id", trade_id).execute()
+                
+                telemetry_msg = f"🛡️ **Trailing Stop Update**\nStop-Loss für Trade #{trade_id} ({trade_data.get('ticker')}) auf {new_sl}$ nachgezogen."
+                send_telemetry(telemetry_msg)
+                
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req.id,
+                    "result": {
+                        "content": [
+                            {"type": "text", "text": f"Stop loss for trade {trade_id} updated to {new_sl}."}
+                        ]
+                    }
+                }
+            except Exception as e:
+                return error_response(req.id, f"Error updating stoploss: {str(e)}")
                 
         return error_response(req.id, f"Unknown tool: {tool_name}")

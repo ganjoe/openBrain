@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "<string>", line 9, in <module>
+    supabase = create_client(url, key)
+  File "/home/daniel/openBrain/agent-srm/dashboard-backend/venv/lib/python3.13/site-packages/supabase/_sync/client.py", line 380, in create_client
+    return Client.create(
+           ~~~~~~~~~~~~~^
+        supabase_url=supabase_url, supabase_key=supabase_key, options=options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/daniel/openBrain/agent-srm/dashboard-backend/venv/lib/python3.13/site-packages/supabase/_sync/client.py", line 109, in create
+    client = cls(supabase_url, supabase_key, options)
+  File "/home/daniel/openBrain/agent-srm/dashboard-backend/venv/lib/python3.13/site-packages/supabase/_sync/client.py", line 57, in __init__
+    raise SupabaseException("supabase_url is required")
+supabase._sync.client.SupabaseException: supabase_url is required

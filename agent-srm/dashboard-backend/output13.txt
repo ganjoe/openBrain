@@ -1,0 +1,30 @@
+{
+    "trades": [
+        {
+            "trade_id": 18,
+            "portfolio_id": 0,
+            "planned": "2026-05-28T00:00:00+00:00",
+            "open": null,
+            "closed": null,
+            "ticker": "ADBE",
+            "cbase": 240.0,
+            "nos": 5,
+            "sl": 230.0,
+            "rmultiple": 0.14399999999999977,
+            "rmultiple_pct": 0.0,
+            "name": null,
+            "currency": null,
+            "crisk_eur": 0.0,
+            "crisk_pct": 0.0,
+            "heat_eur": 57.19999999999999,
+            "heat_pct": 0.5,
+            "pnl": 7.199999999999989,
+            "commission": 0.0,
+            "status": "ACTIVE",
+            "r_value": 10.0,
+            "tp": 270.0,
+            "target_r": 3.0,
+            "days": 0,
+            "current_price": 241.44,
+            "sl_history": [
+                {
