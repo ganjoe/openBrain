@@ -6,8 +6,10 @@ class PortfolioObject:
         Initialize the portfolio state directly from a database dictionary.
         """
         self.portfolio_id = data.get("portfolio_id")
-        self.nav = float(data.get("nav") or 100000.0)
-        self.cash = float(data.get("cash") or 100000.0)
+        nav_val = data.get("nav")
+        self.nav = float(nav_val if nav_val is not None else 100000.0)
+        cash_val = data.get("cash")
+        self.cash = float(cash_val if cash_val is not None else 100000.0)
         
         # Helper for percentages
         def to_pct(val, default):
