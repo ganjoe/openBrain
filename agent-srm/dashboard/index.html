@@ -77,7 +77,7 @@
             border: none;
             color: var(--text-main);
             font-family: 'Inter', sans-serif;
-            font-size: 1rem;
+            font-size: 1.8rem;
             outline: none;
             color-scheme: dark;
         }
@@ -493,18 +493,20 @@
                 
                 tr.innerHTML = `
                     <td><span class="ticker-badge">${pos.ticker}</span>${dot}</td>
-                    <td>${pos.status.toUpperCase()}</td>
-                    <td>${pos.nos}</td>
-                    <td>$${formatNumber(pos.cbase)} &rarr; <b>$${formatNumber(pos.current_price)}</b></td>
-                    <td style="color:var(--text-muted)">$${formatNumber(pos.sl)} / $${formatNumber(pos.tp)}</td>
-                    <td class="${getColorClass(pos.pnl)}">${formatCurrency(pos.pnl)}</td>
-                    <td class="${getColorClass(pos.rmultiple)}">${formatNumber(pos.rmultiple, 1)}R</td>
-                    <td>${formatCurrency(pos.heat_eur)} <span style="color:var(--text-muted);font-size:1.5rem">(${formatNumber(pos.heat_pct)}%)</span></td>
+                    <td style="font-size: 1.5rem;">${pos.status.toUpperCase()}</td>
+                    <td style="font-size: 1.5rem;">${pos.nos}</td>
+                    <td style="font-size: 1.5rem;">$${formatNumber(pos.cbase)} &rarr; <b>$${formatNumber(pos.current_price)}</b></td>
+                    <td style="color:var(--text-muted); font-size: 2rem;">$${formatNumber(pos.sl)} / $${formatNumber(pos.tp)}</td>
+                    <td class="${getColorClass(pos.pnl)}" style="font-size: 1.5rem;">${formatCurrency(pos.pnl)}</td>
+                    <td class="${getColorClass(pos.rmultiple)}" style="font-size: 1.5rem;">${formatNumber(pos.rmultiple, 1)}R</td>
+                    <td style="font-size: 1.5rem;">${formatCurrency(pos.heat_eur)} <span style="color:var(--text-muted);font-size:1.5rem">(${formatNumber(pos.heat_pct)}%)</span></td>
                     <td><a href="#" title="Trade ${pos.trade_id} Details" class="link-icon" onclick="showTradeDetails(${pos.trade_id}); return false;">&#128269;</a></td>
                 `;
                 tbody.appendChild(tr);
             });
         }
+
+        let advanceTimer = null;
 
         async function triggerAdvanceTime(daysDelta) {
             const dateInput = document.getElementById('targetDate');
@@ -514,26 +516,27 @@
             const targetDateStr = currentDate.toISOString().split('T')[0];
             dateInput.value = targetDateStr;
 
-            document.getElementById('loadingOverlay').style.display = 'flex';
-            try {
-                const res = await fetch('/api/advance_time', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ target_date: targetDateStr })
-                });
-                const result = await res.json();
-                console.log('Advanced time:', result);
-                // loadData will be triggered by Supabase realtime, but we can call it manually to be safe
-                await loadData();
-            } catch (err) {
-                alert('Error advancing time: ' + err.message);
-            } finally {
-                document.getElementById('loadingOverlay').style.display = 'none';
-            }
+            clearTimeout(advanceTimer);
+            advanceTimer = setTimeout(async () => {
+                try {
+                    const res = await fetch('/api/advance_time', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ target_date: targetDateStr })
+                    });
+                    const result = await res.json();
+                    console.log('Advanced time:', result);
+                    // loadData will be triggered by Supabase realtime, but we can call it manually to be safe
+                    await loadData();
+                } catch (err) {
+                    alert('Error advancing time: ' + err.message);
+                }
+            }, 300);
         }
 
         document.getElementById('btnPrevDay').addEventListener('click', () => triggerAdvanceTime(-1));
         document.getElementById('btnNextDay').addEventListener('click', () => triggerAdvanceTime(1));
+        document.getElementById('targetDate').addEventListener('change', () => triggerAdvanceTime(0));
 
         // Start
         init();

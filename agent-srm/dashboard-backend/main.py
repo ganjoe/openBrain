@@ -93,6 +93,7 @@ def advance_time(req: AdvanceTimeRequest):
     
     trades_updated = 0
     t_date_pd = pd.to_datetime(target_date, utc=True)
+    updated_trades_list = []
     
     for t_data in open_trades_data:
         planned_str = t_data.get("planned")
@@ -115,8 +116,7 @@ def advance_time(req: AdvanceTimeRequest):
             
             # Record the realized loss directly into the DB without tracking in memory
             
-            # Write back to DB
-            supabase.table("srm_trades").update({
+            t_data.update({
                 "status": "closed",
                 "closed": f"{target_date}T23:59:59Z", # Fake closing time
                 "current_price": trade.sl,
@@ -126,7 +126,8 @@ def advance_time(req: AdvanceTimeRequest):
                 "heat_pct": 0.0,
                 "crisk_eur": 0.0,
                 "crisk_pct": 0.0
-            }).eq("trade_id", t_data["trade_id"]).execute()
+            })
+            updated_trades_list.append(t_data)
             
         else:
             # Trade is still alive, update current price
@@ -137,21 +138,20 @@ def advance_time(req: AdvanceTimeRequest):
             # Add to portfolio active trades so recalculate_totals can work
             portfolio.active_trades.append(trade)
             
-            # Write updated price back to DB
-            supabase.table("srm_trades").update({
+            t_data.update({
                 "current_price": trade.current_price,
                 "pnl": trade.current_pnl,
                 "rmultiple": trade.current_r_multiple,
                 "heat_eur": heat_eur
                 # heat_pct will be updated after portfolio recalculation
-            }).eq("trade_id", t_data["trade_id"]).execute()
+            })
+            updated_trades_list.append(t_data)
             
         trades_updated += 1
         
     # 2. Portfolio Level Updates
     # Dynamically compute NAV
-    all_trades_res = supabase.table("srm_trades").select("*").eq("portfolio_id", portfolio.portfolio_id).execute()
-    all_trades = all_trades_res.data or []
+    all_trades = trades_res.data or []
     
     realized_capital = 0.0
     active_trades = []
@@ -189,9 +189,16 @@ def advance_time(req: AdvanceTimeRequest):
     for t in portfolio.active_trades:
         heat_eur = (t.current_price - t.sl) * t.nos
         heat_pct = (heat_eur / portfolio.nav) * 100 if portfolio.nav > 0 else 0.0
-        supabase.table("srm_trades").update({
-            "heat_pct": heat_pct
-        }).eq("trade_id", getattr(t, "trade_id")).execute() 
+        
+        # Update the heat_pct in the memory dict
+        for t_data in updated_trades_list:
+            if t_data["trade_id"] == getattr(t, "trade_id"):
+                t_data["heat_pct"] = heat_pct
+                break
+
+    # Single batch upsert to Supabase
+    if updated_trades_list:
+        supabase.table("srm_trades").upsert(updated_trades_list).execute()
         
     # NOTE: We no longer write to srm_portfolio as it's computed dynamically.
 
