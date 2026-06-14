@@ -280,13 +280,14 @@ async function runLlmCategorizationLoop() {
 
   while (llmCategorizationAbortController && !llmCategorizationAbortController.signal.aborted) {
     try {
+      const BATCH_SIZE = 50;
       const { data: posts, error } = await supabase
         .from("agent_workspace")
         .select("id, content, metadata")
         .eq("artifact_type", "x_post")
         .is("metadata->llm_categorized", null)
         .order("created_at", { ascending: false })
-        .limit(1);
+        .limit(BATCH_SIZE);
 
       if (error) throw error;
 
@@ -295,14 +296,20 @@ async function runLlmCategorizationLoop() {
         continue;
       }
 
-      const post = posts[0];
+      const llmInput = posts.map(p => ({
+        id: p.id,
+        text: p.content
+      }));
 
       const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "local-model",
-          messages: [{ role: "system", content: promptText }, { role: "user", content: post.content }],
+          messages: [
+            { role: "system", content: promptText }, 
+            { role: "user", content: JSON.stringify(llmInput) }
+          ],
           temperature: 0.1
         }),
         signal: llmCategorizationAbortController.signal
@@ -316,35 +323,54 @@ async function runLlmCategorizationLoop() {
       const tokens = d.usage?.total_tokens || 0;
       llmCategorizationStats.totalTokens += tokens;
       
-      let newTickers: string[] = [];
+      let parsedResults: any[] = [];
       try {
         const content = d.choices[0].message.content;
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : content);
-        if (parsed && Array.isArray(parsed.tickers)) {
-          newTickers = parsed.tickers;
-        }
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        parsedResults = JSON.parse(jsonMatch ? jsonMatch[0] : content);
       } catch (parseError) {
-        console.warn("Failed to parse LM Studio JSON:", parseError);
+        console.warn("Failed to parse LM Studio JSON array:", parseError);
+        // If it fails to parse the batch, we skip to next loop iteration
+        // (but we might get stuck if it keeps failing, so we mark them failed or just wait)
+        await new Promise(r => setTimeout(r, 5000));
+        continue;
       }
 
-      const currentMetadata = post.metadata || {};
-      const updatedMetadata = {
-        ...currentMetadata,
-        tickers: newTickers,
-        llm_categorized: true
-      };
+      if (!Array.isArray(parsedResults)) {
+        console.warn("LLM response is not an array");
+        await new Promise(r => setTimeout(r, 5000));
+        continue;
+      }
 
-      const { error: updateError } = await supabase
-        .from("agent_workspace")
-        .update({ metadata: updatedMetadata })
-        .eq("id", post.id);
+      // Map results by id
+      const resultMap = new Map<string, string[]>();
+      for (const resItem of parsedResults) {
+        if (resItem.id && Array.isArray(resItem.tickers)) {
+          resultMap.set(resItem.id, resItem.tickers);
+        }
+      }
 
-      if (updateError) throw updateError;
+      // Update database concurrently for this batch
+      await Promise.all(posts.map(async (post) => {
+        const newTickers = resultMap.get(post.id) || [];
+        const currentMetadata = post.metadata || {};
+        const updatedMetadata = {
+          ...currentMetadata,
+          tickers: newTickers,
+          llm_categorized: true
+        };
 
-      llmCategorizationStats.processedCount++;
+        await supabase
+          .from("agent_workspace")
+          .update({ metadata: updatedMetadata })
+          .eq("id", post.id);
+      }));
+
+      llmCategorizationStats.processedCount += posts.length;
       llmCategorizationStats.lastError = "";
 
+      // Small pause between batches
+      await new Promise(r => setTimeout(r, 100));
     } catch (err: any) {
       if (err.name === 'AbortError') break;
       console.error("LLM Categorization Error:", err.message);

@@ -117,11 +117,13 @@ BEGIN
     FROM source_data s
     -- Cross Join with provided keywords OR extracted metadata tickers
     CROSS JOIN LATERAL (
-      SELECT CASE 
-        WHEN p_keywords IS NULL OR array_length(p_keywords, 1) IS NULL 
-        THEN jsonb_array_elements_text(s.tickers) 
-        ELSE unnest(p_keywords) 
-      END AS keyword
+      SELECT k_val AS keyword FROM (
+        SELECT jsonb_array_elements_text(s.tickers) AS k_val
+        WHERE p_keywords IS NULL OR array_length(p_keywords, 1) IS NULL
+        UNION ALL
+        SELECT unnest(p_keywords) AS k_val
+        WHERE p_keywords IS NOT NULL AND array_length(p_keywords, 1) IS NOT NULL
+      ) sub
     ) AS k
     WHERE 
       -- If discovery mode, the keyword is already from the row's tickers
