@@ -164,8 +164,10 @@ def get_portfolio_state(req: PortfolioStateRequest):
             trade.status = "ACTIVE"
             invested_capital += (trade.price * trade.nos)
             open_pnl += trade.current_pnl
-            total_heat_eur += ((trade.current_price - trade.get_active_sl(target_dt)) * trade.nos)
-            total_crisk_eur += trade.crisk_eur
+            active_sl = trade.get_active_sl(target_dt)
+            total_heat_eur += max(0, (trade.current_price - active_sl) * trade.nos)
+            # Core risk = downside from entry to active SL. If SL > entry, position is risk-free.
+            total_crisk_eur += max(0, (trade.price - active_sl) * trade.nos)
             
         sim_data = dict(t_data)
         sim_data.update({

@@ -289,7 +289,7 @@
       const limit = viewConfig?.bar_count ?? 2000;
 
       try {
-        const layoutParam = layout ? `&layout=${layout}` : '';
+        const layoutParam = LAYOUT ? `&layout=${LAYOUT}` : '';
         const chartPromise = fetch(`${PCA_API}/api/chartdata?symbol=${currentSymbol}&timeframe=${tf}&limit=${limit}${layoutParam}`).then(r => r.json());
         const indicatorPromises = [];
         const apiInds = (viewConfig && viewConfig.indicators) ? viewConfig.indicators.filter(i => i.source === 'api') : [];
@@ -376,7 +376,7 @@
       const rows = await Promise.all(data.tickers.map(async ({ ticker }) => {
         // Get latest close and feature values from chart data (last 1 bar)
         try {
-          const layoutParam = layout ? `&layout=${layout}` : '';
+          const layoutParam = LAYOUT ? `&layout=${LAYOUT}` : '';
           const cr = await fetch(`${PCA_API}/api/chartdata?symbol=${ticker}&timeframe=1D&limit=1${layoutParam}`);
           if (!cr.ok) return { ticker, row: [], ci: {} };
           const cd = await cr.json();
@@ -409,7 +409,7 @@
       statsView.style.display = 'flex';
       const fields = cfg?.fields ?? [];
       try {
-        const layoutParam = layout ? `&layout=${layout}` : '';
+        const layoutParam = LAYOUT ? `&layout=${LAYOUT}` : '';
         const r = await fetch(`${PCA_API}/api/chartdata?symbol=${symbol}&timeframe=1D&limit=1${layoutParam}`);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const cd = await r.json();

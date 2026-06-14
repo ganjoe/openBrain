@@ -308,6 +308,7 @@
           layout: layoutName,
           view_id: view.view_id,
           type: view.type,
+          _t: Date.now()
         });
         const url = `/chart.html?${params}`;
         const features = `popup=yes,width=${w},height=${h},left=${l},top=${t},menubar=no,toolbar=no,location=no`;
