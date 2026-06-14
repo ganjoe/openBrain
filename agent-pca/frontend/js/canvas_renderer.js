@@ -139,22 +139,23 @@ class ChartRenderer {
     const H   = this._cssH;
 
     // ── Sekundärachsen & PAD_R frühzeitig bestimmen ───────
-    // (volColName + hasVol müssen vor PAD_R-Berechnung bekannt sein)
-    const volColName = this.viewConfig.volume?.column ?? 'volume';
-    const hasVol     = this.viewConfig.volume?.enabled && this._col(volColName) >= 0;
-    const secAxis    = this._findMainSecondaryAxis();
-    this._secAxis    = secAxis;   // Cache für _drawCrosshair
-    this.PAD_R       = (secAxis || hasVol) ? 60 : 10;
+    const volColName  = this.viewConfig.volume?.column ?? 'volume';
+    const volEnabled  = !!this.viewConfig.volume?.enabled;
+    const hasVolData  = volEnabled && this._col(volColName) >= 0;
+    const hasVolPane  = volEnabled;  // Pane immer reservieren wenn enabled
+    const secAxis     = this._findMainSecondaryAxis();
+    this._secAxis     = secAxis;   // Cache für _drawCrosshair
+    this.PAD_R        = (secAxis || hasVolPane) ? 60 : 10;
 
     // Hintergrund
     ctx.fillStyle = '#0d1117';
     ctx.fillRect(0, 0, W, H);
 
-    const chartH = hasVol ? H * (1 - this.VOLUME_R) : H;
-    const volH   = hasVol ? H * this.VOLUME_R        : 0;
+    const chartH = hasVolPane ? H * (1 - this.VOLUME_R) : H;
+    const volH   = hasVolPane ? H * this.VOLUME_R        : 0;
 
     // Cache für Splitter-Event-Handler
-    this._hasVol = hasVol;
+    this._hasVol = hasVolPane;
     this._splitY = chartH;
 
     const area = {
@@ -164,7 +165,7 @@ class ChartRenderer {
       h: chartH - this.PAD_T - this.PAD_B,
     };
 
-    const volArea = hasVol ? {
+    const volArea = hasVolPane ? {
       x: this.PAD_L,
       y: chartH + 4,
       w: area.w,
@@ -243,7 +244,7 @@ class ChartRenderer {
         ctx.fillRect(bx - bw/2, Math.min(y0, yC), bw, Math.abs(y0 - yC) || 1);
       }
 
-      if (volArea && vI >= 0) {
+      if (volArea && hasVolData && vI >= 0) {
         this._drawVolBar(ctx, volArea, vi, this._val(row, vI) ?? 0, minVol, maxVol, bull);
       }
     }
@@ -277,8 +278,15 @@ class ChartRenderer {
     this._drawPriceAxis(ctx, area, minP, maxP);
     this._drawTimeAxis(ctx, area, barW);
     if (secAxis) this._drawSecondaryAxis(ctx, area, secAxis);
-    if (hasVol && volArea) this._drawVolPaneAxis(ctx, volArea, minVol, maxVol);
-    if (hasVol) this._drawSplitterHandle(ctx, chartH, W);
+    if (hasVolData && volArea) this._drawVolPaneAxis(ctx, volArea, minVol, maxVol);
+    if (hasVolPane && volArea && !hasVolData) {
+      // Configured column missing — show hint in empty pane
+      ctx.fillStyle = 'rgba(100,116,139,0.5)';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${volColName} — n/a`, volArea.x + volArea.w / 2, volArea.y + volArea.h / 2 + 4);
+    }
+    if (hasVolPane) this._drawSplitterHandle(ctx, chartH, W);
 
     // Crosshair + dynamische Data-Labels (immer zuletzt → oben)
     const showCrosshair = this.crosshairBar >= 0 ||
@@ -672,7 +680,7 @@ class ChartRenderer {
 
     // ── Vol-Pane Data-Label rechts (unterer Pane) ───────
     if (inView && volArea && absIdx < this.rows.length) {
-      const vColI = this._col(this.viewConfig.volume?.column ?? 'volume');
+      const vColI = this._vI;
       if (vColI >= 0) {
         const v   = this._val(this.rows[absIdx], vColI);
         if (v != null && !isNaN(v)) {

@@ -4,3 +4,4 @@ pydantic==2.7.4
 supabase==2.5.0
 requests
 pandas
+paho-mqtt

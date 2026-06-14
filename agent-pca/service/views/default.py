@@ -23,7 +23,7 @@ def get_chart_data_default(symbol: str, timeframe: str, limit: int, features: bo
             p = _parquet_path(symbol, timeframe, features=False)
             
         if not p.exists():
-            return {"symbol": symbol, "timeframe": timeframe, "count": 0, "columns": columns, "data": []}
+            return {"status": "missing", "symbol": symbol, "timeframe": timeframe, "count": 0, "columns": columns, "data": []}
 
     try:
         db = duckdb.connect()
@@ -68,6 +68,7 @@ def get_chart_data_default(symbol: str, timeframe: str, limit: int, features: bo
         raise HTTPException(status_code=500, detail="Database error")
 
     return {
+        "status": "ok",
         "symbol": symbol,
         "timeframe": timeframe,
         "count": len(data),

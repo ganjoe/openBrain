@@ -41,6 +41,7 @@ class JobManager:
         """
         Attempts to start the feature calculation job in a background thread.
         Returns True if started successfully, False if already running.
+        Passes all kwargs (e.g. priority) through to run_func.
         """
         with self._internal_lock:
             if self._is_running:
@@ -53,7 +54,8 @@ class JobManager:
         thread.daemon = True
         thread.start()
         
-        logger.info("Feature calculation job started in background.")
+        priority = kwargs.get('priority')
+        logger.info("Feature calculation job started in background.%s", f" Priority: {priority}" if priority else "")
         return True
 
     def stream_feature_calculation(self, run_func: Callable, *args, **kwargs) -> Generator[str, None, None]:

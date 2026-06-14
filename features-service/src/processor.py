@@ -130,10 +130,17 @@ class FeatureProcessor:
                     
         return result_dict
 
-    def process_all_tickers(self, tickers: List[str], log_queue: Optional[multiprocessing.Queue] = None) -> List[TickerProcessResult]:
-        """Spawns parallel processes to compute features for all tickers."""
+    def process_all_tickers(self, tickers: List[str], priority: Optional[str] = None, log_queue: Optional[multiprocessing.Queue] = None) -> List[TickerProcessResult]:
+        """Spawns parallel processes to compute features for all tickers.
+        If priority is set, that ticker is processed first and an MQTT event is published when done."""
         import time
         start_time = time.perf_counter()
+        
+        # --- Priority ticker: move to front ---
+        if priority and priority in tickers:
+            tickers.remove(priority)
+            tickers.insert(0, priority)
+            logger.info("⚡ Priority ticker %s moved to front of queue", priority)
         
         # --- PASS 0: PRE-COMPUTE CROSS SECTIONAL ---
         global_cs_data = self._precompute_cross_sectional(tickers)
@@ -142,6 +149,7 @@ class FeatureProcessor:
         total_tickers = len(tickers)
         completed = 0
         last_logged_pct = 0
+        priority_notified = False
         
         logger.info(f"⚙️  Pass 1: Spawning {self.context.thread_count} worker processes for parallel calculation and I/O...")
         ctx = multiprocessing.get_context('spawn')
@@ -162,6 +170,15 @@ class FeatureProcessor:
                     logger.error(f"Ticker {ticker} generated an exception: {exc}")
                     logger.error(traceback.format_exc())
                     results.append(TickerProcessResult(ticker, "all", False, 0, str(exc)))
+                
+                # Notify via MQTT when priority ticker is done
+                if priority and ticker == priority and not priority_notified:
+                    priority_notified = True
+                    try:
+                        from mqtt_publisher import publish_features_complete
+                        publish_features_complete(priority)
+                    except Exception as e:
+                        logger.warning("MQTT notify for priority ticker failed: %s", e)
                 
                 pct = int((completed / total_tickers) * 100)
                 if pct - last_logged_pct >= 10 or completed == total_tickers:

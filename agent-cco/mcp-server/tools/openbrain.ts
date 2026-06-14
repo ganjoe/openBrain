@@ -129,7 +129,7 @@ export function registerOpenBrainTools(server: McpServer) {
       title: "Search Influencer Posts",
       description: "Search the workspace for influencer posts using semantic, exact, or ID-based methods, or find first mentions.",
       inputSchema: {
-        action: z.enum(["SEMANTIC", "EXACT", "READ_IDS", "FIRST_MENTIONS"]).describe("The type of search"),
+        action: z.enum(["SEMANTIC", "EXACT", "READ_IDS", "FIRST_MENTIONS_AND_DISCOVERY"]).describe("The type of search"),
         query: z.string().optional().describe("Search query for SEMANTIC or EXACT. Leave empty for EXACT to list recent posts."),
         limit: z.number().optional().default(200).describe("Max results (default: 200)"),
         threshold: z.number().optional().default(0.5).describe("Similarity threshold for SEMANTIC (default: 0.5)"),
@@ -138,12 +138,13 @@ export function registerOpenBrainTools(server: McpServer) {
         dump_to_chat: z.boolean().optional().default(false).describe("If true, dump results to chat instead of returning text"),
         return_mode: z.enum(["ids_only", "snippets", "full_text"]).optional().default("snippets").describe("Return format"),
         ids: z.array(z.string()).optional().describe("Array of post IDs (for READ_IDS)"),
-        keywords: z.array(z.string()).optional().describe("Keywords for FIRST_MENTIONS"),
-        authors: z.array(z.string()).optional().describe("Author usernames for FIRST_MENTIONS"),
+        keywords: z.array(z.string()).optional().describe("Keywords for FIRST_MENTIONS_AND_DISCOVERY. If empty, searches for completely new tickers globally."),
+        authors: z.array(z.string()).optional().describe("CRITICAL: If the user asks for a specific influencer/author (like 'von serenity'), you MUST pass their name here! Do not perform a global search if an author is requested."),
+        start_date: z.string().optional().describe("Optional start date (ISO format) for FIRST_MENTIONS_AND_DISCOVERY"),
         ...(GLOBAL_BRAIN_ACCESS ? { owner: z.string().optional().describe("Filter by agent ID.") } : {})
       },
     },
-    async ({ action, query, limit, threshold, artifact_type, days_back, dump_to_chat, return_mode, ids, keywords, authors, owner }: any) => {
+    async ({ action, query, limit, threshold, artifact_type, days_back, dump_to_chat, return_mode, ids, keywords, authors, start_date, owner }: any) => {
       try {
         const p_agent_id = GLOBAL_BRAIN_ACCESS ? (owner || null) : AGENT_ID;
         
@@ -183,19 +184,33 @@ export function registerOpenBrainTools(server: McpServer) {
             if (!data || data.length === 0) return { content: [{ type: "text", text: "No posts found for IDs." }] };
             const results = data.map((t: any, i: number) => `[${i + 1}] ID: ${t.id} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`);
             return { content: [{ type: "text", text: results.join("\n\n") }] };
-        } else if (action === "FIRST_MENTIONS") {
-            if (!keywords || keywords.length === 0) return { content: [{ type: "text", text: "Keywords array cannot be empty." }] };
+        } else if (action === "FIRST_MENTIONS_AND_DISCOVERY") {
             const targetAuthors = authors && authors.length > 0 ? authors.map((a: string) => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`) : null;
-            const { data, error } = await supabase.rpc("find_first_keyword_mentions", { p_keywords: keywords, p_authors: targetAuthors, p_limit: limit });
-            if (error) throw error;
-            if (!data || data.length === 0) return { content: [{ type: "text", text: "Keine der Keywords wurden jemals erwähnt." }] };
-            let dumpText = `**Erste Erwähnungen gefunden für:** ${keywords.join(', ')}\n\n`;
-            data.forEach((r: any) => {
-              const dateStr = r.first_mentioned_at ? new Date(r.first_mentioned_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
-              dumpText += `### Keyword: ${r.keyword} (Erste Erwähnung)\n📅 ${dateStr} | 👤 ${r.author} | 🔗 ID: ${r.post_id}\n📝 "${r.post_content}"\n\n---\n\n`;
+            const targetKeywords = keywords && keywords.length > 0 ? keywords : null;
+            
+            const { data, error } = await supabase.rpc("discover_first_mentions", { 
+                p_keywords: targetKeywords, 
+                p_authors: targetAuthors, 
+                p_start_date: start_date || null,
+                p_limit: limit 
             });
-            await sendTelemetry(dumpText);
-            return { content: [{ type: "text", text: `Success. ${data.length} first-mentions have been published directly to the chat via telemetry. Do not summarize them. Just output [STOP].` }] };
+            if (error) throw error;
+            if (!data || data.length === 0) return { content: [{ type: "text", text: "Keine ersten Erwähnungen gefunden." }] };
+            
+            const title = targetKeywords ? `Erste Erwähnungen für: ${targetKeywords.join(', ')}` : (targetAuthors ? `Zuletzt entdeckte Ticker von ${targetAuthors.join(', ')}` : "Zuletzt entdeckte (neue) Ticker");
+            
+            if (dump_to_chat) {
+              let dumpText = `**${title}**\n\n`;
+              data.forEach((r: any) => {
+                const dateStr = r.first_mentioned_at ? new Date(r.first_mentioned_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
+                dumpText += `### Ticker/Keyword: ${r.keyword}\n📅 ${dateStr} | 👤 ${r.author} | 🔗 ID: ${r.post_id}\n📝 "${r.post_content}"\n\n---\n\n`;
+              });
+              await sendTelemetry(dumpText);
+              return { content: [{ type: "text", text: `Success. ${data.length} records have been published directly to the chat via telemetry. Do not summarize them. Just output [STOP].` }] };
+            } else {
+              const results = data.map((r: any) => `Ticker: ${r.keyword} | First Mentioned: ${new Date(r.first_mentioned_at).toLocaleString('de-DE')} | Author: ${r.author} | Content: ${r.post_content}`);
+              return { content: [{ type: "text", text: `Hier sind die Daten:\n${results.join('\n\n')}` }] };
+            }
         }
         throw new Error("Invalid action");
       } catch (err: any) {

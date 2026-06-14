@@ -137,7 +137,22 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
       for (const tweet of data.data) {
         if (signal?.aborted) throw new Error("Sync wurde vom Benutzer abgebrochen.");
         const content = tweet.text;
-        const tickers = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
+        const rawCashtags = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
+        
+        const customTickers: string[] = [];
+        // Catch Asian/Numeric tickers in parentheses or with exchange suffix (e.g. 093370 or 093370.KS)
+        const asianMatches = content.match(/(?<=\()\s*\d{4,6}\s*(?=[,)\s])|\b\d{4,6}\.[A-Z]{1,2}\b/g);
+        if (asianMatches) {
+            asianMatches.forEach((m: string) => customTickers.push(m.trim().toUpperCase()));
+        }
+        
+        // Catch missed standard cashtags ($TICKER)
+        const dollarMatches = content.match(/\$[A-Za-z0-9.]{1,10}\b/g);
+        if (dollarMatches) {
+            dollarMatches.forEach((m: string) => customTickers.push(m.substring(1).toUpperCase()));
+        }
+        
+        const tickers = Array.from(new Set([...rawCashtags, ...customTickers]));
         
         const finalMetadata = {
           author: cleanName,
@@ -224,7 +239,195 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
   }
 }
 
+// --- LLM Categorization Worker ---
+let llmCategorizationAbortController: AbortController | null = null;
+const llmCategorizationStats = {
+  isRunning: false,
+  startTime: 0,
+  processedCount: 0,
+  totalTokens: 0,
+  lastError: "",
+  totalBacklogAtStart: 0,
+};
+
+async function runLlmCategorizationLoop() {
+  llmCategorizationStats.isRunning = true;
+  llmCategorizationStats.startTime = Date.now();
+  llmCategorizationStats.processedCount = 0;
+  llmCategorizationStats.totalTokens = 0;
+  llmCategorizationStats.lastError = "";
+
+  const { count } = await supabase
+    .from("agent_workspace")
+    .select("*", { count: "exact", head: true })
+    .eq("artifact_type", "x_post")
+    .is("metadata->llm_categorized", null);
+  llmCategorizationStats.totalBacklogAtStart = count || 0;
+
+  let promptText = "";
+  try {
+    promptText = Deno.readTextFileSync("/app/ticker-extraction-prompt.txt");
+  } catch (e) {
+    try {
+      promptText = Deno.readTextFileSync("ticker-extraction-prompt.txt");
+    } catch(e2) {
+      promptText = "Extract tickers into { \"tickers\": [] } JSON.";
+    }
+  }
+
+  // Import LM_STUDIO_URL from shared.ts using require-like logic or just rely on it being imported at top
+  const { LM_STUDIO_URL } = await import("./shared.ts");
+
+  while (llmCategorizationAbortController && !llmCategorizationAbortController.signal.aborted) {
+    try {
+      const { data: posts, error } = await supabase
+        .from("agent_workspace")
+        .select("id, content, metadata")
+        .eq("artifact_type", "x_post")
+        .is("metadata->llm_categorized", null)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      if (!posts || posts.length === 0) {
+        await new Promise(r => setTimeout(r, 60000));
+        continue;
+      }
+
+      const post = posts[0];
+
+      const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "local-model",
+          messages: [{ role: "system", content: promptText }, { role: "user", content: post.content }],
+          temperature: 0.1
+        }),
+        signal: llmCategorizationAbortController.signal
+      });
+
+      if (!res.ok) {
+        throw new Error(`LM Studio HTTP ${res.status}`);
+      }
+
+      const d = await res.json();
+      const tokens = d.usage?.total_tokens || 0;
+      llmCategorizationStats.totalTokens += tokens;
+      
+      let newTickers: string[] = [];
+      try {
+        const content = d.choices[0].message.content;
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : content);
+        if (parsed && Array.isArray(parsed.tickers)) {
+          newTickers = parsed.tickers;
+        }
+      } catch (parseError) {
+        console.warn("Failed to parse LM Studio JSON:", parseError);
+      }
+
+      const currentMetadata = post.metadata || {};
+      const updatedMetadata = {
+        ...currentMetadata,
+        tickers: newTickers,
+        llm_categorized: true
+      };
+
+      const { error: updateError } = await supabase
+        .from("agent_workspace")
+        .update({ metadata: updatedMetadata })
+        .eq("id", post.id);
+
+      if (updateError) throw updateError;
+
+      llmCategorizationStats.processedCount++;
+      llmCategorizationStats.lastError = "";
+
+    } catch (err: any) {
+      if (err.name === 'AbortError') break;
+      console.error("LLM Categorization Error:", err.message);
+      llmCategorizationStats.lastError = err.message;
+      await new Promise(r => setTimeout(r, 10000));
+    }
+  }
+
+  llmCategorizationStats.isRunning = false;
+}
+
 export function registerXTools(server: McpServer) {
+  server.registerTool(
+    "manage_llm_categorization",
+    {
+      title: "Manage LLM Categorization",
+      description: "Steuert den Hintergrund-Prozess, der noch nicht kategorisierte Posts an LM Studio sendet.",
+      inputSchema: {
+        action: z.enum(["START", "STOP", "STATUS"]).describe("Aktion ausführen"),
+      },
+    },
+    async ({ action }: any) => {
+      if (action === "START") {
+        if (llmCategorizationStats.isRunning) {
+          return { content: [{ type: "text", text: "Der Kategorisierungs-Loop läuft bereits im Hintergrund." }] };
+        }
+        llmCategorizationAbortController = new AbortController();
+        runLlmCategorizationLoop().catch(console.error);
+        return { content: [{ type: "text", text: "Background LLM Categorization Loop erfolgreich gestartet." }] };
+      }
+      
+      if (action === "STOP") {
+        if (!llmCategorizationStats.isRunning || !llmCategorizationAbortController) {
+          return { content: [{ type: "text", text: "Der Prozess läuft derzeit nicht." }] };
+        }
+        llmCategorizationAbortController.abort();
+        llmCategorizationAbortController = null;
+        return { content: [{ type: "text", text: "Abbruchsignal wurde an den Hintergrund-Loop gesendet." }] };
+      }
+
+      if (action === "STATUS") {
+        const { count: remainingCount } = await supabase
+          .from("agent_workspace")
+          .select("*", { count: "exact", head: true })
+          .eq("artifact_type", "x_post")
+          .is("metadata->llm_categorized", null);
+
+        let statusText = `=== LLM Categorization Status ===\n`;
+        statusText += `Status: ${llmCategorizationStats.isRunning ? 'LÄUFT 🟢' : 'GESTOPPT 🔴'}\n`;
+        statusText += `Noch im Backlog: ${remainingCount} Posts\n`;
+        
+        if (llmCategorizationStats.isRunning) {
+          const runTimeSecs = (Date.now() - llmCategorizationStats.startTime) / 1000;
+          const postsProcessed = llmCategorizationStats.processedCount;
+          const tokens = llmCategorizationStats.totalTokens;
+          const postsPerSec = postsProcessed / (runTimeSecs || 1);
+          const tokensPerSec = tokens / (runTimeSecs || 1);
+          
+          let estRemainingStr = "Unbekannt";
+          if (postsPerSec > 0 && remainingCount) {
+             const estRemainingSecs = remainingCount / postsPerSec;
+             if (estRemainingSecs < 60) estRemainingStr = `${Math.round(estRemainingSecs)} Sekunden`;
+             else if (estRemainingSecs < 3600) estRemainingStr = `${Math.round(estRemainingSecs / 60)} Minuten`;
+             else estRemainingStr = `${(estRemainingSecs / 3600).toFixed(1)} Stunden`;
+          }
+
+          statusText += `In aktueller Batch verarbeitet: ${postsProcessed}\n`;
+          statusText += `Verarbeitete Tokens: ${tokens} (Speed: ${tokensPerSec.toFixed(1)} t/s)\n`;
+          statusText += `Durchschnitt: ${(postsPerSec * 60).toFixed(1)} Posts pro Minute\n`;
+          statusText += `Geschätzte Restzeit für Backlog: ${estRemainingStr}\n`;
+          
+          if (llmCategorizationStats.lastError) {
+             statusText += `Letzter Fehler: ${llmCategorizationStats.lastError}\n`;
+          }
+        }
+        
+        return { content: [{ type: "text", text: statusText }] };
+      }
+      
+      return { content: [{ type: "text", text: "Invalid action" }], isError: true };
+    }
+  );
+
   server.registerTool(
     "manage_background_sync",
     {

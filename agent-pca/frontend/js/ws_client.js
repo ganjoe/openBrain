@@ -70,6 +70,24 @@ class PcaWsClient {
         }
         break;
 
+      case 'download_complete':
+        if (msg.symbol) {
+          document.dispatchEvent(new CustomEvent('pca:download_complete', { detail: { symbol: msg.symbol } }));
+        }
+        break;
+
+      case 'download_failed':
+        if (msg.symbol) {
+          document.dispatchEvent(new CustomEvent('pca:download_failed', { detail: { symbol: msg.symbol, reason: msg.reason } }));
+        }
+        break;
+
+      case 'features_complete':
+        if (msg.symbol) {
+          document.dispatchEvent(new CustomEvent('pca:features_complete', { detail: { symbol: msg.symbol } }));
+        }
+        break;
+
       default:
         console.log('[WS] Unhandled action:', msg.action);
     }

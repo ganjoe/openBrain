@@ -1,0 +1,17 @@
+# CDA — Chief Data Architect — Agent Configuration
+# Agent identity is defined ONLY here. Never hardcode IDs in source code.
+
+agent:
+  id: "cda"
+  name: "Chief Data Architect"
+  display_name: "CDA"
+
+mqtt:
+  broker_url: "mqtt://nexus-broker:1883"
+  lwt_topic: "agents/status"
+  lwt_payload: '{"agent":"cda","status":"offline","unix":0}'
+
+mcp:
+  local_servers:
+    - url: "http://mcp-cda:8795"
+      label: "openbrain-cda-tools"

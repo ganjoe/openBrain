@@ -235,5 +235,16 @@ async def send_command(body: CommandRequest):
             "layout": layout_name,
         }
 
+    elif action == "request_download":
+        ticker = body.payload.get("ticker", "").upper()
+        if not ticker:
+            raise HTTPException(status_code=400, detail="Missing 'ticker' in payload")
+        from mqtt_listener import publish_message
+        publish_message("agents/stock-data/commands", {
+            "action": "request_download",
+            "ticker": ticker
+        })
+        return {"status": "published", "action": "request_download", "ticker": ticker}
+
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")

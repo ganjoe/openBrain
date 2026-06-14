@@ -55,6 +55,15 @@ async def websocket_endpoint(
                 symbol = msg.get("symbol", "").upper()
                 if symbol:
                     await manager.broadcast({"action": "load_ticker", "symbol": symbol})
+            elif command == "request_download":
+                symbol = msg.get("ticker", "").upper()
+                if symbol:
+                    logger.info("Proxying request_download to MQTT for %s", symbol)
+                    from mqtt_listener import publish_message
+                    publish_message("agents/stock-data/commands", {
+                        "action": "request_download",
+                        "ticker": symbol
+                    })
             else:
                 logger.warning("Unknown command: %s", command)
 

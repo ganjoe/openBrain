@@ -57,8 +57,9 @@ def _load_settings() -> dict:
 
 # ─── Feature Pipeline Runner ────────────────────────────────────
 
-def run_feature_pipeline(log_queue: Optional[multiprocessing.Queue] = None) -> None:
-    """Runs the full feature calculation pipeline (blocking)."""
+def run_feature_pipeline(log_queue: Optional[multiprocessing.Queue] = None, priority: Optional[str] = None) -> None:
+    """Runs the full feature calculation pipeline (blocking).
+    If priority is set, that ticker is processed first and an MQTT event is published."""
     # Import inside to ensure availability in background threads and avoid name collisions/shadowing
     from config_parser import FeatureConfigParser, ProcessingContext
     from calculator import TechnicalCalculator
@@ -90,7 +91,6 @@ def run_feature_pipeline(log_queue: Optional[multiprocessing.Queue] = None) -> N
         return
 
     # Pre-filter to exclude tickers missing the required parquet files
-    # This avoids spawning processes just to catch FileNotFoundError
     valid_tickers = []
     base_dir = Path(ctx.data_dir)
     for t in raw_tickers:
@@ -115,7 +115,7 @@ def run_feature_pipeline(log_queue: Optional[multiprocessing.Queue] = None) -> N
 
     calculator = TechnicalCalculator()
     processor = FeatureProcessor(ctx, storage, calculator)
-    results = processor.process_all_tickers(tickers, log_queue=log_queue)
+    results = processor.process_all_tickers(tickers, priority=priority, log_queue=log_queue)
     success_count = sum(1 for r in results if r.success)
     logger.info("✅ Feature calculation finished: %d/%d successful", success_count, len(results))
 
@@ -133,25 +133,27 @@ def create_app() -> FastAPI:
     storage = ParquetStorage(DATA_DIR)
 
     @app.post("/features/calculate")
-    async def trigger_feature_calculation(stream: bool = False):
+    async def trigger_feature_calculation(stream: bool = False, priority: str = None):
         """
         Triggers the feature calculation process.
         Returns 202 if started, 409 if already running. (F-API-010, F-SYS-030)
         If stream=True, returns a StreamingResponse with real-time logs.
+        If priority is set, that ticker is processed first.
         """
         if stream:
             return StreamingResponse(
-                job_manager.stream_feature_calculation(run_feature_pipeline),
+                job_manager.stream_feature_calculation(run_feature_pipeline, priority=priority),
                 media_type="text/plain",
             )
 
-        success = job_manager.start_feature_calculation(run_feature_pipeline)
+        success = job_manager.start_feature_calculation(run_feature_pipeline, priority=priority)
 
         if success:
             return JSONResponse(
                 status_code=status.HTTP_202_ACCEPTED,
                 content={
                     "status": "Job started in background",
+                    "priority": priority,
                     "hint": "Use ?stream=true to see real-time log output",
                 },
             )

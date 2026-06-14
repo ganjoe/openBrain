@@ -77,10 +77,11 @@ GRANT EXECUTE ON FUNCTION exact_search_workspace(text, int, text, text, int) TO 
 GRANT EXECUTE ON FUNCTION semantic_search_workspace(vector, float, int, text, text, int) TO service_role;
 GRANT EXECUTE ON FUNCTION exact_search_workspace(text, int, text, text, int) TO service_role;
 
--- First Mention of Keywords (Full Text)
-CREATE OR REPLACE FUNCTION find_first_keyword_mentions(
-  p_keywords text[],
+-- Consolidated First Mentions & Discovery
+CREATE OR REPLACE FUNCTION discover_first_mentions(
+  p_keywords text[] DEFAULT NULL,
   p_authors text[] DEFAULT NULL,
+  p_start_date timestamptz DEFAULT NULL,
   p_limit int DEFAULT 10
 )
 RETURNS TABLE (
@@ -93,21 +94,44 @@ RETURNS TABLE (
 LANGUAGE plpgsql AS $$
 BEGIN
   RETURN QUERY
-  WITH keyword_matches AS (
-    SELECT
+  WITH source_data AS (
+    SELECT 
+      p.id AS post_id,
+      p.content,
+      p.created_at,
+      p.metadata->>'author' AS author,
+      (p.metadata->>'published_at')::timestamptz AS published_at,
+      p.metadata->'tickers' AS tickers
+    FROM agent_workspace p
+    WHERE p.artifact_type = 'x_post'
+      AND p.metadata->>'published_at' IS NOT NULL
+      AND (p_authors IS NULL OR array_length(p_authors, 1) IS NULL OR LOWER(p.metadata->>'author') = ANY(p_authors))
+  ),
+  keyword_matches AS (
+    SELECT 
       k.keyword,
-      t.content,
-      t.metadata->>'author' AS author,
-      (t.metadata->>'published_at')::timestamptz AS published_at,
-      t.id AS post_id
-    FROM
-      agent_workspace t
-    CROSS JOIN unnest(p_keywords) AS k(keyword)
-    WHERE
-      t.artifact_type = 'x_post'
-      AND t.metadata->>'published_at' IS NOT NULL
-      AND (p_authors IS NULL OR array_length(p_authors, 1) IS NULL OR LOWER(t.metadata->>'author') = ANY(p_authors))
-      AND t.content ILIKE '%' || k.keyword || '%'
+      s.post_id,
+      s.content,
+      s.author,
+      s.published_at
+    FROM source_data s
+    -- Cross Join with provided keywords OR extracted metadata tickers
+    CROSS JOIN LATERAL (
+      SELECT CASE 
+        WHEN p_keywords IS NULL OR array_length(p_keywords, 1) IS NULL 
+        THEN jsonb_array_elements_text(s.tickers) 
+        ELSE unnest(p_keywords) 
+      END AS keyword
+    ) AS k
+    WHERE 
+      -- If discovery mode, the keyword is already from the row's tickers
+      (p_keywords IS NULL OR array_length(p_keywords, 1) IS NULL)
+      -- If keyword mode, check if the keyword matches (using word boundaries or JSON array)
+      OR (
+        s.content ~* ('\m' || regexp_replace(k.keyword, '^[$#]', '') || '\M')
+        OR s.tickers @> to_jsonb(k.keyword)
+        OR s.tickers @> to_jsonb(regexp_replace(k.keyword, '^[$#]', ''))
+      )
   ),
   first_mentions AS (
     SELECT DISTINCT ON (m.keyword)
@@ -126,10 +150,14 @@ BEGIN
     fm.content,
     fm.post_id
   FROM first_mentions fm
+  WHERE p_start_date IS NULL OR fm.published_at >= p_start_date
   ORDER BY fm.published_at DESC
   LIMIT p_limit;
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION find_first_keyword_mentions(text[], text[], int) TO anon;
-GRANT EXECUTE ON FUNCTION find_first_keyword_mentions(text[], text[], int) TO service_role;
+GRANT EXECUTE ON FUNCTION discover_first_mentions(text[], text[], timestamptz, int) TO anon;
+GRANT EXECUTE ON FUNCTION discover_first_mentions(text[], text[], timestamptz, int) TO service_role;
+
+-- Drop the old function
+DROP FUNCTION IF EXISTS find_first_keyword_mentions(text[], text[], int);

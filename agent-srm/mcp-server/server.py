@@ -8,8 +8,18 @@ from supabase import create_client, Client
 import requests
 import pandas as pd
 from datetime import datetime, timezone
+import paho.mqtt.publish as publish
 
 TELEMETRY_URL = os.environ.get("TELEMETRY_URL", "http://nexus-service:7734/api/send")
+MQTT_BROKER_HOST = os.environ.get("MQTT_BROKER_HOST", "nexus-broker")
+MQTT_BROKER_PORT = int(os.environ.get("MQTT_BROKER_PORT", "1883"))
+
+def broadcast_load_ticker(ticker: str):
+    payload = json.dumps({"action": "load_ticker", "symbol": ticker.upper()})
+    try:
+        publish.single("agents/pca/commands", payload, hostname=MQTT_BROKER_HOST, port=MQTT_BROKER_PORT)
+    except Exception as e:
+        print(f"MQTT publish failed: {e}")
 
 def send_telemetry(text: str):
     payload = {
@@ -255,6 +265,7 @@ async def handle_mcp_request(req: JsonRpcRequest):
                                      f"- **Trade Core Risk**: {p.get('trade_crisk_eur')} EUR ({p.get('trade_crisk_pct')})")
                 
                 send_telemetry(telemetry_msg)
+                broadcast_load_ticker(trade.ticker)
                 
                 return {
                     "jsonrpc": "2.0",
@@ -356,6 +367,7 @@ async def handle_mcp_request(req: JsonRpcRequest):
                                  f"Cash: {round(portfolio.cash, 2)}\n"
                                  f"Heat: {round(portfolio.current_heat_pct, 2)}%")
                 send_telemetry(telemetry_msg)
+                broadcast_load_ticker(trade.ticker)
                 
                 return {
                     "jsonrpc": "2.0",
