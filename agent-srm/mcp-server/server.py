@@ -99,15 +99,16 @@ async def handle_mcp_request(req: JsonRpcRequest):
                     },
                     {
                         "name": "update_stoploss",
-                        "description": "Update the stop loss for an active trade.",
+                        "description": "Update the stop loss for an active trade. Use either trade_id or ticker to identify the trade.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
-                                "trade_id": {"type": "number", "description": "ID of the trade to update"},
+                                "trade_id": {"type": "number", "description": "Optional: ID of the trade to update"},
+                                "ticker": {"type": "string", "description": "Optional: Ticker symbol (e.g. WULF). Used to look up the active trade if trade_id is not provided."},
                                 "new_sl": {"type": "number", "description": "New stop loss price"},
                                 "date": {"type": "string", "description": "Optional: Date of the update (YYYY-MM-DD). Defaults to today."}
                             },
-                            "required": ["trade_id", "new_sl"]
+                            "required": ["new_sl"]
                         }
                     },
                     {
@@ -334,7 +335,7 @@ async def handle_mcp_request(req: JsonRpcRequest):
                     "sl_history": [{"date": planned_date_val, "sl": trade.sl}],
                     "tp": trade.tp,
                     "target_r": trade.target_r,
-                    "r_value": trade.r_per_share,
+                    "r_value": trade.risk_per_share,
                     "commission": trade.commission,
                     "rmultiple": 0.0,
                     "rmultiple_pct": 0.0,
@@ -433,6 +434,7 @@ async def handle_mcp_request(req: JsonRpcRequest):
         elif tool_name == "update_stoploss":
             try:
                 trade_id = args.get("trade_id")
+                ticker = args.get("ticker")
                 new_sl = float(args.get("new_sl"))
                 date_val = args.get("date")
                 
@@ -441,12 +443,21 @@ async def handle_mcp_request(req: JsonRpcRequest):
                 else:
                     date_iso = datetime.now(timezone.utc).isoformat()
 
-                # Get existing trade
-                res = supabase.table("srm_trades").select("*").eq("trade_id", trade_id).single().execute()
+                # Look up trade by trade_id or ticker
+                if trade_id:
+                    res = supabase.table("srm_trades").select("*").eq("trade_id", trade_id).single().execute()
+                elif ticker:
+                    res = supabase.table("srm_trades").select("*").eq("ticker", ticker.upper()).neq("status", "closed").order("planned", desc=True).limit(1).execute()
+                    if res.data and isinstance(res.data, list):
+                        res.data = res.data[0]
+                else:
+                    return error_response(req.id, "Either trade_id or ticker must be provided.")
+                    
                 if not res.data:
-                    return error_response(req.id, f"Trade {trade_id} not found.")
+                    return error_response(req.id, f"Trade not found (trade_id={trade_id}, ticker={ticker}).")
                 
                 trade_data = res.data
+                trade_id = trade_data.get("trade_id")
                 sl_history = trade_data.get("sl_history") or []
                 
                 # Append new SL

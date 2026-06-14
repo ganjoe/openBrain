@@ -93,8 +93,10 @@ def get_portfolio_state(req: PortfolioStateRequest):
     target_date = req.target_date
     target_dt = pd.to_datetime(target_date, utc=True)
     
-    port_res = supabase.table("srm_portfolio").select("max_heat_pct, max_crisk_pct").limit(1).execute()
+    port_res = supabase.table("srm_portfolio").select("*").limit(1).execute()
     port_data = port_res.data[0] if port_res.data else {"max_heat_pct": 1.0, "max_crisk_pct": 5.0}
+    portfolio = PortfolioObject(port_data)
+    portfolio_1r = portfolio.get_1r_eur()
     
     trades_res = supabase.table("srm_trades").select("*").order("ticker").execute()
     all_trades = trades_res.data or []
@@ -138,7 +140,7 @@ def get_portfolio_state(req: PortfolioStateRequest):
                 else:
                     final_price = row[close_col]
                     
-            trade.update_current_price(final_price)
+            trade.update_current_price(final_price, portfolio_1r)
         else:
             # No parquet history. If it's a manual/deposit trade already closed in DB, respect it.
             if str(t_data.get("status")).lower() == "closed":
@@ -153,7 +155,7 @@ def get_portfolio_state(req: PortfolioStateRequest):
                     is_closed = True
                     trade.current_pnl = float(t_data.get("pnl", 0.0))
             else:
-                trade.update_current_price(final_price)
+                trade.update_current_price(final_price, portfolio_1r)
         
         if is_closed:
             trade.status = "closed"
@@ -204,23 +206,35 @@ async def get_config():
     }
 
 @app.get("/api/check_data")
-def check_data(target_date: str):
+def check_data(date: str = ""):
+    target_date = date
     trades_res = supabase.table("srm_trades").select("ticker, planned").execute()
     open_trades_data = trades_res.data or []
     
     t_date_pd = pd.to_datetime(target_date, utc=True)
+    target_date_normalized = t_date_pd.normalize()
     results = {}
     
     for t_data in open_trades_data:
         ticker = t_data.get("ticker")
-        if not ticker: continue
+        if not ticker or ticker in ("DEPOSIT", "WITHDRAWAL"):
+            continue
         
         planned_str = t_data.get("planned")
         if planned_str and pd.to_datetime(planned_str, utc=True) > t_date_pd:
             continue
+        
+        if ticker in results:
+            continue
             
-        close_price, low_price, _ = get_parquet_price(ticker, target_date)
-        results[ticker] = (close_price is not None)
+        close_price, low_price, last_date = get_parquet_price(ticker, target_date)
+        
+        if close_price is None:
+            results[ticker] = "red"
+        elif last_date is not None and str(last_date)[:10] == target_date[:10]:
+            results[ticker] = "green"
+        else:
+            results[ticker] = "yellow"
         
     return results
 

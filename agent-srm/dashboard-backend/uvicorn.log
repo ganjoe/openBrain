@@ -1,40 +1,104 @@
-INFO:     Started server process [1460750]
+INFO:     Started server process [1767879]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8794 (Press CTRL+C to quit)
-INFO:     127.0.0.1:46144 - "GET /api/config HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58666 - "GET /api/config HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52574 - "GET / HTTP/1.1" 304 Not Modified
-INFO:     10.223.123.3:52574 - "GET /api/config HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52574 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52574 - "GET /api/check_data?date=2026-06-13 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52575 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52575 - "GET /api/check_data?date=2026-06-12 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52575 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52575 - "GET /api/check_data?date=2026-06-11 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52575 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52575 - "GET /api/check_data?date=2026-06-10 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52583 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52583 - "GET /api/check_data?date=2026-06-11 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52583 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52583 - "GET /api/check_data?date=2026-06-10 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52583 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52583 - "GET /api/check_data?date=2026-06-09 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52583 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52583 - "GET /api/check_data?date=2026-06-08 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52583 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52583 - "GET /api/check_data?date=2026-06-07 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52583 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52583 - "GET /api/check_data?date=2026-06-06 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52583 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52583 - "GET /api/check_data?date=2026-06-05 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52595 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52595 - "GET /api/check_data?date=2026-06-04 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52595 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52595 - "GET /api/check_data?date=2026-06-05 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52595 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52595 - "GET /api/check_data?date=2026-06-06 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52595 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52595 - "GET /api/check_data?date=2026-06-07 HTTP/1.1" 422 Unprocessable Content
-INFO:     10.223.123.3:52595 - "POST /api/portfolio_state HTTP/1.1" 200 OK
-INFO:     10.223.123.3:52595 - "GET /api/check_data?date=2026-06-06 HTTP/1.1" 422 Unprocessable Content
+INFO:     10.223.123.3:53477 - "GET / HTTP/1.1" 304 Not Modified
+INFO:     10.223.123.3:53477 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-06-14 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-06-13 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-06-12 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-06-04 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-06-03 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-06-02 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-06-01 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-31 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-30 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-29 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-28 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-27 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-26 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-25 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-24 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-23 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-22 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53477 - "GET /api/check_data?date=2026-05-21 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-22 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-21 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-16 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-13 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-13 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-11 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-10 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-09 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-08 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-04 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-05 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-06 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-07 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-08 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-09 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53478 - "GET /api/check_data?date=2025-09-10 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-09-14 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-09-14 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-09-16 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-09-23 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-09-30 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-10-04 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-10-06 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-10-11 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-10-10 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-10-09 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-10-10 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-10-11 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-10-12 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-10-13 HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "POST /api/portfolio_state HTTP/1.1" 200 OK
+INFO:     10.223.123.3:53520 - "GET /api/check_data?date=2025-10-14 HTTP/1.1" 200 OK

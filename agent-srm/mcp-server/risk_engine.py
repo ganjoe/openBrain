@@ -26,6 +26,8 @@ class PortfolioObject:
         self.max_positions = int(data.get("max_positions") or 10)
         self.max_days = float(data.get("max_days") or 30.0)
         self.max_crisk_pos_pct = to_pct(data.get("max_crisk_pos_pct"), 15.0)
+        # Store raw DB value for 1R calculation (to_pct corrupts small values like 0.5%)
+        self._raw_max_crisk_pos_pct = float(data.get("max_crisk_pos_pct") or 0.5)
         
         self.active_trades: List['TradeObject'] = []
         
@@ -46,6 +48,10 @@ class PortfolioObject:
         available_pct = max(0.0, self.max_crisk_pct - self.current_crisk_pct)
         return (available_pct / 100.0) * self.nav
         
+    def get_1r_eur(self) -> float:
+        """Returns the absolute 1R risk in EUR for the portfolio (total core risk, not per-position)."""
+        return self.nav * (self.max_crisk_pct / 100.0)
+
     def recalculate_totals(self, target_date=None):
         """
         Recalculates current heat, crisk, and asset value based on active trades.
@@ -59,12 +65,12 @@ class PortfolioObject:
             else:
                 active_sl = t.sl
                 
-            heat = (t.current_price - active_sl) * t.nos
-            total_heat_eur += heat
+            heat_eur = max(0.0, (t.current_price - active_sl) * t.nos)
+            total_heat_eur += heat_eur
             total_crisk_eur += t.crisk_eur
 
-        self.current_heat_pct = (total_heat_eur / self.nav) * 100 if self.nav > 0 else 0.0
-        self.current_crisk_pct = (total_crisk_eur / self.nav) * 100 if self.nav > 0 else 0.0
+        self.current_heat_pct = (total_heat_eur / self.nav * 100.0) if self.nav > 0 else 0.0
+        self.current_crisk_pct = (total_crisk_eur / self.nav * 100.0) if self.nav > 0 else 0.0
 
     def deduct_cash(self, amount: float):
         self.cash -= amount
@@ -95,28 +101,25 @@ class TradeObject:
         self.status = data.get("status", "planned")
         
         # Initial Core Risk per share uses the INITIAL SL
-        # If sl_history has items, the first item is the initial SL
         initial_sl = self.sl_history[0].get("sl", self.sl) if self.sl_history else self.sl
-        self.r_per_share = max(0.0001, self.price - initial_sl)
-        self.sl_distance_pct = (self.r_per_share / self.price) * 100 if self.price > 0 else 0.0
+        self.risk_per_share = max(0.0001, self.price - initial_sl)
+        self.sl_distance_pct = (self.risk_per_share / self.price) * 100 if self.price > 0 else 0.0
         
         self.tp = data.get("tp")
         self.target_r = data.get("target_r")
         
+        # We store these as they are from the DB. 
+        # For new trades, we calculate them properly during validate() when portfolio 1R and NOS are known.
         if self.tp is not None:
             self.tp = float(self.tp)
-            self.target_r = (self.tp - self.price) / self.r_per_share
-        elif self.target_r is not None:
+        if self.target_r is not None:
             self.target_r = float(self.target_r)
-            self.tp = self.price + (self.target_r * self.r_per_share)
-        else:
-            raise ValueError("Either tp (Take Profit) or target_r (Target R) must be provided.")
             
-        self.crisk_eur = float(data.get("crisk_eur") or (self.nos * self.r_per_share))
+        self.crisk_eur = float(data.get("crisk_eur") or (self.nos * self.risk_per_share))
         
         # For live updates
         self.current_price = self.price
-        self.current_r_multiple = 0.0
+        self.current_r_multiple = float(data.get("rmultiple", 0.0))
         self.current_pnl = 0.0
 
     def get_active_sl(self, target_date) -> float:
@@ -137,14 +140,32 @@ class TradeObject:
                 active_sl = entry.get("sl", active_sl)
         return float(active_sl)
 
-    def update_current_price(self, new_price: float):
+    def get_historical_1r_eur(self) -> float:
+        """
+        Recover the historical Portfolio 1R in EUR from the stored target_r and tp.
+        This avoids needing a database migration.
+        """
+        if self.target_r and self.target_r > 0 and self.tp and self.tp > self.price and self.nos > 0:
+            target_profit_eur = self.nos * (self.tp - self.price)
+            return target_profit_eur / self.target_r
+        # Fallback to current risk per share if we can't recover it (old trades or missing fields)
+        return self.nos * self.risk_per_share if self.nos > 0 else 100.0
+
+    def update_current_price(self, new_price: float, portfolio_1r_eur: float = None):
         """
         Update the current market price and recalculate live metrics.
+        If portfolio_1r_eur is provided, calculates R-Multiple according to Van Tharp (Portfolio R).
+        Otherwise attempts to use the historical 1R.
         """
         self.current_price = new_price
-        if self.r_per_share > 0:
-            self.current_r_multiple = (self.current_price - self.price) / self.r_per_share
         self.current_pnl = self.nos * (self.current_price - self.price)
+        
+        active_1r_eur = portfolio_1r_eur if portfolio_1r_eur and portfolio_1r_eur > 0 else self.get_historical_1r_eur()
+        
+        if active_1r_eur > 0:
+            self.current_r_multiple = self.current_pnl / active_1r_eur
+        else:
+            self.current_r_multiple = 0.0
 
     def validate(self, portfolio: PortfolioObject, requested_nos: int = None):
         """
@@ -152,23 +173,19 @@ class TradeObject:
         If requested_nos is None, calculates the max allowed shares (discovery).
         Returns a dictionary suitable for JSON serialization.
         """
-        # Block if Target R is too low
-        if self.target_r < portfolio.min_r:
-            return {"error": f"Trade rejected: Target R ({round(self.target_r, 2)}R) is below the required minimum of {portfolio.min_r}R."}
-            
         # Limit 1a: Position Core Risk
         allowed_pos_crisk_eur = portfolio.get_max_crisk_pos_eur()
-        nos_pos_crisk_raw = allowed_pos_crisk_eur / self.r_per_share
+        nos_pos_crisk_raw = allowed_pos_crisk_eur / self.risk_per_share
         nos_pos_crisk = int(nos_pos_crisk_raw)
         
         # Limit 1b: Total Portfolio Core Risk
         allowed_total_crisk_eur = portfolio.get_available_crisk_eur()
-        nos_total_crisk_raw = allowed_total_crisk_eur / self.r_per_share
+        nos_total_crisk_raw = allowed_total_crisk_eur / self.risk_per_share
         nos_total_crisk = int(nos_total_crisk_raw)
         
         # Limit 2: Portfolio Heat
         allowed_heat_eur = portfolio.get_available_heat_eur()
-        nos_heat_raw = allowed_heat_eur / self.r_per_share
+        nos_heat_raw = allowed_heat_eur / self.risk_per_share
         nos_heat = int(nos_heat_raw)
         
         # Limit 3: Cash (Accounting for commission)
@@ -198,48 +215,59 @@ class TradeObject:
             "Max Positions Limit": "Reached" if nos_max_positions == 0 else "OK"
         }
         
-        # Is this a discovery?
-        is_discovery = (requested_nos is None)
-        actual_nos = min(requested_nos if not is_discovery else max_nos, max_nos)
-        
-        if actual_nos <= 0:
-            if is_discovery:
+        if requested_nos is not None:
+            actual_nos = requested_nos
+            if actual_nos > max_nos:
+                # Find which limit was breached for better error messages
+                limit_name = min(limits, key=lambda k: float('inf') if limits[k] == "OK" or limits[k] == "Reached" else limits[k])
                 return {
-                    "status": "discovery_success",
-                    "ticker": self.ticker,
-                    "price": self.price,
-                    "stop_loss": self.sl,
-                    "commission": self.commission,
-                    "max_allowed_shares": 0,
-                    "limiting_factors": limits,
-                    "message": "Discovery complete. Limit reached. Cannot buy shares."
+                    "error": f"Requested shares ({actual_nos}) exceed maximum allowed ({max_nos}). Limiting factor: {limit_name}."
+                }
+            if actual_nos <= 0:
+                return {
+                    "error": "Requested shares must be > 0."
+                }
+        else:
+            actual_nos = max_nos
+            if actual_nos <= 0:
+                # Find which limit caused the rejection
+                limiting_reason = "Unknown Limit"
+                if nos_cash <= 0:
+                    limiting_reason = "Cash Limit (Insufficient Funds)"
+                elif nos_pos_crisk <= 0:
+                    limiting_reason = "Position Core Risk Limit"
+                elif nos_total_crisk <= 0:
+                    limiting_reason = "Portfolio Core Risk Limit"
+                elif nos_heat <= 0:
+                    limiting_reason = "Portfolio Heat Limit"
+                elif nos_max_positions <= 0:
+                    limiting_reason = "Max Positions Limit Reached"
+                    
+                return {
+                    "error": "REJECTED_LIMIT_REACHED",
+                    "message": f"Cannot buy shares. Calculated max allowed is {max_nos}. Limiting Factor: {limiting_reason}.",
+                    "limits": limits
                 }
             
-            # Find which limit caused the rejection
-            limiting_reason = "Unknown Limit"
-            if nos_cash == 0:
-                limiting_reason = "Cash Limit (Insufficient Funds)"
-            elif nos_pos_crisk == 0:
-                limiting_reason = "Position Core Risk Limit"
-            elif nos_total_crisk == 0:
-                limiting_reason = "Portfolio Core Risk Limit"
-            elif nos_heat == 0:
-                limiting_reason = "Portfolio Heat Limit"
-            elif nos_max_positions == 0:
-                limiting_reason = "Max Positions Limit Reached"
-                
-            return {
-                "error": "REJECTED_LIMIT_REACHED",
-                "message": f"Cannot buy shares. Requested: {requested_nos}, Allowed: {max_nos}. Limiting Factor: {limiting_reason}.",
-                "limits": limits
-            }
+        portfolio_1r = portfolio.get_1r_eur()
+        if self.tp is not None:
+            target_profit_eur = actual_nos * (self.tp - self.price)
+            self.target_r = target_profit_eur / portfolio_1r
+        elif self.target_r is not None:
+            target_profit_eur = self.target_r * portfolio_1r
+            self.tp = self.price + (target_profit_eur / actual_nos)
+        else:
+            return {"error": "Either tp (Take Profit) or target_r (Target R) must be provided."}
             
+        if self.target_r < portfolio.min_r:
+            return {"error": f"Trade rejected: Target R ({round(self.target_r, 2)}R) is below the required minimum of {portfolio.min_r}R."}
+
         trade_cost = (actual_nos * self.price) + self.commission
         cash_after = portfolio.cash - trade_cost
         cash_pct_before = (portfolio.cash / portfolio.nav) * 100 if portfolio.nav > 0 else 0
         cash_pct_after = (cash_after / portfolio.nav) * 100 if portfolio.nav > 0 else 0
         
-        crisk_eur = actual_nos * self.r_per_share
+        crisk_eur = actual_nos * self.risk_per_share
         crisk_pct = (crisk_eur / portfolio.nav) * 100 if portfolio.nav > 0 else 0
         
         trade_heat_eur = actual_nos * (self.current_price - self.sl)
@@ -268,7 +296,7 @@ class TradeObject:
         }
         
         res = {
-            "status": "discovery_success" if is_discovery else "impact_simulation_success",
+            "status": "discovery_success" if requested_nos is None else "impact_simulation_success",
             "ticker": self.ticker,
             "price": self.price,
             "stop_loss": self.sl,
@@ -283,7 +311,7 @@ class TradeObject:
             "portfolio_impact": impact_data
         }
         
-        if not is_discovery:
+        if requested_nos is not None:
             res["requested_nos"] = requested_nos
             
         return res
