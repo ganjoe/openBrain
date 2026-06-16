@@ -91,7 +91,8 @@ def get_parquet_history(ticker: str, start_date: str, end_date: str):
 @app.post("/api/portfolio_state")
 def get_portfolio_state(req: PortfolioStateRequest):
     target_date = req.target_date
-    target_dt = pd.to_datetime(target_date, utc=True)
+    date_only = target_date[:10]
+    target_dt = pd.to_datetime(date_only + " 23:59:59", utc=True)
     
     port_res = supabase.table("srm_portfolio").select("*").limit(1).execute()
     port_data = port_res.data[0] if port_res.data else {"max_heat_pct": 1.0, "max_crisk_pct": 5.0}
@@ -213,7 +214,8 @@ def check_data(date: str = ""):
     trades_res = supabase.table("srm_trades").select("ticker, planned").execute()
     open_trades_data = trades_res.data or []
     
-    t_date_pd = pd.to_datetime(target_date, utc=True)
+    date_only = target_date[:10]
+    t_date_pd = pd.to_datetime(date_only + " 23:59:59", utc=True)
     target_date_normalized = t_date_pd.normalize()
     results = {}
     

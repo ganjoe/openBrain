@@ -49,8 +49,8 @@ class PortfolioObject:
         return (available_pct / 100.0) * self.nav
         
     def get_1r_eur(self) -> float:
-        """Returns the absolute 1R risk in EUR for the portfolio (total core risk, not per-position)."""
-        return self.nav * (self.max_crisk_pct / 100.0)
+        """Returns the absolute 1R risk in EUR for the portfolio (risk per position)."""
+        return self.nav * (self.max_crisk_pos_pct / 100.0)
 
     def recalculate_totals(self, target_date=None):
         """
