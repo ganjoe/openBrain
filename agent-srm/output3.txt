@@ -1,6 +1,0 @@
-open         239.25
-high         244.76
-low          236.66
-close        241.44
-volume    484617.00
-Name: 2026-05-28 00:00:00, dtype: float64
