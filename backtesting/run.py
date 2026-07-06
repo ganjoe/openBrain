@@ -13,9 +13,14 @@ import argparse
 import sys
 from datetime import datetime, timezone
 
-from config import get_supabase_client
-from data_loader import load_watchlist, load_ohlcv, load_bt_config
-from engine import BacktestEngine
+try:
+    from .config import get_supabase_client
+    from .data_loader import load_watchlist, load_ohlcv, load_bt_config
+    from .engine import BacktestEngine
+except ImportError:
+    from config import get_supabase_client
+    from data_loader import load_watchlist, load_ohlcv, load_bt_config
+    from engine import BacktestEngine
 
 
 def main():
@@ -30,7 +35,7 @@ def main():
         "--watchlist",
         type=str,
         default=None,
-        help="Override: watchlist name from pca_watchlists (overrides config).",
+        help="Override: watchlist name (without .txt) from backtesting/lists/ folder.",
     )
     args = parser.parse_args()
 
@@ -97,6 +102,7 @@ def main():
                     "pnl": round(t.pnl, 2),
                     "r_multiple": round(t.r_multiple, 4),
                     "exit_reason": t.exit_reason,
+                    "commission": round(t.commission, 2),
                 })
             client.table("bt_trades").insert(trade_rows).execute()
             print(f"\n{len(trade_rows)} trades written to bt_trades.")

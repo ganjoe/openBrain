@@ -12,18 +12,23 @@ CREATE TABLE IF NOT EXISTS bt_configs (
     config_id        SERIAL PRIMARY KEY,
     name             TEXT NOT NULL UNIQUE,
     watchlist        TEXT NOT NULL,             -- pca_watchlists.list_name
-    start_date       DATE NOT NULL,
-    end_date         DATE NOT NULL,
+    start_date       DATE,
+    end_date         DATE,
 
     -- F-PARAM-090: Frei konfigurierbare Parameter
     ema_fast         INT NOT NULL DEFAULT 14,          -- F-IND-020: EMA Fast Periode
     ema_slow         INT NOT NULL DEFAULT 18,          -- F-IND-020: EMA Slow Periode
-    trend_sma_period INT NOT NULL DEFAULT 10,          -- F-IND-030: SMA Periode auf Trend Strength
+    trend_sma_period INT NOT NULL DEFAULT 50,          -- F-IND-030: SMA Periode auf Trend Strength
     trend_threshold  NUMERIC NOT NULL DEFAULT 0.0,     -- F-LOGIC-040: Statischer Schwellenwert
-    setup_count_n    INT NOT NULL DEFAULT 4,           -- F-LOGIC-050: Anzahl aufeinanderfolgender Tage
+    setup_count_enter_n INT NOT NULL DEFAULT 4,        -- F-LOGIC-050: Anzahl aufeinanderfolgender Tage (Einstieg)
+    setup_count_exit_n  INT NOT NULL DEFAULT 4,        -- F-LOGIC-050: Anzahl aufeinanderfolgender Tage (Ausstieg)
     risk_pct         NUMERIC NOT NULL DEFAULT 0.01,    -- F-RISK-100: Risiko in Dezimal (0.01 = 1%)
     initial_capital  NUMERIC NOT NULL DEFAULT 10000,   -- Startkapital
     min_tick         NUMERIC NOT NULL DEFAULT 0.01,    -- F-RISK-110: Minimum Range Fallback
+    commission       NUMERIC NOT NULL DEFAULT 2,       -- Commissions default 2
+    position_size_pct NUMERIC NOT NULL DEFAULT 10,     -- Cap position sizing as % of NAV (default 10)
+    vstop_period     INT NOT NULL DEFAULT 14,          -- ATR period for volatility stop
+    vstop_multiplier NUMERIC NOT NULL DEFAULT 2.0,     -- ATR multiplier for volatility stop
 
     created_at       TIMESTAMPTZ DEFAULT NOW()
 );
@@ -73,7 +78,8 @@ CREATE TABLE IF NOT EXISTS bt_trades (
     risk_per_share   NUMERIC,            -- High - Low am Entry-Tag (oder min_tick)
     pnl              NUMERIC,
     r_multiple       NUMERIC,
-    exit_reason      TEXT                 -- 'trailing_exit', 'end_of_period'
+    exit_reason      TEXT,                -- 'trailing_exit', 'end_of_period'
+    commission       NUMERIC             -- Commissions paid
 );
 
 CREATE INDEX IF NOT EXISTS idx_bt_trades_run_id ON bt_trades (run_id);

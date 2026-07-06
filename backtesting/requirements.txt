@@ -2,3 +2,5 @@ pandas
 pyarrow
 supabase
 python-dotenv
+paho-mqtt
+watchdog

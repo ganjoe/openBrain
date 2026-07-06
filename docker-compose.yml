@@ -243,6 +243,8 @@ services:
       - ./agent-srm/mcp-server:/app
       - ./agent-srm/metadata-prompt.txt:/app/metadata-prompt.txt:ro
       - ./agent-srm/mcp-server/stdio.ts:/app/stdio.ts:ro
+      - ./backtesting:/app/backtesting
+      - /home/daniel/stock-data-node/data/parquet:/parquet
     environment:
       SUPABASE_URL: http://gateway:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
@@ -254,6 +256,7 @@ services:
       PORT: "8793"
       AGENT_ID: "srm"
       GLOBAL_BRAIN_ACCESS: "true"
+      PARQUET_BASE_PATH: /parquet
     ports:
       - "8793:8793"
     extra_hosts:

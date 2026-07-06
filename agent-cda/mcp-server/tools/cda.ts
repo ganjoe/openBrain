@@ -66,23 +66,27 @@ export function registerCdaTools(server: McpServer) {
   );
 
   server.registerTool(
-    "request_ibkr_download",
+    "request_priority_download",
     {
-      title: "Request IBKR Download via MQTT",
-      description: "Prüft die Verfügbarkeit bei IBKR und reiht den Ticker bei Erfolg für den Download ein. Löst asynchron ein download_complete Event aus.",
+      title: "Request Priority Download via MQTT",
+      description: "Reiht den Ticker für den sofortigen Download mit höchster Priorität (API Prio 1) ein. Der Provider (IBKR oder YFINANCE) wird aus der Konfiguration übernommen.",
       inputSchema: {
-        ticker: z.string().describe("The ticker symbol to request"),
+        tickers: z.array(z.string()).describe("List of ticker symbols to request (can be a single ticker or multiple)"),
       },
     },
-    async ({ ticker }: any) => {
+    async ({ tickers }: any) => {
         try {
             const brokerUrl = Deno.env.get("MQTT_BROKER_URL") || "mqtt://nexus-broker:1883";
             const client = await mqtt.connectAsync(brokerUrl);
-            const payload = JSON.stringify({ action: "request_download", ticker: ticker.toUpperCase() });
-            await client.publishAsync("agents/stock-data/commands", payload, { qos: 1 });
+            
+            for (const ticker of tickers) {
+                const payload = JSON.stringify({ action: "request_download", ticker: ticker.toUpperCase() });
+                await client.publishAsync("agents/stock-data/commands", payload, { qos: 1 });
+            }
+            
             await client.endAsync();
             
-            return { content: [{ type: "text", text: `Der Download-Request für Ticker ${ticker.toUpperCase()} wurde via MQTT gesendet. Du erhältst eine Benachrichtigung im Chat, sobald der Vorgang abgeschlossen oder fehlgeschlagen ist.` }] };
+            return { content: [{ type: "text", text: `Der Download-Request für die Ticker ${tickers.map((t: string) => t.toUpperCase()).join(", ")} wurde via MQTT gesendet. Du erhältst eine Benachrichtigung im Chat, sobald der Vorgang abgeschlossen oder fehlgeschlagen ist.` }] };
         } catch (err: any) {
             return { content: [{ type: "text", text: `Error sending MQTT command: ${err.message}` }], isError: true };
         }
@@ -93,7 +97,7 @@ export function registerCdaTools(server: McpServer) {
     "set_data_provider",
     {
       title: "Set Data Provider",
-      description: "Sets the data provider for a specific ticker (e.g. 'YFINANCE' or 'IBKR'). Also deletes existing chart data for that ticker to ensure consistency.",
+      description: "Sets the data provider for a specific ticker (e.g. 'YFINANCE' or 'IBKR'). Also deletes existing chart data for that ticker to ensure consistency. This does NOT trigger a download automatically. You must call request_priority_download afterwards if you want to download it.",
       inputSchema: {
         ticker: z.string().describe("The ticker symbol"),
         provider: z.enum(["IBKR", "YFINANCE"]).describe("The provider to use"),

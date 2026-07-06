@@ -43,3 +43,21 @@ def calc_trend_strength_sma(trend_strength: pd.Series, period: int) -> pd.Series
         pd.Series with smoothed trend strength values.
     """
     return trend_strength.rolling(window=period, min_periods=1).mean()
+
+
+def calc_atr(df: pd.DataFrame, period: int) -> pd.Series:
+    """
+    Calculate Average True Range (ATR).
+    TR = Max(High - Low, |High - PrevClose|, |Low - PrevClose|)
+    ATR = SMA(TR, period)
+    """
+    prev_close = df["close"].shift(1)
+    
+    tr1 = df["high"] - df["low"]
+    tr2 = (df["high"] - prev_close).abs()
+    tr3 = (df["low"] - prev_close).abs()
+    
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    
+    atr = tr.rolling(window=period, min_periods=1).mean()
+    return atr

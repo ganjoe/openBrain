@@ -4,6 +4,7 @@ Implements entry/exit conditions and position sizing.
 """
 
 import pandas as pd
+import numpy as np
 
 
 def check_trend_filter(ts_value: float, ts_sma_value: float, threshold: float) -> bool:
@@ -16,10 +17,12 @@ def check_trend_filter(ts_value: float, ts_sma_value: float, threshold: float) -
         ts_sma_value: Current SMA of Trend Strength (F-IND-030).
         threshold: Static threshold value.
     """
-    return ts_value > ts_sma_value or ts_value > threshold
+    if threshold > 0:
+        return ts_value > ts_sma_value or ts_value > threshold
+    return ts_value > ts_sma_value
 
 
-def check_setup_count(lows: pd.Series, n: int, current_idx: int) -> bool:
+def check_setup_count(lows: np.ndarray, n: int, current_idx: int) -> bool:
     """
     F-LOGIC-050: Setup Counting Condition.
     Returns True if for the last N consecutive days, each day's low is greater
@@ -29,9 +32,9 @@ def check_setup_count(lows: pd.Series, n: int, current_idx: int) -> bool:
     low[i] > low[i - N].
 
     Args:
-        lows: Series of daily low prices (by positional index).
+        lows: NumPy array of daily low prices (by positional index).
         n: Number of consecutive days required.
-        current_idx: Current positional index in the lows Series.
+        current_idx: Current positional index in the lows array.
 
     Returns:
         True if the setup count condition is met.
@@ -42,7 +45,7 @@ def check_setup_count(lows: pd.Series, n: int, current_idx: int) -> bool:
 
     for offset in range(n):
         i = current_idx - offset
-        if lows.iloc[i] <= lows.iloc[i - n]:
+        if lows[i] <= lows[i - n]:
             return False
 
     return True

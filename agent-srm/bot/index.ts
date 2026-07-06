@@ -315,11 +315,22 @@ async function handleIncoming(
   console.log(`🧠 Calling LLM (${activeProvider})...`);
   let response = await callLLM(messages, availableTools, onFallback);
 
+  const MAX_TOOL_ITERATIONS = 6;
+  let toolIteration = 0;
+
   while (response.tool_calls?.length > 0) {
+    toolIteration++;
+    if (toolIteration > MAX_TOOL_ITERATIONS) {
+      console.warn(`⚠️ Tool loop limit reached (${MAX_TOOL_ITERATIONS}). Breaking out.`);
+      messages.push({ role: "user", content: "SYSTEM: Maximum tool call iterations reached. Summarize your findings and respond to the user now. Do NOT call any more tools." });
+      response = await callLLM(messages, [], onFallback);
+      break;
+    }
+
     messages.push(response.message);
 
     for (const tc of response.tool_calls) {
-      console.log(`🛠️  Tool: ${tc.function.name}`);
+      console.log(`🛠️  Tool [${toolIteration}/${MAX_TOOL_ITERATIONS}]: ${tc.function.name}`);
       try {
         const args   = JSON.parse(tc.function.arguments);
         const client = toolToClient.get(tc.function.name);

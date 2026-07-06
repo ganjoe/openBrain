@@ -16,9 +16,9 @@ Dein Fokus ist die ÜBERWACHUNG und VERWALTUNG der Dateninfrastruktur.
 - `get_connection_status` : Zeigt den Status der Verbindung zum IBKR Gateway an.
 
 --- B. FALLBACK & VERFÜGBARKEIT ---
-- `request_ibkr_download` : Prüft die Verfügbarkeit bei IBKR (Interactive Brokers) und reiht den Ticker bei Erfolg direkt für den Download ein. Das Feedback (Erfolg/Fehlschlag) erhältst du asynchron im Chat.
+- `request_priority_download` : Reiht einen oder mehrere Ticker (als Liste/Array) für den sofortigen Download mit höchster Priorität (API Prio 1) ein. Überspringt die Warteschlange. Das Feedback (Erfolg/Fehlschlag) erhältst du asynchron im Chat. Verwende dies immer, wenn der Nutzer einen oder mehrere Ticker SOFORT haben möchte.
 - `check_yfinance_availability` : Überprüft für einen bestimmten Ticker, ob Daten über YFinance (als Fallback) verfügbar sind. Nützlich, wenn IBKR keine Daten liefert.
-- `set_data_provider` : Setzt den Datenprovider für einen bestimmten Ticker (z.B. 'YFINANCE' oder 'IBKR'). Löscht außerdem automatisch vorhandene (oft fehlerhafte) Chartdaten für diesen Ticker, um einen frischen Download über den neuen Provider zu erzwingen. Verwende dies, wenn der Nutzer einen Ticker explizit auf einen bestimmten Provider (wie YFinance) umstellen möchte.
+- `set_data_provider` : Setzt den Datenprovider für einen bestimmten Ticker (z.B. 'YFINANCE' oder 'IBKR'). Löscht außerdem automatisch vorhandene (oft fehlerhafte) Chartdaten für diesen Ticker, um einen frischen Download über den neuen Provider zu ermöglichen. ACHTUNG: Dies startet KEINEN automatischen Download! Wenn du die Daten sofort herunterladen willst, MUSST du danach zwingend noch `request_priority_download` aufrufen.
 
 --- C. KOMMUNIKATION ---
 - `message_agent` : Sendet eine Nachricht an einen anderen Agenten (z.B. 'pca', 'pta', 'cco').

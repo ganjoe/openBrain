@@ -6,24 +6,39 @@ Reads OHLCV data from Parquet files and watchlists/configs from Supabase.
 import os
 import pandas as pd
 from supabase import Client
-from config import PARQUET_BASE_PATH
+try:
+    from .config import PARQUET_BASE_PATH
+except ImportError:
+    from config import PARQUET_BASE_PATH
 
 
 def load_watchlist(client: Client, list_name: str) -> list[str]:
     """
-    Load ticker symbols from pca_watchlists for the given list_name.
-    Returns a sorted list of unique ticker strings.
+    Load ticker symbols from local text file for the given list_name.
+    Expects /home/daniel/openBrain/backtesting/lists/{list_name}.txt
+    Returns a list of unique ticker strings.
     """
-    res = client.table("pca_watchlists") \
-        .select("ticker") \
-        .eq("list_name", list_name) \
-        .order("position") \
-        .execute()
-
-    if not res.data:
-        raise ValueError(f"Watchlist '{list_name}' not found or empty.")
-
-    return [row["ticker"] for row in res.data]
+    file_path = os.path.join(os.path.dirname(__file__), "lists", f"{list_name}.txt")
+    
+    if not os.path.exists(file_path):
+        raise ValueError(f"Watchlist file '{file_path}' not found.")
+        
+    with open(file_path, "r", encoding="utf-8") as f:
+        # Strip whitespace (including \r\n), uppercase, ignore empty lines
+        tickers = [line.strip().upper() for line in f if line.strip()]
+        
+    if not tickers:
+        raise ValueError(f"Watchlist file '{file_path}' is empty.")
+        
+    # Return unique tickers preserving order
+    unique_tickers = []
+    seen = set()
+    for t in tickers:
+        if t not in seen:
+            seen.add(t)
+            unique_tickers.append(t)
+            
+    return unique_tickers
 
 
 def load_ohlcv(ticker: str) -> pd.DataFrame:

@@ -1,5 +1,7 @@
 import os
 import json
+import time
+import concurrent.futures
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
@@ -9,6 +11,10 @@ import requests
 import pandas as pd
 from datetime import datetime, timezone
 import paho.mqtt.publish as publish
+import sys
+sys.path.append("/app")
+from backtesting.engine import BacktestEngine
+from backtesting.data_loader import load_watchlist, load_ohlcv, load_bt_config
 
 TELEMETRY_URL = os.environ.get("TELEMETRY_URL", "http://nexus-service:7734/api/send")
 MQTT_BROKER_HOST = os.environ.get("MQTT_BROKER_HOST", "nexus-broker")
@@ -23,8 +29,8 @@ def broadcast_load_ticker(ticker: str):
 
 def send_telemetry(text: str):
     payload = {
-        "from_agent": "system",
-        "to": "all",
+        "from_agent": "srm",
+        "to": "system",
         "text": text,
         "msg_type": "telemetry"
     }
@@ -32,6 +38,50 @@ def send_telemetry(text: str):
         requests.post(TELEMETRY_URL, json=payload, timeout=2)
     except Exception as e:
         print(f"Telemetry failed: {e}")
+
+def _run_backtest_combo(args):
+    combo, ticker_data, risk_pct, initial_capital, position_size_pct, start_date, end_date = args
+    f, s, sma, thresh, enter_n, exit_n, vperiod, vmult = combo
+    
+    config = {
+        "ema_fast": f,
+        "ema_slow": s,
+        "trend_sma_period": sma,
+        "trend_threshold": thresh,
+        "setup_count_enter_n": enter_n,
+        "setup_count_exit_n": exit_n,
+        "risk_pct": risk_pct,
+        "initial_capital": initial_capital,
+        "min_tick": 0.01,
+        "commission": 2.0,
+        "position_size_pct": position_size_pct,
+        "vstop_period": vperiod,
+        "vstop_multiplier": vmult,
+        "start_date": start_date,
+        "end_date": end_date
+    }
+    
+    engine = BacktestEngine(config)
+    res = engine.run(ticker_data)
+    
+    ret_pct = ((res.final_capital / initial_capital) - 1) * 100
+    
+    return {
+        "ema_fast": f,
+        "ema_slow": s,
+        "sma": sma,
+        "thresh": thresh,
+        "enter_n": enter_n,
+        "exit_n": exit_n,
+        "vperiod": vperiod,
+        "vmult": vmult,
+        "trades": res.total_trades,
+        "winrate": res.win_rate,
+        "pnl": res.total_pnl,
+        "return_pct": ret_pct,
+        "max_dd": res.max_drawdown,
+        "profit_factor": res.profit_factor if res.profit_factor != float('inf') else 999.0
+    }
 
 app = FastAPI(title="SRM Risk Engine MCP Server")
 
@@ -144,6 +194,70 @@ async def handle_mcp_request(req: JsonRpcRequest):
                             },
                             "required": []
                         }
+                    },
+                    {
+                        "name": "run_backtest",
+                        "description": "Run a historical backtest simulation using the Trend Strength + Setup Counter strategy.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "config_id": {"type": "integer", "description": "Optional: Load base configuration parameters from bt_configs by ID."},
+                                "watchlist": {"type": "string", "description": "Optional: Watchlist name (e.g. 'growth_stocks')."},
+                                "ticker": {"type": "string", "description": "Optional: Single ticker (e.g. 'AAPL') to test instead of a watchlist."},
+                                "ema_fast": {"type": "integer", "description": "Optional: Override fast EMA period."},
+                                "ema_slow": {"type": "integer", "description": "Optional: Override slow EMA period."},
+                                "trend_sma_period": {"type": "integer", "description": "Optional: Override trend strength SMA period."},
+                                "trend_threshold": {"type": "number", "description": "Optional: Override static threshold for trend filter."},
+                                "setup_count_enter_n": {"type": "integer", "description": "Optional: Override setup entry counting consecutive days (N)."},
+                                "setup_count_exit_n": {"type": "integer", "description": "Optional: Override setup exit counting consecutive days (N)."},
+                                "risk_pct": {"type": "number", "description": "Optional: Override risk percent per trade (decimal, e.g. 0.01)."},
+                                "initial_capital": {"type": "number", "description": "Optional: Override initial starting capital (default 10000)."},
+                                "min_tick": {"type": "number", "description": "Optional: Override minimum tick range fallback (default 0.01)."},
+                                "commission": {"type": "number", "description": "Optional: Override commission per order (default 2.00)."},
+                                "start_date": {"type": "string", "description": "Optional: Override start date (YYYY-MM-DD)."},
+                                "end_date": {"type": "string", "description": "Optional: Override end date (YYYY-MM-DD)."},
+                                "position_size_pct": {"type": "number", "description": "Optional: Override maximum position sizing cap as percent of NAV (default 10)."},
+                                "vstop_period": {"type": "integer", "description": "Optional: Override volatility stop ATR period (default 14)."},
+                                "vstop_multiplier": {"type": "number", "description": "Optional: Override volatility stop ATR multiplier (default 2.0)."}
+                            }
+                        }
+                    },
+                    {
+                        "name": "run_batch_optimization",
+                        "description": "Run a batch grid search backtest over multiple parameter combinations. Runs in-memory and returns a sorted markdown table of the top results.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "watchlist": {"type": "string", "description": "Optional: Watchlist name (e.g. 'growth_stocks')."},
+                                "ticker": {"type": "string", "description": "Optional: Single ticker to test instead of a watchlist."},
+                                "ema_fast_list": {"type": "array", "items": {"type": "integer"}, "description": "Array of fast EMA periods to test."},
+                                "ema_slow_list": {"type": "array", "items": {"type": "integer"}, "description": "Array of slow EMA periods to test."},
+                                "trend_sma_period_list": {"type": "array", "items": {"type": "integer"}, "description": "Array of trend strength SMA periods to test."},
+                                "trend_threshold_list": {"type": "array", "items": {"type": "number"}, "description": "Array of thresholds to test."},
+                                "setup_count_enter_n_list": {"type": "array", "items": {"type": "integer"}, "description": "Array of setup entry consecutive days (N) to test."},
+                                "setup_count_exit_n_list": {"type": "array", "items": {"type": "integer"}, "description": "Array of setup exit consecutive days (N) to test."},
+                                "risk_pct": {"type": "number", "description": "Optional: Risk percent per trade (decimal, e.g. 0.01)."},
+                                "initial_capital": {"type": "number", "description": "Optional: Initial starting capital (default 10000)."},
+                                "start_date": {"type": "string", "description": "Optional: Start date (YYYY-MM-DD)."},
+                                "end_date": {"type": "string", "description": "Optional: End date (YYYY-MM-DD)."},
+                                "position_size_pct": {"type": "number", "description": "Optional: Maximum position sizing cap as percent of NAV (default 10)."},
+                                "vstop_period_list": {"type": "array", "items": {"type": "integer"}, "description": "Array of ATR periods to test."},
+                                "vstop_multiplier_list": {"type": "array", "items": {"type": "number"}, "description": "Array of ATR multipliers to test."}
+                            }
+                        }
+                    },
+                    {
+                        "name": "manage_local_watchlist",
+                        "description": "List, read, or archive local watchlist text files from /backtesting/lists/.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "action": {"type": "string", "enum": ["LIST", "READ", "ARCHIVE", "CREATE"], "description": "The action to perform."},
+                                "filename": {"type": "string", "description": "Optional: Watchlist filename (e.g. 'my_list.txt') for READ, ARCHIVE, or CREATE."},
+                                "content": {"type": "string", "description": "Optional: The content (ticker list, newline separated) when using CREATE action."}
+                            },
+                            "required": ["action"]
+                        }
                     }
                 ]
             }
@@ -153,7 +267,72 @@ async def handle_mcp_request(req: JsonRpcRequest):
         tool_name = req.params.get("name")
         args = req.params.get("arguments", {})
         
-        if tool_name == "get_portfolio":
+        if tool_name == "manage_local_watchlist":
+            action = args.get("action")
+            filename = args.get("filename")
+            content = args.get("content")
+            import shutil
+            base_dir = "/app/backtesting/lists"
+            
+            try:
+                if action == "LIST":
+                    if not os.path.exists(base_dir):
+                        os.makedirs(base_dir, exist_ok=True)
+                    files = [f for f in os.listdir(base_dir) if f.endswith(".txt")]
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req.id,
+                        "result": {
+                            "content": [{"type": "text", "text": f"Found watchlists: {files}"}]
+                        }
+                    }
+                elif action == "READ":
+                    if not filename:
+                        return error_response(req.id, "filename is required for READ")
+                    path = os.path.join(base_dir, filename)
+                    with open(path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req.id,
+                        "result": {
+                            "content": [{"type": "text", "text": f"Contents of {filename}:\n{content}"}]
+                        }
+                    }
+                elif action == "CREATE":
+                    if not filename or not content:
+                        return error_response(req.id, "filename and content are required for CREATE")
+                    path = os.path.join(base_dir, filename)
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req.id,
+                        "result": {
+                            "content": [{"type": "text", "text": f"Successfully created {filename} with the provided tickers."}]
+                        }
+                    }
+                elif action == "ARCHIVE":
+                    if not filename:
+                        return error_response(req.id, "filename is required for ARCHIVE")
+                    src = os.path.join(base_dir, filename)
+                    dst = os.path.join(base_dir, "old", filename)
+                    if not os.path.exists(os.path.dirname(dst)):
+                        os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    shutil.move(src, dst)
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req.id,
+                        "result": {
+                            "content": [{"type": "text", "text": f"Successfully archived {filename} to old/."}]
+                        }
+                    }
+                else:
+                    return error_response(req.id, "Invalid action")
+            except Exception as e:
+                return error_response(req.id, f"Error managing watchlist: {str(e)}")
+
+        elif tool_name == "get_portfolio":
             try:
                 target_date_arg = args.get("target_date")
                 if target_date_arg:
@@ -495,5 +674,305 @@ async def handle_mcp_request(req: JsonRpcRequest):
                 }
             except Exception as e:
                 return error_response(req.id, f"Error updating stoploss: {str(e)}")
+
+        elif tool_name == "run_backtest":
+            try:
+                # 1. Determine parameters
+                config_id = args.get("config_id")
+                base_config = {}
+                if config_id is not None:
+                    base_config = load_bt_config(supabase, int(config_id))
+                
+                # Default configuration values
+                merged_config = {
+                    "ema_fast": 14,
+                    "ema_slow": 18,
+                    "trend_sma_period": 10,
+                    "trend_threshold": 0.0,
+                    "setup_count_enter_n": 4,
+                    "setup_count_exit_n": 4,
+                    "risk_pct": 0.01,
+                    "initial_capital": 10000.0,
+                    "min_tick": 0.01,
+                    "commission": 2.0,
+                    "position_size_pct": 10.0,
+                    "vstop_period": 14,
+                    "vstop_multiplier": 2.0,
+                    "start_date": None,
+                    "end_date": None,
+                    "watchlist": "growth_stocks"
+                }
+                
+                # Merge base config
+                for k, v in base_config.items():
+                    if v is not None:
+                        # Convert Decimal/numeric types to float
+                        if k in ["risk_pct", "initial_capital", "min_tick", "commission", "trend_threshold", "position_size_pct", "vstop_multiplier"] and v is not None:
+                            merged_config[k] = float(v)
+                        else:
+                            merged_config[k] = v
+                
+                # Merge user overrides
+                overrides_exist = False
+                for k in merged_config.keys():
+                    if args.get(k) is not None:
+                        if k in ["ema_fast", "ema_slow", "trend_sma_period", "setup_count_enter_n", "setup_count_exit_n", "vstop_period"]:
+                            val = int(args.get(k))
+                        elif k in ["risk_pct", "initial_capital", "min_tick", "commission", "trend_threshold", "position_size_pct", "vstop_multiplier"]:
+                            val = float(args.get(k))
+                        else:
+                            val = str(args.get(k))
+                        
+                        if base_config.get(k) != val:
+                            overrides_exist = True
+                        merged_config[k] = val
+
+                # If single ticker is specified, override watchlist completely
+                single_ticker = args.get("ticker")
+                
+                # 2. Handle DB configuration entry if overrides exist OR if config_id was not provided
+                active_config_id = config_id
+                if overrides_exist or config_id is None:
+                    # Create a new config in bt_configs
+                    timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+                    new_config_name = f"agent_run_{timestamp_str}"
+                    if single_ticker:
+                        new_config_name += f"_{single_ticker}"
+                    
+                    db_config_data = {
+                        "name": new_config_name,
+                        "watchlist": single_ticker if single_ticker else merged_config["watchlist"],
+                        "start_date": merged_config["start_date"],
+                        "end_date": merged_config["end_date"],
+                        "ema_fast": merged_config["ema_fast"],
+                        "ema_slow": merged_config["ema_slow"],
+                        "trend_sma_period": merged_config["trend_sma_period"],
+                        "trend_threshold": merged_config["trend_threshold"],
+                        "setup_count_enter_n": merged_config["setup_count_enter_n"],
+                        "setup_count_exit_n": merged_config["setup_count_exit_n"],
+                        "risk_pct": merged_config["risk_pct"],
+                        "initial_capital": merged_config["initial_capital"],
+                        "min_tick": merged_config["min_tick"],
+                        "commission": merged_config["commission"],
+                        "position_size_pct": merged_config["position_size_pct"],
+                        "vstop_period": merged_config["vstop_period"],
+                        "vstop_multiplier": merged_config["vstop_multiplier"]
+                    }
+                    res_config = supabase.table("bt_configs").insert(db_config_data).execute()
+                    active_config_id = res_config.data[0]["config_id"]
+                
+                # 3. Create run entry
+                run_data = {
+                    "config_id": active_config_id,
+                    "status": "running",
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                }
+                run_res = supabase.table("bt_runs").insert(run_data).execute()
+                run_id = run_res.data[0]["run_id"]
+                
+                # 4. Resolve Tickers and load data
+                if single_ticker:
+                    tickers = [single_ticker.upper()]
+                else:
+                    tickers = load_watchlist(supabase, merged_config["watchlist"])
+                
+                ticker_data = {}
+                skipped_tickers = []
+                for ticker in tickers:
+                    try:
+                        df = load_ohlcv(ticker)
+                        ticker_data[ticker] = df
+                    except Exception as e:
+                        skipped_tickers.append((ticker, str(e)))
+                
+                if not ticker_data:
+                    err_msg = f"No valid ticker data found. Skipped tickers: {skipped_tickers}"
+                    supabase.table("bt_runs").update({
+                        "status": "failed",
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                        "error_message": err_msg
+                    }).eq("run_id", run_id).execute()
+                    return error_response(req.id, err_msg)
+                
+                # 5. Run backtest
+                engine = BacktestEngine(merged_config)
+                result = engine.run(ticker_data)
+                
+                # 6. Write trades to DB
+                if result.trades:
+                    trade_rows = []
+                    for t in result.trades:
+                        trade_rows.append({
+                            "run_id": run_id,
+                            "ticker": t.ticker,
+                            "entry_date": t.entry_date,
+                            "entry_price": t.entry_price,
+                            "exit_date": t.exit_date,
+                            "exit_price": t.exit_price,
+                            "position_size": t.position_size,
+                            "risk_per_share": t.risk_per_share,
+                            "pnl": round(t.pnl, 2),
+                            "r_multiple": round(t.r_multiple, 4),
+                            "exit_reason": t.exit_reason,
+                            "commission": round(t.commission, 2)
+                        })
+                    supabase.table("bt_trades").insert(trade_rows).execute()
+                
+                # 7. Update run status and save report
+                update_data = {
+                    "status": "completed",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "total_trades": result.total_trades,
+                    "winning_trades": result.winning_trades,
+                    "losing_trades": result.losing_trades,
+                    "win_rate": round(result.win_rate, 2),
+                    "total_pnl": round(result.total_pnl, 2),
+                    "max_drawdown": round(result.max_drawdown, 2),
+                    "profit_factor": round(result.profit_factor, 4) if result.profit_factor != float("inf") else 9999.0,
+                    "avg_r_multiple": round(result.avg_r_multiple, 4),
+                    "final_capital": round(result.final_capital, 2),
+                    "report_text": result.report_text
+                }
+                supabase.table("bt_runs").update(update_data).eq("run_id", run_id).execute()
+                
+                # Send telemetry
+                telemetry_msg = (
+                    f"📊 **Backtest #{run_id} abgeschlossen**\n"
+                    f"- Config ID: {active_config_id}\n"
+                    f"- Trades: {result.total_trades} (Winrate: {round(result.win_rate, 1)}%)\n"
+                    f"- Return: {round((result.final_capital / merged_config['initial_capital'] - 1) * 100, 2):+.2f}%\n"
+                    f"- Max DD: {round(result.max_drawdown, 2)}%"
+                )
+                send_telemetry(telemetry_msg)
+                
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req.id,
+                    "result": {
+                        "content": [
+                            {"type": "text", "text": result.report_text}
+                        ]
+                    }
+                }
+            except Exception as e:
+                return error_response(req.id, f"Error executing backtest: {str(e)}")
+
+        elif tool_name == "run_batch_optimization":
+            try:
+                watchlist = args.get("watchlist", "growth_stocks")
+                single_ticker = args.get("ticker")
+                ema_fast_list = args.get("ema_fast_list", [14])
+                ema_slow_list = args.get("ema_slow_list", [18])
+                trend_sma_period_list = args.get("trend_sma_period_list", [10])
+                trend_threshold_list = args.get("trend_threshold_list", [0.0])
+                setup_count_enter_n_list = args.get("setup_count_enter_n_list", [4])
+                setup_count_exit_n_list = args.get("setup_count_exit_n_list", [4])
+                vstop_period_list = args.get("vstop_period_list", [14])
+                vstop_multiplier_list = args.get("vstop_multiplier_list", [2.0])
+                
+                risk_pct = float(args.get("risk_pct", 0.01))
+                initial_capital = float(args.get("initial_capital", 10000.0))
+                position_size_pct = float(args.get("position_size_pct", 10.0))
+                start_date = args.get("start_date")
+                end_date = args.get("end_date")
+
+                import itertools
+                
+                if single_ticker:
+                    tickers = [single_ticker.upper()]
+                else:
+                    tickers = load_watchlist(supabase, watchlist)
+                
+                # Preload data once
+                ticker_data = {}
+                skipped_tickers = []
+                for ticker in tickers:
+                    try:
+                        df = load_ohlcv(ticker)
+                        ticker_data[ticker] = df
+                    except Exception as e:
+                        skipped_tickers.append((ticker, str(e)))
+                
+                if not ticker_data:
+                    return error_response(req.id, f"No valid ticker data found. Skipped: {skipped_tickers}")
+
+                combinations = list(itertools.product(
+                    ema_fast_list, ema_slow_list, trend_sma_period_list, trend_threshold_list, setup_count_enter_n_list, setup_count_exit_n_list, vstop_period_list, vstop_multiplier_list
+                ))
+                
+                results_list = []
+                start_time = time.time()
+                
+                tasks = [
+                    (combo, ticker_data, risk_pct, initial_capital, position_size_pct, start_date, end_date)
+                    for combo in combinations
+                ]
+                
+                with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+                    results_list = list(executor.map(_run_backtest_combo, tasks))
+                
+                end_time = time.time()
+                duration = end_time - start_time
+                runs_per_sec = len(combinations) / duration if duration > 0 else 0
+                
+                # Filter out zero-trades runs for rankings
+                valid_results = [r for r in results_list if r["trades"] > 0]
+                if not valid_results:
+                    valid_results = results_list
+                
+                def format_table(title, top_results):
+                    lines = [f"#### {title}"]
+                    lines.append("| EMA F/S | SMA | Thr | In/Out | VStop | Trades | Win% | Return% | Max DD% | PF |")
+                    lines.append("|---------|-----|-----|--------|-------|--------|------|---------|---------|----|")
+                    for r in top_results:
+                        params = f"{r['ema_fast']}/{r['ema_slow']}"
+                        vstop = f"{r['vperiod']}/{r['vmult']}"
+                        lines.append(
+                            f"| {params} | {r['sma']} | {r['thresh']} | {r['enter_n']}/{r['exit_n']} | {vstop} | "
+                            f"{r['trades']} | {r['winrate']:.1f}% | {r['return_pct']:.2f}% | "
+                            f"{r['max_dd']:.2f}% | {r['profit_factor']:.2f} |"
+                        )
+                    lines.append("")
+                    return lines
+                
+                md_lines = []
+                md_lines.append(f"### Batch Optimization Results ({len(combinations)} Runs)")
+                md_lines.append("")
+                
+                # 1. Top 10 by Max Drawdown (Ascending)
+                valid_results.sort(key=lambda x: x["max_dd"])
+                md_lines.extend(format_table("Top 10 by Max Drawdown (Lowest is better)", valid_results[:10]))
+                
+                # 2. Top 10 by Return
+                valid_results.sort(key=lambda x: x["return_pct"], reverse=True)
+                md_lines.extend(format_table("Top 10 by Return (%)", valid_results[:10]))
+                
+                # 3. Top 10 by Win Rate
+                valid_results.sort(key=lambda x: x["winrate"], reverse=True)
+                md_lines.extend(format_table("Top 10 by Win Rate (%)", valid_results[:10]))
+                
+                # 4. Top 10 by Profit Factor
+                valid_results.sort(key=lambda x: x["profit_factor"] if x["profit_factor"] < 999 else 0, reverse=True)
+                md_lines.extend(format_table("Top 10 by Profit Factor", valid_results[:10]))
+                
+                md_lines.append(f"**Performance Benchmark:** {len(combinations)} Runs completed in {duration:.2f}s ({runs_per_sec:.1f} Runs/sec)")
+                
+                final_md = "\n".join(md_lines)
+                
+                # Sende die Tabelle auch als Telemetrie an das System
+                send_telemetry(f"Batch Optimization Report:\n\n{final_md}")
+                
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req.id,
+                    "result": {
+                        "content": [
+                            {"type": "text", "text": final_md}
+                        ]
+                    }
+                }
+                
+            except Exception as e:
+                return error_response(req.id, f"Error executing batch optimization: {str(e)}")
                 
         return error_response(req.id, f"Unknown tool: {tool_name}")
