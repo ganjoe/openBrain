@@ -30,7 +30,8 @@ from config_parser import FeatureConfigParser, ProcessingContext, FeatureType
 from parquet_io import ParquetStorage
 from processor import FeatureProcessor
 from job_manager import JobManager
-from schemas import MARequest, RSRequest, MinerviniRequest
+from schemas import MARequest, RSRequest, MinerviniRequest, ClusterRequest
+from cluster import calculate_correlation_clusters
 from logging_setup import configure_logging
 
 
@@ -377,6 +378,113 @@ def create_app() -> FastAPI:
             "rs_rating": rs_rating,
             "rs_available": rs_available,
         }
+
+    # ── Correlation Clustering ────────────────────────────────────
+    @app.post("/features/cluster")
+    async def cluster_tickers(req: ClusterRequest):
+        """
+        Compute correlation-based clusters and write them as watchlists to Supabase.
+        Deletes all existing cluster_* watchlists, then inserts the new ones.
+        """
+        import httpx
+
+        postgrest_url = os.environ.get("POSTGREST_URL", "http://postgrest:3000")
+        service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+        headers = {
+            "apikey": service_key,
+            "Authorization": f"Bearer {service_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        }
+
+        # 1. Resolve ticker list
+        if req.source_watchlist:
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(
+                        f"{postgrest_url}/pca_watchlists",
+                        params={
+                            "list_name": f"eq.{req.source_watchlist}",
+                            "select": "ticker",
+                            "order": "position.asc",
+                        },
+                        headers=headers,
+                    )
+                    resp.raise_for_status()
+                    tickers = [r["ticker"] for r in resp.json()]
+            except Exception as e:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"error": f"Failed to load watchlist '{req.source_watchlist}': {e}"},
+                )
+        else:
+            tickers = storage.get_available_tickers()
+
+        if not tickers:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": "No tickers available for clustering."},
+            )
+
+        # 2. Run clustering
+        try:
+            clusters = calculate_correlation_clusters(
+                storage, tickers, req.lookback_days, req.num_clusters
+            )
+        except ValueError as e:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": str(e)},
+            )
+
+        # 3. Write to Supabase: delete old cluster_* lists, insert new ones
+        try:
+            async with httpx.AsyncClient() as client:
+                # Delete all existing cluster_ watchlists
+                await client.delete(
+                    f"{postgrest_url}/pca_watchlists",
+                    params={"list_name": "like.cluster_*"},
+                    headers=headers,
+                )
+
+                # Insert new cluster watchlists
+                rows = []
+                for cluster_id, cluster_tickers_list in sorted(clusters.items()):
+                    list_name = f"cluster_{cluster_id}"
+                    for pos, ticker in enumerate(sorted(cluster_tickers_list)):
+                        rows.append({
+                            "list_name": list_name,
+                            "ticker": ticker,
+                            "position": pos,
+                        })
+
+                # Batch insert in chunks of 500 to stay within PostgREST limits
+                chunk_size = 500
+                for i in range(0, len(rows), chunk_size):
+                    chunk = rows[i : i + chunk_size]
+                    resp = await client.post(
+                        f"{postgrest_url}/pca_watchlists",
+                        json=chunk,
+                        headers=headers,
+                    )
+                    resp.raise_for_status()
+
+        except Exception as e:
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"error": f"Failed to write clusters to Supabase: {e}"},
+            )
+
+        # 4. Build response summary
+        summary = {
+            "clusters": len(clusters),
+            "tickers_total": sum(len(v) for v in clusters.values()),
+            "lookback_days": req.lookback_days,
+            "source": req.source_watchlist or "all",
+            "groups": {f"cluster_{k}": v for k, v in sorted(clusters.items())},
+        }
+
+        return summary
 
     @app.get("/status")
     async def get_status() -> dict:

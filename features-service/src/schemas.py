@@ -33,3 +33,23 @@ class MinerviniRequest(BaseModel):
     """Request body for on-the-fly Minervini Trend Template calculation."""
     ticker: str                                  # e.g. "AAPL"
     chart_timeframe: str = "1D"                  # source data timeframe
+
+class ClusterRequest(BaseModel):
+    """Request body for correlation-based stock clustering."""
+    source_watchlist: Optional[str] = None       # e.g. "growth_stocks", None = all tickers
+    lookback_days: int = 63                      # number of trading days for correlation
+    num_clusters: int = 10                       # number of groups to generate
+
+    @field_validator("lookback_days")
+    @classmethod
+    def validate_lookback(cls, v: int) -> int:
+        if v < 10 or v > 504:
+            raise ValueError(f"lookback_days must be between 10 and 504, got {v}")
+        return v
+
+    @field_validator("num_clusters")
+    @classmethod
+    def validate_clusters(cls, v: int) -> int:
+        if v < 2 or v > 50:
+            raise ValueError(f"num_clusters must be between 2 and 50, got {v}")
+        return v

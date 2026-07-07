@@ -61,7 +61,8 @@ class FeatureProcessor:
                         if col_name in df.columns:
                             series = df[col_name].copy()
                             if 'timestamp' in df.columns:
-                                series.index = df['timestamp']
+                                series.index = (df['timestamp'] // 86400) * 86400
+                                series = series[~series.index.duplicated(keep='last')]
                             res[tf].append((col_name, series))
                 except Exception:
                     pass
@@ -226,7 +227,7 @@ class FeatureProcessor:
                     # 1.5 Inject pre-computed cross-sectional features FIRST so Minervini/etc can use them
                     if precomputed_cs and tf in precomputed_cs and precomputed_cs[tf]:
                         for col, series in precomputed_cs[tf].items():
-                            mapped = df['timestamp'].map(series)
+                            mapped = ((df['timestamp'] // 86400) * 86400).map(series)
                             if series.dtype.name == 'Int64':
                                 df[col] = mapped.astype("Int64")
                             else:

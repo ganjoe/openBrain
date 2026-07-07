@@ -52,14 +52,17 @@ export function registerPcaTools(server: McpServer) {
       title: "Manage Watchlist",
       description: "List, load, add to, or remove from watchlists.",
       inputSchema: {
-        action: z.enum(["LIST", "LOAD", "ADD", "REMOVE"]).describe("The action to perform"),
+        action: z.enum(["LIST", "LOAD", "ADD", "REMOVE", "CLUSTER"]).describe("The action to perform"),
         list_name: z.string().optional().describe("Watchlist name"),
         ticker: z.string().optional().describe("Ticker symbol (for ADD, REMOVE)"),
         position: z.number().optional().describe("Position in list (for ADD)"),
         layout_name: z.string().optional().describe("Layout to update (for LOAD)"),
+        source_watchlist: z.string().optional().describe("Source watchlist for CLUSTER (default: all tickers)"),
+        lookback_days: z.number().optional().describe("Trading days for correlation (default: 63, ~3 months)"),
+        num_clusters: z.number().optional().describe("Number of cluster groups (default: 10)"),
       },
     },
-    async ({ action, list_name, ticker, position, layout_name }: any) => {
+    async ({ action, list_name, ticker, position, layout_name, source_watchlist, lookback_days, num_clusters }: any) => {
         try {
             if (action === "LIST") {
                 if (list_name) {
@@ -87,6 +90,44 @@ export function registerPcaTools(server: McpServer) {
                 const { error } = await supabase.from("pca_watchlists").delete().eq("list_name", list_name).eq("ticker", ticker.toUpperCase());
                 if (error) throw error;
                 return { content: [{ type: "text", text: `${ticker.toUpperCase()} removed from '${list_name}'.` }] };
+            } else if (action === "CLUSTER") {
+                const FEATURES_URL = "http://features-service:8003/features/cluster";
+                const body: any = {};
+                if (source_watchlist) body.source_watchlist = source_watchlist;
+                if (lookback_days) body.lookback_days = lookback_days;
+                if (num_clusters) body.num_clusters = num_clusters;
+
+                await sendTelemetry(`⚙️ Starting correlation clustering (${body.num_clusters ?? 10} groups, ${body.lookback_days ?? 63} days)...`);
+
+                const res = await fetch(FEATURES_URL, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                });
+
+                if (!res.ok) {
+                  const err = await res.text();
+                  throw new Error(`Cluster API error ${res.status}: ${err}`);
+                }
+
+                const data = await res.json();
+                const groupSummary = Object.entries(data.groups)
+                  .map(([name, tickers]: [string, any]) => `• ${name}: ${tickers.length} tickers`)
+                  .join("\n");
+
+                await sendTelemetry(`✅ Clustering complete: ${data.clusters} groups, ${data.tickers_total} tickers.`);
+
+                return {
+                  content: [{
+                    type: "text",
+                    text: `Correlation clustering complete.\n` +
+                          `Source: ${data.source}\n` +
+                          `Lookback: ${data.lookback_days} days\n` +
+                          `Total tickers: ${data.tickers_total}\n` +
+                          `Groups:\n${groupSummary}\n\n` +
+                          `Watchlists cluster_0 through cluster_${data.clusters - 1} have been saved to Supabase.`
+                  }]
+                };
             }
             throw new Error("Invalid action");
         } catch (err: any) {
@@ -197,27 +238,6 @@ export function registerPcaTools(server: McpServer) {
   );
 
   // ── trigger_feature_calculation ──────────────────────────────
-  server.registerTool(
-    "request_historical_data",
-    {
-      title: "Request Historical Data Download",
-      description: "Trigger the stock-data-node to download missing historical OHLCV data for a ticker via IBKR.",
-      inputSchema: {
-        ticker: z.string().describe("Ticker symbol (e.g. PATH)"),
-        timeframes: z.array(z.string()).optional().describe("Optional specific timeframes to download, e.g. ['1D', '1W']"),
-      },
-    },
-    async ({ ticker, timeframes }: any) => {
-      try {
-        const resultStr = await pcaCommand("request_download", { ticker: ticker.toUpperCase() });
-        const result = JSON.parse(resultStr);
-
-        return { content: [{ type: "text", text: `Successfully published download request for ${ticker.toUpperCase()} via MQTT.` }] };
-      } catch (err: any) {
-        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-      }
-    }
-  );
 
   server.registerTool(
     "trigger_feature_calculation",

@@ -481,7 +481,24 @@ async function main() {
       }
       
       if (topic === "agents/stock-data/events") {
-        // Feature disabled: stock-data events are no longer sent to the system chat
+        const eventType = envelope.event || "unknown_event";
+        const ticker = envelope.ticker || "unknown_ticker";
+        const reason = envelope.reason ? ` (Grund: ${envelope.reason})` : "";
+        const eventText = `[SYSTEM EVENT] stock-data-node: ${eventType} für ${ticker}${reason}`;
+        
+        const sysEnvelope = {
+          header: {
+            from: "system",
+            to: AGENT_ID,
+            date: new Date().toISOString().slice(0, 10),
+            unix: Math.floor(Date.now() / 1000),
+            msg_type: "system_event",
+          },
+          content: { text: eventText }
+        };
+        
+        // Feed the system event into the agent's LLM loop
+        await handleIncoming(mqttClient, localMcpClients, sysEnvelope);
         return;
       }
       

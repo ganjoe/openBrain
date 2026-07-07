@@ -94,9 +94,20 @@ class ChartRenderer {
     this.colIndex = {};
     this.columns.forEach((col, i) => { this.colIndex[col] = i; });
 
-    // Viewport: starte bei den neuesten Bars
-    this.viewBars  = Math.min(this.viewConfig.bar_count ?? 250, this.rows.length || 1);
-    this.viewStart = Math.max(0, this.rows.length - this.viewBars);
+    const n = this.rows.length || 1;
+
+    // Viewport: Beim ersten Laden Standardwerte setzen (250 Bars + 10 Bars leerer Platz rechts)
+    // Bei späteren Ladevorgängen (anderer Ticker) behalten wir Zoom und Panning bei!
+    if (this._endOffset === undefined) {
+      this.viewBars  = Math.min(this.viewConfig.bar_count ?? 250, n);
+      this._endOffset = 10;
+    } else {
+      // Wenn der User gezoomt hat, kappe es maximal auf die Datenlänge des neuen Tickers
+      this.viewBars = Math.min(this.viewBars, n);
+    }
+
+    // viewStart berechnet sich aus dem Datenende + Offset
+    this.viewStart = n - this.viewBars + this._endOffset;
     this._clampViewport();
     this.draw();
   }
@@ -126,6 +137,9 @@ class ChartRenderer {
     const minStart = -(vbInt - MIN_VIS);
     const maxStart = n - MIN_VIS;
     this.viewStart = Math.round(Math.min(Math.max(this.viewStart, minStart), maxStart));
+
+    // Speichere den aktuellen Randabstand (Offset) für den nächsten Ticker-Wechsel
+    this._endOffset = this.viewStart + vbInt - n;
   }
 
   // ════════════════════════════════════════════════════════

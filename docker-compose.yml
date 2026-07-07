@@ -506,6 +506,8 @@ services:
     environment:
       MQTT_BROKER_HOST: nexus-broker
       MQTT_BROKER_PORT: "1883"
+      POSTGREST_URL: http://postgrest:3000
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
     volumes:
       - ./features-service/config:/app/config
       - /home/daniel/stock-data-node/data:/app/data

@@ -226,8 +226,9 @@ async def get_context_limit():
     """Fetch the current context limit config from the DB."""
     rows = await _db_get("system_settings", {"key": "eq.chat_context_limit"})
     if rows:
-        return rows[0].get("value", {"enabled": False, "limit": 10})
-    return {"enabled": False, "limit": 10}
+        return rows[0].get("value", {"enabled": True, "limit": 10})
+    return {"enabled": True, "limit": 10}
+
 
 @router.post("/api/settings/context_limit")
 async def update_context_limit(req: ContextLimitRequest):
