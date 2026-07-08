@@ -234,14 +234,14 @@ async function callLLM(messages: any[], tools: any[], onFallback?: (err: Error) 
 // ─────────────────────────────────────────────────────────────
 // 9. Nexus message envelope builder
 // ─────────────────────────────────────────────────────────────
-function buildEnvelope(to: string, text: string, mcpInfo?: any): string {
+function buildEnvelope(to: string, text: string, mcpInfo?: any, msgType: string = "chat"): string {
   const envelope: any = {
     header: {
       from: AGENT_ID,
       to,
       date: new Date().toISOString().slice(0, 10),
       unix: Math.floor(Date.now() / 1000),
-      msg_type: "chat",
+      msg_type: msgType,
     },
     content: { text },
   };
@@ -485,20 +485,25 @@ async function main() {
         const ticker = envelope.ticker || "unknown_ticker";
         const reason = envelope.reason ? ` (Grund: ${envelope.reason})` : "";
         const eventText = `[SYSTEM EVENT] stock-data-node: ${eventType} für ${ticker}${reason}`;
-        
-        const sysEnvelope = {
-          header: {
-            from: "system",
-            to: AGENT_ID,
-            date: new Date().toISOString().slice(0, 10),
-            unix: Math.floor(Date.now() / 1000),
-            msg_type: "system_event",
-          },
-          content: { text: eventText }
-        };
-        
-        // Feed the system event into the agent's LLM loop
-        await handleIncoming(mqttClient, localMcpClients, sysEnvelope);
+
+        // Stock-data events are high-frequency (every ticker download) and
+        // contain no actionable instructions. Do NOT invoke the LLM — that
+        // would flood LM Studio with N parallel requests per second. Just
+        // log locally and forward the event to the UI's system channel
+        // (msg_type=telemetry, to="all") so the boss can still see the status.
+        console.log(`📊 ${eventText}`);
+
+        // Fire-and-forget: don't await, never block the next event
+        fetch("http://nexus-service:7734/api/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from_agent: "system",
+            to: "all",
+            text: eventText,
+            msg_type: "telemetry",
+          }),
+        }).catch((e) => console.error("Telemetry forward failed:", e));
         return;
       }
       
