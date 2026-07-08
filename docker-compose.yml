@@ -422,6 +422,7 @@ services:
       PORT: "8791"
     volumes:
       - /home/daniel/stock-data-node/data/parquet:/parquet
+      - ./agent-pca/watchlists_import:/app/watchlists_import
     ports:
       - "8791:8791"
     extra_hosts:

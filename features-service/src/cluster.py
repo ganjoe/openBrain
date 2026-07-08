@@ -33,63 +33,61 @@ def calculate_correlation_clusters(
     Returns:
         Dict mapping cluster_id -> list of ticker symbols.
     """
-    # 1. Load close prices into a single DataFrame (columns = tickers, rows = dates)
+    # 1. Load ALL close prices into a single DataFrame without slicing first
     close_series = {}
     for ticker in tickers:
         try:
             df = storage.load_ticker_data(ticker, "1D")
-            if len(df) < lookback_days:
-                continue
             # Normalize timestamps to UTC midnight so all timezones align
             df["date"] = (df["timestamp"] // 86400) * 86400
-            # Deduplicate (keep last value per day)
             df = df.drop_duplicates(subset="date", keep="last")
-            tail = df.tail(lookback_days)
-            series = tail.set_index("date")["close"]
-            close_series[ticker] = series
+            close_series[ticker] = df.set_index("date")["close"]
         except Exception:
             continue
 
-    if len(close_series) < num_clusters:
+    if not close_series:
+        raise ValueError("No tickers with valid data found.")
+
+    price_df = pd.DataFrame(close_series).sort_index()
+
+    # 2. Forward-fill small gaps (weekends, holidays) up to 5 days
+    price_df = price_df.ffill(limit=5)
+
+    # 3. Calculate daily returns on the entire aligned history first (prevents losing first day return)
+    returns_df = price_df.pct_change()
+
+    # 4. Take the last `lookback_days` of returns
+    returns_df = returns_df.tail(lookback_days)
+
+    # 5. Filter out tickers with too many NaNs in the lookback period
+    # (Require at least 90% valid trading days in the lookback window)
+    min_valid = int(lookback_days * 0.9)
+    valid_tickers = [t for t in returns_df.columns if returns_df[t].notna().sum() >= min_valid]
+    
+    if len(valid_tickers) < num_clusters:
         raise ValueError(
-            f"Only {len(close_series)} tickers with sufficient data, "
-            f"but {num_clusters} clusters requested. Reduce num_clusters."
+            f"Only {len(valid_tickers)} tickers with sufficient data for lookback={lookback_days}, "
+            f"but {num_clusters} clusters requested. Reduce num_clusters or choose different tickers."
         )
+    returns_df = returns_df[valid_tickers].fillna(0)
 
-    price_df = pd.DataFrame(close_series)
+    # 6. Standardize returns (Z-Score)
+    # Subtract mean, divide by standard deviation for each stock.
+    # Transpose so that rows are stocks (samples) and columns are dates (features).
+    standardized_returns = (returns_df - returns_df.mean()) / returns_df.std()
+    features = standardized_returns.T
 
-    # Forward-fill small gaps (weekends, holidays) so tickers align better
-    price_df = price_df.sort_index().ffill(limit=5)
-
-    logger.info("Loaded close prices for %d tickers (%d date rows).", len(price_df.columns), len(price_df))
-
-    # 2. Calculate daily returns and drop rows where all are NaN
-    returns_df = price_df.pct_change().dropna(how="all")
-
-    # 3. Pearson correlation matrix (N x N) with pairwise complete observations
-    correlation_matrix = returns_df.corr(method="pearson", min_periods=20)
-
-    # Drop tickers that have no valid correlations (e.g. too little overlap)
-    valid_mask = correlation_matrix.notna().sum(axis=1) > 1
-    correlation_matrix = correlation_matrix.loc[valid_mask, valid_mask]
-
-    # Fill remaining NaN correlations with 0 (uncorrelated assumption)
-    correlation_matrix = correlation_matrix.fillna(0)
-
-    logger.info("Computed %dx%d correlation matrix.", correlation_matrix.shape[0], correlation_matrix.shape[1])
-
-    # 4. K-Means clustering on the correlation matrix
+    # 7. K-Means clustering on the standardized return vectors
+    # This is mathematically equivalent to minimizing 1 - Pearson correlation coefficient,
+    # but scales much better to thousands of tickers.
     kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init="auto")
-    labels = kmeans.fit_predict(correlation_matrix)
+    labels = kmeans.fit_predict(features)
 
-    # 5. Group tickers by cluster label
-    cluster_tickers = correlation_matrix.columns.tolist()
+    # 8. Group tickers by cluster label
     result: dict[int, list[str]] = {}
-    for ticker, label in zip(cluster_tickers, labels):
+    for ticker, label in zip(features.index, labels):
         cluster_id = int(label)
-        if cluster_id not in result:
-            result[cluster_id] = []
-        result[cluster_id].append(ticker)
+        result.setdefault(cluster_id, []).append(ticker)
 
     for cid, members in sorted(result.items()):
         logger.info("Cluster %d: %d tickers", cid, len(members))

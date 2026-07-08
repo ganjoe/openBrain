@@ -17,6 +17,7 @@ from chart_data import router as chart_router
 from state_api import router as state_router
 from options_api import router as options_router
 from mqtt_listener import start_mqtt_listener
+from watchlist_importer import watchlist_importer_loop
 
 logger = logging.getLogger("pca.main")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s")
@@ -29,6 +30,10 @@ async def lifespan(app: FastAPI):
     # Run MQTT listener in a background thread (paho is synchronous)
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, start_mqtt_listener)
+    
+    # Start the watchlist importer loop
+    asyncio.create_task(watchlist_importer_loop())
+    
     yield
     logger.info("agent-pca-service shutting down.")
 
