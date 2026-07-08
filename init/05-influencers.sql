@@ -20,17 +20,31 @@ RETURNS TABLE (
   username text,
   screen_name text,
   notes text,
-  similarity float
+  similarity float,
+  match_quality int
 )
 LANGUAGE plpgsql
 SET search_path = public, extensions
 AS $$
 BEGIN
   RETURN QUERY
-  SELECT t.username, t.screen_name, t.notes,
+  SELECT
+    t.username,
+    t.screen_name,
+    t.notes,
     CASE WHEN query_embedding IS NOT NULL 
          THEN 1 - (t.embedding <=> query_embedding)::float 
-         ELSE 0.0 END AS similarity
+         ELSE 0.0 END AS similarity,
+    CASE
+      WHEN lower(t.username) = lower(query_text) THEN 400
+      WHEN lower(coalesce(t.screen_name, '')) = lower(query_text) THEN 350
+      WHEN t.username ILIKE query_text || '%' THEN 300
+      WHEN t.screen_name ILIKE query_text || '%' THEN 250
+      WHEN t.username ILIKE '%' || query_text || '%' THEN 200
+      WHEN t.screen_name ILIKE '%' || query_text || '%' THEN 150
+      WHEN t.notes ILIKE '%' || query_text || '%' THEN 100
+      ELSE 0
+    END AS match_quality
   FROM x_users t
   WHERE t.is_active = TRUE
     AND (
@@ -39,7 +53,7 @@ BEGIN
       OR t.screen_name ILIKE '%' || query_text || '%'
       OR t.notes ILIKE '%' || query_text || '%'
     )
-  ORDER BY similarity DESC NULLS LAST
+  ORDER BY match_quality DESC, similarity DESC NULLS LAST, t.username ASC
   LIMIT match_count;
 END;
 $$;

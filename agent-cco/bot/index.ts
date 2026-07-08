@@ -315,7 +315,16 @@ async function handleIncoming(
   console.log(`🧠 Calling LLM (${activeProvider})...`);
   let response = await callLLM(messages, availableTools, onFallback);
 
+  const MAX_TOOL_ITERATIONS = 8;
+  let toolIterations = 0;
   while (response.tool_calls?.length > 0) {
+    if (toolIterations >= MAX_TOOL_ITERATIONS) {
+      console.warn(`⚠️ [${AGENT_ID}] Tool-Loop-Limit (${MAX_TOOL_ITERATIONS}) erreicht. Erzwinge [STOP].`);
+      const warnPayload = buildEnvelope(from, `⚠️ **System-Warnung**: Tool-Loop-Limit (${MAX_TOOL_ITERATIONS}) erreicht. Die Iteration wird beendet. Bitte gib eine konkretere Anweisung, falls weitere Schritte nötig sind. [STOP]`);
+      mqttClient.publish(`agents/${from}/inbox`, warnPayload, { qos: 1 });
+      return;
+    }
+    toolIterations++;
     messages.push(response.message);
 
     for (const tc of response.tool_calls) {

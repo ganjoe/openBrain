@@ -506,14 +506,41 @@ export function registerXTools(server: McpServer) {
              });
 
              if (!searchError && searchResults && searchResults.length > 0) {
-                if (searchResults.length === 1 || searchResults[0].similarity > 0.8 || searchResults[0].username === targetUsername) {
-                   targetUsername = searchResults[0].username;
+                const top = searchResults[0] as any;
+                const hasIlikeMatch = (top.match_quality ?? 0) >= 100;
+                const confident = hasIlikeMatch || top.similarity > 0.8 || top.username === targetUsername;
+                if (searchResults.length === 1 || confident) {
+                   targetUsername = top.username;
                    cleanName = `@${targetUsername}`;
                 } else {
                    const listStr = searchResults.map((r: any) => `- @${r.username} (${r.screen_name})`).join("\n");
                    return { content: [{ type: "text", text: `Ich habe mehrere mögliche Influencer gefunden für '${username}'. Bitte sei spezifischer (z.B. mit @handle):\n${listStr}` }] };
                 }
              }
+          }
+
+          const { data: latestRecord, error: latestError } = await supabase
+            .from("agent_workspace")
+            .select("id")
+            .eq("agent_id", AGENT_ID)
+            .eq("artifact_type", "x_post")
+            .contains("metadata", { author: cleanName })
+            .limit(1);
+
+          if (latestError) {
+             return { content: [{ type: "text", text: `Fehler beim Prüfen des bestehenden Bestands für ${cleanName}: ${latestError.message}` }], isError: true };
+          }
+
+          const hasExistingPosts = !!(latestRecord && latestRecord.length > 0);
+          const normalizedLimit = typeof limit === "number" ? limit : 100;
+
+          if (!hasExistingPosts && !start_time && normalizedLimit === 100) {
+             return {
+               content: [{
+                 type: "text",
+                 text: `${cleanName} hat noch keine Posts in der Datenbank. Für einen Erstimport musst du ein Startdatum (start_time) oder eine maximale Anzahl Posts (limit) angeben. Hinweis: Die X-API liefert pro User maximal ca. 3200 Posts zurück.`
+               }]
+             };
           }
 
           // In-Memory Lock Check Check
