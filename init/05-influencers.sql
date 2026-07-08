@@ -10,6 +10,7 @@ ALTER TABLE x_users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
 -- Create an index for vector similarity search (Removed HNSW due to 4096 dim limit, seq scan is fine for small tables)
 
 -- Hybrid search function for influencers
+DROP FUNCTION IF EXISTS search_influencers(vector,text,double precision,integer);
 CREATE OR REPLACE FUNCTION search_influencers(
   query_embedding vector(4096),
   query_text text,
