@@ -23,4 +23,7 @@ echo "🗃️  Applying Minervini Risk DB Schema..."
 docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/12-pta-risk-parameters.sql
 docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/13-srm-schema.sql
 
+echo "🗃️  Applying Influencer Directory Schema (search_influencers v2 with match_quality)..."
+docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/05-influencers.sql
+
 echo "✅ All agents and services successfully rebuilt and refreshed!"

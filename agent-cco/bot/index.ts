@@ -302,6 +302,42 @@ async function handleIncoming(
     { role: "user", content: text },
   ];
 
+  // If the incoming envelope carries a sync_session metadata payload, preload the
+  // exact posts for this session and inject them into the LLM context. This makes
+  // the analysis deterministic and independent of later DB changes.
+  const sessionMeta = envelope?.metadata?.sync_post_ids ? envelope.metadata : null;
+  if (sessionMeta) {
+    const sessionIds = Array.isArray(sessionMeta.sync_post_ids) ? sessionMeta.sync_post_ids : [];
+    const searchClient = toolToClient.get("search_influencer_posts");
+    if (searchClient && sessionIds.length > 0) {
+      try {
+        const sessionResult = await searchClient.callTool("search_influencer_posts", {
+          action: "READ_IDS",
+          ids: sessionIds,
+        });
+        const sessionText = (sessionResult.content || [])
+          .map((c: any) => (c.type === "text" ? c.text : JSON.stringify(c)))
+          .join("\n");
+        messages.push({
+          role: "system",
+          content: `SYNC_SESSION_PAYLOAD:\n` +
+            `- sync_session_id: ${sessionMeta.sync_session_id}\n` +
+            `- sync_author: ${sessionMeta.sync_author}\n` +
+            `- sync_post_count: ${sessionMeta.sync_post_count}\n\n` +
+            `Below are the exact posts from this sync session. Analyze ONLY these posts and write the summary to 'boss'. Do NOT use SEMANTIC/EXACT searches for this task.\n\n` +
+            sessionText
+        });
+        console.log(`🔒 [${AGENT_ID}] Sync-Session posts preloaded (${sessionIds.length} IDs).`);
+      } catch (err: any) {
+        console.error(`❌ Failed to preload sync session posts: ${err.message}`);
+        messages.push({
+          role: "system",
+          content: `SYNC_SESSION_PAYLOAD_ERROR: Failed to preload exact session posts (${err.message}). If you continue, you must explicitly report this tool failure and stop.`
+        });
+      }
+    }
+  }
+
   let hasWarnedFallback = false;
   const onFallback = (err: Error) => {
     console.error(`❌ Gemini failed: ${err.message}. Falling back to LM Studio.`);

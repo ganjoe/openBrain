@@ -36,6 +36,10 @@ async function getXUserId(username: string): Promise<{id: string, name: string}>
 
 async function runBackgroundSync(cleanName: string, username: string, limit: number, start_time?: string, signal?: AbortSignal) {
   console.log(`[X Sync] Background job started for ${cleanName}`);
+  // Generate a unique session id for this sync run so the CCO can analyze
+  // exactly the posts saved in this run, not whatever the DB happens to contain.
+  const sessionId = `sync_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const savedPostIds: string[] = [];
   try {
     await sendTelemetry(`[System] Hintergrund-Sync für ${cleanName} startet...`);
     const { id: userId } = await getXUserId(username);
@@ -188,13 +192,20 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
       });
 
       // Bulk Upsert to Supabase
-      const { error: upsertError } = await supabase
+      const { data: upsertedRows, error: upsertError } = await supabase
         .from("agent_workspace")
-        .upsert(batchToInsert, { onConflict: "x_external_id" });
+        .upsert(batchToInsert, { onConflict: "x_external_id" })
+        .select("id, metadata");
 
       if (upsertError) {
         console.error("Upsert error details:", upsertError);
         throw new Error(`Supabase Upsert failed: [${upsertError.code}] ${upsertError.message}`);
+      }
+
+      if (upsertedRows) {
+        for (const row of upsertedRows) {
+          if (row?.id) savedPostIds.push(row.id);
+        }
       }
 
       totalSaved += batchToInsert.length;
@@ -209,8 +220,8 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
 
     await sendTelemetry(`[System] Sync ${cleanName} abgeschlossen: ${totalSaved} neu/aktualisiert gespeichert.`);
     
-    // Trigger CCO to generate the promised summary
-    if (totalSaved > 0) {
+    // Trigger CCO to generate the promised summary using the exact post IDs from this sync session.
+    if (savedPostIds.length > 0) {
       try {
         await fetch("http://nexus-service:7734/api/send", {
           method: "POST",
@@ -218,8 +229,14 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
           body: JSON.stringify({
             from_agent: "system",
             to: "cco",
-            text: `Der Hintergrund-Sync für ${cleanName} ist soeben mit ${totalSaved} verarbeiteten Posts abgeschlossen worden. Bitte erstelle jetzt die versprochene Zusammenfassung für den Boss. Nutze deine Such-Tools (WICHTIG: Setze den Parameter 'limit' strikt auf ${totalSaved} und suche AUSSCHLIESSLICH nach ${cleanName}, nach keinen anderen Accounts!) um diese neuesten Posts abzurufen, analysiere sie und schreibe die Zusammenfassung an 'boss'.`,
-            msg_type: "chat"
+            text: `Der Hintergrund-Sync für ${cleanName} ist abgeschlossen. Analysiere ausschließlich die Posts dieser Sync-Session und schreibe die Zusammenfassung an 'boss'.`,
+            msg_type: "chat",
+            metadata: {
+              sync_session_id: sessionId,
+              sync_author: cleanName,
+              sync_post_ids: Array.from(new Set(savedPostIds)),
+              sync_post_count: savedPostIds.length
+            }
           }),
         });
       } catch (e) {

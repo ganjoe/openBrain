@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import time
+from typing import Optional
 
 import httpx
 import glob
@@ -131,6 +132,7 @@ class SendRequest(BaseModel):
     to: str                  # e.g. "ea"
     text: str
     msg_type: str = "chat"
+    metadata: Optional[dict] = None  # Optional session/ids payload (e.g. post_ids for sync-triggers)
 
 
 @router.post("/api/send")
@@ -154,6 +156,8 @@ async def send_message(req: SendRequest):
         },
         "content": {"text": req.text},
     }
+    if req.metadata:
+        envelope["metadata"] = req.metadata
 
     result = mqtt_client.publish(
         topic=f"agents/{req.to}/inbox",
