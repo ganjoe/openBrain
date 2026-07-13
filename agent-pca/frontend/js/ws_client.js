@@ -60,7 +60,7 @@ class PcaWsClient {
 
       case 'load_watchlist':
         if (this._onWatchlist && msg.list_name) {
-          this._onWatchlist(msg.list_name);
+          this._onWatchlist(msg.list_name, msg.annotations_source || null);
         }
         break;
 

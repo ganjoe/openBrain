@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { AGENT_ID, MCP_ACCESS_KEY } from "./tools/shared.ts";
 import { registerNexusTools } from "./tools/nexus.ts";
 import { registerPcaTools } from "./tools/pca.ts";
+import { registerScannerTools } from "./tools/scanner.ts";
 
 // --- MCP Server Setup ---
 const server = new McpServer({
@@ -14,6 +15,7 @@ const server = new McpServer({
 // Register tool modules
 registerNexusTools(server);
 registerPcaTools(server);
+registerScannerTools(server);
 
 // --- Hono App with auth middleware ---
 const app = new Hono();

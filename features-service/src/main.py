@@ -30,9 +30,14 @@ from config_parser import FeatureConfigParser, ProcessingContext, FeatureType
 from parquet_io import ParquetStorage
 from processor import FeatureProcessor
 from job_manager import JobManager
-from schemas import MARequest, RSRequest, MinerviniRequest, ClusterRequest
+from schemas import MARequest, RSRequest, MinerviniRequest, ClusterRequest, ScannerRequest
 from cluster import calculate_correlation_clusters
 from logging_setup import configure_logging
+
+# Scanner Imports
+from scanners.manager import ScannerManager
+from scanners.madbo_breakout import MadboBreakoutScanner
+
 
 
 # ─── Config ──────────────────────────────────────────────────────
@@ -485,6 +490,51 @@ def create_app() -> FastAPI:
         }
 
         return summary
+
+    @app.post("/scanners/run")
+    async def run_scanner_endpoint(req: ScannerRequest):
+        """
+        Runs the specified stock scanner over all available Parquet data.
+        Saves results to Supabase DB and notifies the PCA client.
+        """
+        watchlist_name = req.watchlist_name
+        if not watchlist_name:
+            if req.scanner_type == "madbo_breakout":
+                watchlist_name = f"scanner_madbo_{req.lookback_days}_breakout"
+            else:
+                watchlist_name = f"scanner_{req.scanner_type}"
+
+        if req.scanner_type == "madbo_breakout":
+            scanner = MadboBreakoutScanner(
+                lookback_days=req.lookback_days,
+                max_wick_pct=req.max_wick_pct,
+                daily_range_ratio=req.daily_range_ratio,
+                history_lookback_days=req.history_lookback_days,
+                start_date=req.start_date,
+                end_date=req.end_date
+            )
+        else:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": f"Unknown scanner type: '{req.scanner_type}'"}
+            )
+
+        try:
+            manager = ScannerManager(storage)
+            result = manager.run_scan(
+                scanner=scanner,
+                watchlist_name=watchlist_name,
+                max_workers=16,
+                stream_telemetry=req.stream_telemetry,
+                list_all_tickers=req.list_all_tickers
+            )
+            return result
+        except Exception as e:
+            logger.exception("Failed to run scanner")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"error": f"Scanner execution failed: {e}"}
+            )
 
     @app.get("/status")
     async def get_status() -> dict:

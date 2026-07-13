@@ -227,7 +227,12 @@ async def send_command(body: CommandRequest):
         logger.info("Layout '%s' updated: watchlist → '%s'", layout_name, list_name)
 
         # 4. Broadcast to all connected browser tabs
-        await manager.broadcast({"action": "load_watchlist", "list_name": list_name})
+        ann_source = list_name if list_name.startswith("scanner_") else None
+        await manager.broadcast({
+            "action": "load_watchlist",
+            "list_name": list_name,
+            "annotations_source": ann_source,
+        })
         return {
             "status": "broadcasted",
             "action": "load_watchlist",

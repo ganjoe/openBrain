@@ -53,3 +53,17 @@ class ClusterRequest(BaseModel):
         if v < 2 or v > 50:
             raise ValueError(f"num_clusters must be between 2 and 50, got {v}")
         return v
+
+class ScannerRequest(BaseModel):
+    """Request body for running stock scanners."""
+    scanner_type: str = "madbo_breakout"
+    lookback_days: int = 150
+    max_wick_pct: float = 0.05
+    daily_range_ratio: float = 2.0
+    history_lookback_days: int = 1
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    watchlist_name: Optional[str] = None
+    stream_telemetry: bool = True
+    list_all_tickers: bool = False
+

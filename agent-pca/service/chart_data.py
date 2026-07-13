@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 from views.default import get_chart_data_default
 from views.trading_journal_daily import get_chart_data_daily
 from views.trading_journal_events import get_chart_data_events
+from views.annotations import load_annotations
 
 logger = logging.getLogger("pca.chart_data")
 router = APIRouter()
@@ -25,10 +26,12 @@ async def get_chart_data(
     limit: int = Query(default=500, ge=1, le=5000, description="Number of bars to return (newest N)"),
     features: bool = Query(default=True, description="Include pre-computed feature columns if available"),
     layout: Optional[str] = Query(default=None, description="The layout name requesting the data (for view-specific logic)"),
+    annotations_source: Optional[str] = Query(default=None, description="Source name (e.g. scanner watchlist name) to load annotations from"),
 ):
     """
     Returns OHLCV bars for the requested ticker/timeframe.
     Optionally merges feature columns from the _features.parquet file.
+    Optionally loads annotations from pca_annotations if annotations_source is specified.
     Routes to view-specific controllers if special logic is needed based on layout.
     """
     symbol = symbol.upper()
@@ -36,12 +39,18 @@ async def get_chart_data(
     # 1. Check if we need a specialized view controller based on layout and symbol
     if symbol.startswith("$STATS."):
         if layout == "trading_journal_events":
-            return get_chart_data_events(symbol, timeframe, limit)
+            result = get_chart_data_events(symbol, timeframe, limit)
         elif layout == "trading_journal_daily":
-            # Now that we have Parquet caching, we can load it just like a default ticker!
-            return get_chart_data_default(symbol, timeframe, limit, features)
+            result = get_chart_data_default(symbol, timeframe, limit, features)
         else:
-            return get_chart_data_default(symbol, timeframe, limit, features)
+            result = get_chart_data_default(symbol, timeframe, limit, features)
+    else:
+        # 2. Default behavior for normal tickers (AAPL, TSLA, etc.)
+        result = get_chart_data_default(symbol, timeframe, limit, features)
 
-    # 2. Default behavior for normal tickers (AAPL, TSLA, etc.)
-    return get_chart_data_default(symbol, timeframe, limit, features)
+    # 3. Load annotations if requested
+    if annotations_source and result.get("status") == "ok":
+        annotations = await load_annotations(symbol, annotations_source)
+        result["annotations"] = annotations
+
+    return result

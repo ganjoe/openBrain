@@ -63,6 +63,9 @@ class ChartRenderer {
     this._minP      = 0;
     this._maxP      = 1;
 
+    // ── Annotations (arrow markers etc.) ─────────────────────
+    this._annotations = [];  // [{timestamp, type, color, label, source}]
+
     this._setupHiDPI();
     this._bindEvents();
     canvas.style.cursor = 'crosshair';
@@ -264,6 +267,7 @@ class ChartRenderer {
     }
 
     this._drawIndicators(ctx, area, toY, barW);
+    this._drawAnnotations(ctx, area, barW, toY);
 
     if (this.type === 'line') {
       ctx.beginPath();
@@ -401,6 +405,120 @@ class ChartRenderer {
       }
       ctx.stroke();
     }
+  }
+
+  // ════════════════════════════════════════════════════════
+  // Annotations (Arrow Markers)
+  // ════════════════════════════════════════════════════════
+
+  /**
+   * Set annotations from external source (e.g. scanner results).
+   * @param {Array} annotations - [{timestamp, type, color, label, source}]
+   */
+  setAnnotations(annotations) {
+    this._annotations = annotations || [];
+    this.draw();
+  }
+
+  /**
+   * Draw annotations (arrow markers, dots, flags) on matching candles.
+   */
+  _drawAnnotations(ctx, area, barW, toY) {
+    if (!this._annotations || this._annotations.length === 0) return;
+    const tsI = this._col('timestamp');
+    const hI  = this._col('high');
+    const lI  = this._col('low');
+    if (tsI < 0) return;
+
+    // Build a Map of annotation timestamp → [annotations] for O(1) lookup
+    const annoByTs = new Map();
+    for (const ann of this._annotations) {
+      const key = ann.timestamp;
+      if (!annoByTs.has(key)) annoByTs.set(key, []);
+      annoByTs.get(key).push(ann);
+    }
+
+    const vb = Math.round(this.viewBars);
+
+    for (let vi = 0; vi < vb; vi++) {
+      const di = this.viewStart + vi;
+      if (di < 0 || di >= this.rows.length) continue;
+      const row = this.rows[di];
+      if (!row) continue;
+
+      const ts = this._val(row, tsI);
+      // Normalize: Parquet timestamps can be in ms or s
+      const tsSec = ts > 1e11 ? Math.floor(ts / 1000) : ts;
+
+      const anns = annoByTs.get(tsSec);
+      if (!anns) continue;
+
+      const bx  = area.x + vi * barW;
+      const mid = bx + barW / 2;
+
+      for (const ann of anns) {
+        if (ann.type === 'arrow_up') {
+          const low = this._val(row, lI) ?? 0;
+          const y   = toY(low);
+          this._drawArrowUp(ctx, mid, y, ann.color || '#22c55e', barW);
+        } else if (ann.type === 'arrow_down') {
+          const high = this._val(row, hI) ?? 0;
+          const y    = toY(high);
+          this._drawArrowDown(ctx, mid, y, ann.color || '#ef4444', barW);
+        } else if (ann.type === 'dot') {
+          const close = this._val(row, this._col('close')) ?? 0;
+          const y = toY(close);
+          this._drawDot(ctx, mid, y, ann.color || '#f59e0b', barW);
+        }
+      }
+    }
+  }
+
+  /**
+   * Draw an upward-pointing arrow (triangle) below a candle.
+   */
+  _drawArrowUp(ctx, x, y, color, barW) {
+    const size = Math.min(16, Math.max(6, barW * 0.6));
+    const tipY   = y + 4;           // Small gap below the candle low
+    const baseY  = tipY + size;
+    const halfW  = size * 0.45;
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, tipY);            // Tip pointing up
+    ctx.lineTo(x - halfW, baseY);   // Bottom-left
+    ctx.lineTo(x + halfW, baseY);   // Bottom-right
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /**
+   * Draw a downward-pointing arrow (triangle) above a candle.
+   */
+  _drawArrowDown(ctx, x, y, color, barW) {
+    const size = Math.min(16, Math.max(6, barW * 0.6));
+    const tipY   = y - 4;           // Small gap above the candle high
+    const baseY  = tipY - size;
+    const halfW  = size * 0.45;
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, tipY);            // Tip pointing down
+    ctx.lineTo(x - halfW, baseY);   // Top-left
+    ctx.lineTo(x + halfW, baseY);   // Top-right
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /**
+   * Draw a small dot at a specific price level.
+   */
+  _drawDot(ctx, x, y, color, barW) {
+    const radius = Math.min(6, Math.max(3, barW * 0.25));
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   // ════════════════════════════════════════════════════════

@@ -303,6 +303,7 @@
     let currentSymbol = null;
     let hasInitializedSymbol = false;
     let cachedWatchlistTickers = [];
+    let currentAnnotationsSource = null;  // Set when a scanner_ watchlist is active
 
     // ─── Layout config fetch ─────────────────────────────────
     async function fetchLayoutConfig() {
@@ -347,7 +348,8 @@
 
       try {
         const layoutParam = LAYOUT ? `&layout=${LAYOUT}` : '';
-        const chartPromise = fetch(`${PCA_API}/api/chartdata?symbol=${currentSymbol}&timeframe=${tf}&limit=${limit}${layoutParam}&_t=${Date.now()}`).then(r => r.json());
+        const annParam = currentAnnotationsSource ? `&annotations_source=${currentAnnotationsSource}` : '';
+        const chartPromise = fetch(`${PCA_API}/api/chartdata?symbol=${currentSymbol}&timeframe=${tf}&limit=${limit}${layoutParam}${annParam}&_t=${Date.now()}`).then(r => r.json());
         const indicatorPromises = [];
         const apiInds = (viewConfig && viewConfig.indicators) ? viewConfig.indicators.filter(i => i.source === 'api') : [];
         
@@ -423,6 +425,12 @@
         if (!renderer) initRenderer();
         renderer.loadData(data);
         updateStatsBar(data);
+        // Load annotations into the renderer if present
+        if (data.annotations && data.annotations.length > 0) {
+          renderer.setAnnotations(data.annotations);
+        } else {
+          renderer.setAnnotations([]);
+        }
       } catch (e) {
         console.error('Data load failed:', e);
       }
@@ -593,10 +601,17 @@
       wsClient = new PcaWsClient(
         (symbol) => loadTicker(symbol),                             // on ticker change
         (idx, price) => renderer?.setCrosshairFromRemote(idx, price), // on crosshair sync
-        (list_name) => {                                            // on watchlist change
+        (list_name, annotations_source) => {                         // on watchlist change
           if (layoutConfig) layoutConfig.watchlist = list_name;
+          currentAnnotationsSource = annotations_source || null;
           if (VIEW_TYPE === 'watchlist_table') {
             loadWatchlistTable(viewConfig);
+          }
+          // Force chart reload to pick up new annotations
+          if (currentSymbol && VIEW_TYPE !== 'watchlist_table' && VIEW_TYPE !== 'stats_panel') {
+            const s = currentSymbol;
+            currentSymbol = null;
+            loadTicker(s);
           }
         }
       );
