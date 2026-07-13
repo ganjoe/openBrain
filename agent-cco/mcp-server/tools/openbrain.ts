@@ -179,11 +179,26 @@ export function registerOpenBrainTools(server: McpServer) {
             return { content: [{ type: "text", text: formatSearchResults(data, return_mode) }] };
         } else if (action === "READ_IDS") {
             if (!ids || ids.length === 0) return { content: [{ type: "text", text: "No IDs provided." }] };
-            const { data, error } = await supabase.from("agent_workspace").select("*").in("id", ids);
-            if (error) throw error;
+            
+            // Chunk IDs into batches of 50 to avoid "414 Request-URI Too Large" / "502 Bad Gateway"
+            const CHUNK_SIZE = 50;
+            const chunks: string[][] = [];
+            for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+              chunks.push(ids.slice(i, i + CHUNK_SIZE));
+            }
+
+            const results = await Promise.all(
+              chunks.map(async (chunk) => {
+                const { data, error } = await supabase.from("agent_workspace").select("*").in("id", chunk);
+                if (error) throw error;
+                return data || [];
+              })
+            );
+
+            const data = results.flat();
             if (!data || data.length === 0) return { content: [{ type: "text", text: "No posts found for IDs." }] };
-            const results = data.map((t: any, i: number) => `[${i + 1}] ID: ${t.id} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`);
-            return { content: [{ type: "text", text: results.join("\n\n") }] };
+            const resultsText = data.map((t: any, i: number) => `[${i + 1}] ID: ${t.id} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`);
+            return { content: [{ type: "text", text: resultsText.join("\n\n") }] };
         } else if (action === "FIRST_MENTIONS_AND_DISCOVERY") {
             const targetAuthors = authors && authors.length > 0 ? authors.map((a: string) => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`) : null;
             const targetKeywords = keywords && keywords.length > 0 ? keywords : null;

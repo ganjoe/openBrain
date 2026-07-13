@@ -34,7 +34,7 @@ async function getXUserId(username: string): Promise<{id: string, name: string}>
   return { id: userId, name: screenName };
 }
 
-async function runBackgroundSync(cleanName: string, username: string, limit: number, start_time?: string, signal?: AbortSignal) {
+async function runBackgroundSync(cleanName: string, username: string, limit?: number, start_time?: string, signal?: AbortSignal) {
   console.log(`[X Sync] Background job started for ${cleanName}`);
   // Generate a unique session id for this sync run so the CCO can analyze
   // exactly the posts saved in this run, not whatever the DB happens to contain.
@@ -44,9 +44,10 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
     await sendTelemetry(`[System] Hintergrund-Sync für ${cleanName} startet...`);
     const { id: userId } = await getXUserId(username);
 
-    // 1. Determine since_id or until_id based on DB state
+    // 1. Determine since_id, until_id, oldestDateStr, and existing count based on DB state
     let sinceId = "";
     let untilId = "";
+    let oldestDateStr = "";
     
     // Find newest post for since_id
     const { data: latestRecord } = await supabase
@@ -55,167 +56,202 @@ async function runBackgroundSync(cleanName: string, username: string, limit: num
       .eq("agent_id", AGENT_ID)
       .eq("artifact_type", "x_post")
       .contains("metadata", { author: cleanName })
-      .order("x_external_id", { ascending: false }) // Order by Snowflake ID
+      .order("x_external_id", { ascending: false }) // Order by Snowflake ID (desc = newest first)
       .limit(1);
 
     if (latestRecord && latestRecord.length > 0) {
       sinceId = (latestRecord[0].metadata as any).external_id;
     }
 
-    if (start_time) {
-       // Check if we need to backfill (get tweets older than our oldest post, but after start_time)
-       const { data: oldestRecord } = await supabase
-        .from("agent_workspace")
-        .select("metadata")
-        .eq("agent_id", AGENT_ID)
-        .eq("artifact_type", "x_post")
-        .contains("metadata", { author: cleanName })
-        .order("x_external_id", { ascending: true }) // Order by Snowflake ID (asc = oldest first)
-        .limit(1);
-        
-       if (oldestRecord && oldestRecord.length > 0) {
-          const oldestDateStr = (oldestRecord[0].metadata as any).published_at;
-          if (!oldestDateStr || new Date(start_time) < new Date(oldestDateStr)) {
-            untilId = (oldestRecord[0].metadata as any).external_id;
-          } else {
-            // start_time is newer than our oldest record. Ignore it to prevent an impossible time window
-            // and allow the script to naturally fall back to sinceId for a forward-sync.
-            start_time = undefined;
-          }
-       }
+    // Find oldest post for until_id
+    const { data: oldestRecord } = await supabase
+      .from("agent_workspace")
+      .select("metadata")
+      .eq("agent_id", AGENT_ID)
+      .eq("artifact_type", "x_post")
+      .contains("metadata", { author: cleanName })
+      .order("x_external_id", { ascending: true }) // Order by Snowflake ID (asc = oldest first)
+      .limit(1);
+
+    if (oldestRecord && oldestRecord.length > 0) {
+      untilId = (oldestRecord[0].metadata as any).external_id;
+      oldestDateStr = (oldestRecord[0].metadata as any).published_at;
     }
 
-    // 2. Fetch from X API with pagination
-    let nextToken = "";
-    let totalSaved = 0;
-    let totalFetched = 0;
-    const targetLimit = Math.min(Math.max(1, limit), 3200);
+    // Count existing posts in DB
+    const { count: postsCount } = await supabase
+      .from("agent_workspace")
+      .select("*", { count: "exact", head: true })
+      .eq("agent_id", AGENT_ID)
+      .eq("artifact_type", "x_post")
+      .contains("metadata", { author: cleanName });
+
+    const dbCount = postsCount || 0;
+
+    // Set target limit
+    const targetLimit = limit !== undefined ? Math.min(Math.max(1, limit), 3200) : 3200;
+    const hasExplicitLimit = limit !== undefined;
     
-    // If we have a sinceId, we ignore the limit to close the gap
-    const isUpdateSync = !!sinceId;
-    const isTimeWindow = !!start_time;
+    let totalSaved = 0;
 
-    while (true) {
-      const batchSize = Math.min(100, (isUpdateSync || isTimeWindow) ? 100 : (targetLimit - totalFetched));
-      if (batchSize <= 0 && !isUpdateSync && !isTimeWindow) break;
+    // Helper function to sync a range of tweets
+    async function syncTweets(params: { sinceId?: string, untilId?: string, startTime?: string, targetLimit?: number }) {
+      let nextToken = "";
+      let totalFetched = 0;
 
-      let url = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${batchSize}&tweet.fields=created_at,entities`;
-      
-      if (untilId && start_time) {
-        url += `&until_id=${untilId}&start_time=${start_time}`;
-      } else if (sinceId) {
-        url += `&since_id=${sinceId}`;
-      } else if (untilId) {
-        url += `&until_id=${untilId}`;
-      } else if (start_time) {
-        url += `&start_time=${start_time}`;
-      }
+      while (true) {
+        let batchSize = 100;
+        if (params.targetLimit !== undefined) {
+          const remaining = params.targetLimit - totalFetched;
+          if (remaining <= 0) break;
+          batchSize = Math.min(100, remaining);
+        }
 
-      if (nextToken) url += `&pagination_token=${nextToken}`;
-
-      await sendTelemetry(`[X API] Request: ${url.replace(X_BEARER_TOKEN, "***")}`);
-      const res = await fetch(url, { headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` } });
-      
-      if (!res.ok) {
-         if (res.status === 429) {
-             const resetEpoch = Number(res.headers.get("x-rate-limit-reset"));
-             const sleepMs = Math.max(1000, (resetEpoch * 1000) - Date.now() + 1000);
-             await sendTelemetry(`[X API] Rate Limit (429). Pausiere für ${Math.round(sleepMs/1000)}s...`);
-             await new Promise(r => setTimeout(r, sleepMs));
-             continue; // Retry same request
-         }
-         const errText = await res.text();
-         console.error(`[X API] Error ${res.status}: ${errText}`);
-         throw new Error(`X API fetch failed (${res.status}): ${errText}`);
-      }
-      
-      const data = await res.json();
-      if (!data.data || data.data.length === 0) break;
-
-      totalFetched += data.data.length;
-      
-      // 3. Bulk Processing
-      const batchToInsert: any[] = [];
-      const textsForEmbedding: string[] = [];
-      
-      for (const tweet of data.data) {
-        if (signal?.aborted) throw new Error("Sync wurde vom Benutzer abgebrochen.");
-        const content = tweet.text;
-        const rawCashtags = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
+        let url = `https://api.twitter.com/2/users/${userId}/tweets?max_results=${batchSize}&tweet.fields=created_at,entities`;
         
-        const customTickers: string[] = [];
-        // Catch Asian/Numeric tickers in parentheses or with exchange suffix (e.g. 093370 or 093370.KS)
-        const asianMatches = content.match(/(?<=\()\s*\d{4,6}\s*(?=[,)\s])|\b\d{4,6}\.[A-Z]{1,2}\b/g);
-        if (asianMatches) {
-            asianMatches.forEach((m: string) => customTickers.push(m.trim().toUpperCase()));
+        if (params.sinceId) {
+          url += `&since_id=${params.sinceId}`;
+        } else {
+          if (params.untilId) {
+            url += `&until_id=${params.untilId}`;
+          }
+          if (params.startTime) {
+            url += `&start_time=${params.startTime}`;
+          }
+        }
+
+        if (nextToken) url += `&pagination_token=${nextToken}`;
+
+        await sendTelemetry(`[X API] Request: ${url.replace(X_BEARER_TOKEN, "***")}`);
+        const res = await fetch(url, { headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` } });
+        
+        if (!res.ok) {
+           if (res.status === 429) {
+               const resetEpoch = Number(res.headers.get("x-rate-limit-reset"));
+               const sleepMs = Math.max(1000, (resetEpoch * 1000) - Date.now() + 1000);
+               await sendTelemetry(`[X API] Rate Limit (429). Pausiere für ${Math.round(sleepMs/1000)}s...`);
+               await new Promise(r => setTimeout(r, sleepMs));
+               continue; // Retry same request
+           }
+           const errText = await res.text();
+           console.error(`[X API] Error ${res.status}: ${errText}`);
+           throw new Error(`X API fetch failed (${res.status}): ${errText}`);
         }
         
-        // Catch missed standard cashtags ($TICKER)
-        const dollarMatches = content.match(/\$[A-Za-z0-9.]{1,10}\b/g);
-        if (dollarMatches) {
-            dollarMatches.forEach((m: string) => customTickers.push(m.substring(1).toUpperCase()));
-        }
-        
-        const tickers = Array.from(new Set([...rawCashtags, ...customTickers]));
-        
-        const finalMetadata = {
-          author: cleanName,
-          external_id: tweet.id,
-          published_at: tweet.created_at,
-          tickers: Array.from(new Set(tickers)),
-        };
+        const data = await res.json();
+        if (!data.data || data.data.length === 0) break;
 
-        textsForEmbedding.push(content);
-        batchToInsert.push({
-          agent_id: AGENT_ID,
-          artifact_type: "x_post",
-          content: content,
-          metadata: finalMetadata,
-          // embedding will be added after batch call
+        totalFetched += data.data.length;
+        
+        // Processing
+        const batchToInsert: any[] = [];
+        const textsForEmbedding: string[] = [];
+        
+        for (const tweet of data.data) {
+          if (signal?.aborted) throw new Error("Sync wurde vom Benutzer abgebrochen.");
+          const content = tweet.text;
+          const rawCashtags = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
+          
+          const customTickers: string[] = [];
+          // Catch Asian/Numeric tickers in parentheses or with exchange suffix (e.g. 093370 or 093370.KS)
+          const asianMatches = content.match(/(?<=\()\s*\d{4,6}\s*(?=[,)\s])|\b\d{4,6}\.[A-Z]{1,2}\b/g);
+          if (asianMatches) {
+              asianMatches.forEach((m: string) => customTickers.push(m.trim().toUpperCase()));
+          }
+          
+          // Catch missed standard cashtags ($TICKER)
+          const dollarMatches = content.match(/\$[A-Za-z0-9.]{1,10}\b/g);
+          if (dollarMatches) {
+              dollarMatches.forEach((m: string) => customTickers.push(m.substring(1).toUpperCase()));
+          }
+          
+          const tickers = Array.from(new Set([...rawCashtags, ...customTickers]));
+          
+          const finalMetadata = {
+            author: cleanName,
+            external_id: tweet.id,
+            published_at: tweet.created_at,
+            tickers: Array.from(new Set(tickers)),
+          };
+
+          textsForEmbedding.push(content);
+          batchToInsert.push({
+            agent_id: AGENT_ID,
+            artifact_type: "x_post",
+            content: content,
+            metadata: finalMetadata,
+          });
+
+          // Inform user via system channel (human readable)
+          const dateStr = tweet.created_at ? new Date(tweet.created_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
+          const tickersStr = tickers.length > 0 ? tickers.join(', ') : 'Keine';
+
+          await sendTelemetry(
+            `[X-Post] 📅 ${dateStr}\n` +
+            `📝 "${content}"\n` +
+            `🔑 Tickers: ${tickersStr}`
+          );
+        }
+
+        // Embeddings
+        const embeddings = await getEmbeddingsBatch(textsForEmbedding);
+        batchToInsert.forEach((item, idx) => {
+          item.embedding = embeddings[idx];
         });
 
-        // Inform user via system channel (human readable)
-        const dateStr = tweet.created_at ? new Date(tweet.created_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
-        const tickersStr = tickers.length > 0 ? tickers.join(', ') : 'Keine';
+        // Bulk Upsert to Supabase
+        const { data: upsertedRows, error: upsertError } = await supabase
+          .from("agent_workspace")
+          .upsert(batchToInsert, { onConflict: "x_external_id" })
+          .select("id, metadata");
 
-        await sendTelemetry(
-          `[X-Post] 📅 ${dateStr}\n` +
-          `📝 "${content}"\n` +
-          `🔑 Tickers: ${tickersStr}`
-        );
-      }
-
-      // Batch Embeddings
-      const embeddings = await getEmbeddingsBatch(textsForEmbedding);
-      batchToInsert.forEach((item, idx) => {
-        item.embedding = embeddings[idx];
-      });
-
-      // Bulk Upsert to Supabase
-      const { data: upsertedRows, error: upsertError } = await supabase
-        .from("agent_workspace")
-        .upsert(batchToInsert, { onConflict: "x_external_id" })
-        .select("id, metadata");
-
-      if (upsertError) {
-        console.error("Upsert error details:", upsertError);
-        throw new Error(`Supabase Upsert failed: [${upsertError.code}] ${upsertError.message}`);
-      }
-
-      if (upsertedRows) {
-        for (const row of upsertedRows) {
-          if (row?.id) savedPostIds.push(row.id);
+        if (upsertError) {
+          console.error("Upsert error details:", upsertError);
+          throw new Error(`Supabase Upsert failed: [${upsertError.code}] ${upsertError.message}`);
         }
-      }
 
-      totalSaved += batchToInsert.length;
-      await sendTelemetry(`[System] Sync ${cleanName}: ${totalSaved} Posts verarbeitet (Batch: ${batchToInsert.length})...`);
-      
-      nextToken = data.meta?.next_token;
-      if (!nextToken) break;
-      
-      // If we are just filling up to a limit and not closing a gap
-      if (!isUpdateSync && !isTimeWindow && totalFetched >= targetLimit) break;
+        if (upsertedRows) {
+          for (const row of upsertedRows) {
+            if (row?.id) savedPostIds.push(row.id);
+          }
+        }
+
+        totalSaved += batchToInsert.length;
+        await sendTelemetry(`[System] Sync ${cleanName}: ${totalSaved} Posts verarbeitet (Batch: ${batchToInsert.length})...`);
+        
+        nextToken = data.meta?.next_token;
+        if (!nextToken) break;
+        
+        // Cap the page fetching if we have a target limit
+        if (params.targetLimit !== undefined && totalFetched >= params.targetLimit) break;
+      }
+    }
+
+    // --- Phase 1: Forward Sync ---
+    if (sinceId) {
+      await sendTelemetry(`[System] Phase 1 startet: Vorwärts-Sync ab ${sinceId}...`);
+      await syncTweets({ sinceId });
+    }
+
+    // --- Phase 2: Backward Sync ---
+    const isTimeWindow = !!start_time;
+    const currentDbCount = dbCount + totalSaved;
+
+    if (isTimeWindow) {
+      // Determine if we need to backfill the bottom
+      const needBackfill = !oldestDateStr || new Date(start_time) < new Date(oldestDateStr);
+      if (needBackfill) {
+        await sendTelemetry(`[System] Phase 2 startet: Rückwärts-Sync von ${untilId || "now"} bis ${start_time}...`);
+        await syncTweets({ untilId, startTime: start_time });
+      }
+    } else {
+      // Limit backfill (if explicit limit set, or if fresh import)
+      const needLimitBackfill = hasExplicitLimit || !sinceId;
+      if (needLimitBackfill && currentDbCount < targetLimit) {
+        const remainingLimit = targetLimit - currentDbCount;
+        await sendTelemetry(`[System] Phase 2 startet: Rückwärts-Sync von ${untilId || "now"} für weitere ${remainingLimit} Posts...`);
+        await syncTweets({ untilId, targetLimit: remainingLimit });
+      }
     }
 
     await sendTelemetry(`[System] Sync ${cleanName} abgeschlossen: ${totalSaved} neu/aktualisiert gespeichert.`);
@@ -479,7 +515,7 @@ export function registerXTools(server: McpServer) {
       inputSchema: {
         action: z.enum(["START", "CANCEL"]).describe("The action to perform"),
         username: z.string().describe("The X username (e.g. @elonmusk) or 'all'"),
-        limit: z.number().optional().default(100).describe("Max tweets to fetch (for START)"),
+        limit: z.number().optional().describe("Max tweets to fetch (for START)"),
         start_time: z.string().optional().describe("ISO 8601 date string for historical backfill (for START)"),
       },
     },
@@ -549,9 +585,8 @@ export function registerXTools(server: McpServer) {
           }
 
           const hasExistingPosts = !!(latestRecord && latestRecord.length > 0);
-          const normalizedLimit = typeof limit === "number" ? limit : 100;
 
-          if (!hasExistingPosts && !start_time && normalizedLimit === 100) {
+          if (!hasExistingPosts && !start_time && limit === undefined) {
              return {
                content: [{
                  type: "text",
