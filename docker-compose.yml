@@ -301,6 +301,7 @@ services:
     volumes:
       - ./agent-cco/metadata-prompt.txt:/app/metadata-prompt.txt:ro
       - ./agent-cco/yt-segmentation-prompt.txt:/app/yt-segmentation-prompt.txt:ro
+      - ./agent-cco/cookies.txt:/app/cookies.txt
       - ./agent-cco/mcp-server/stdio.ts:/app/stdio.ts:ro
       - yt-media:/data/yt
     environment:

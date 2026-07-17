@@ -2,6 +2,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { supabase, getEmbeddingsBatch, sendTelemetry, LM_STUDIO_URL, AGENT_ID } from "./shared.ts";
 
+// --- Constants ---
+const YT_COOKIES_PATH = "/app/cookies.txt";
+
 // --- In-Memory Sync Lock (like activeSyncControllers in x.ts) ---
 export const activeYtSyncControllers = new Map<string, AbortController>();
 
@@ -21,7 +24,8 @@ interface YtSegmentationResult {
 
 /**
  * Resolves a YouTube channel handle or URL to channel_id + title.
- * Uses yt-dlp --playlist-items 0 to get channel metadata without downloading videos.
+ * Uses yt-dlp on the channel's /videos page to grab metadata from the first video.
+ * This is faster than --flat-playlist which tries to enumerate all videos.
  */
 async function resolveYtChannel(input: string): Promise<{ channelId: string; handle: string; title: string }> {
   // Normalize input: accept @handle, URL, or plain name
@@ -30,14 +34,19 @@ async function resolveYtChannel(input: string): Promise<{ channelId: string; han
     target = `@${target}`;
   }
   if (target.startsWith("@")) {
-    target = `https://www.youtube.com/${target}`;
+    target = `https://www.youtube.com/${target}/videos`;
+  }
+  // Ensure we're hitting the /videos tab (avoids shorts/streams)
+  if (target.includes("youtube.com/") && !target.includes("/videos")) {
+    target = target.replace(/\/?$/, "/videos");
   }
 
   const cmd = new Deno.Command("yt-dlp", {
     args: [
+      "--cookies", YT_COOKIES_PATH,
       "--dump-json",
       "--playlist-items", "1",
-      "--flat-playlist",
+      "--skip-download",
       target,
     ],
     stdout: "piped",
@@ -50,18 +59,20 @@ async function resolveYtChannel(input: string): Promise<{ channelId: string; han
     throw new Error(`yt-dlp channel resolve failed: ${errText.substring(0, 200)}`);
   }
 
-  const jsonStr = new TextDecoder().decode(output.stdout);
+  const jsonStr = new TextDecoder().decode(output.stdout).trim().split("\n")[0]; // Take first line only
   const data = JSON.parse(jsonStr);
 
   const channelId = data.channel_id || data.uploader_id || "";
-  const handle = data.channel?.startsWith("@") ? data.channel : `@${data.channel || data.uploader || input}`;
+  const handle = data.channel_url?.match(/@[\w.-]+/)?.[0]?.toLowerCase()
+    || (data.uploader_id?.startsWith("@") ? data.uploader_id.toLowerCase() : "")
+    || `@${(data.channel || data.uploader || input).toLowerCase().replace(/^@/, "")}`;
   const title = data.channel || data.uploader || "";
 
   if (!channelId) {
     throw new Error(`Could not resolve channel ID for: ${input}`);
   }
 
-  return { channelId, handle: handle.toLowerCase(), title };
+  return { channelId, handle, title };
 }
 
 /**
@@ -74,12 +85,16 @@ async function getChannelVideos(channelUrl: string, limit: number): Promise<Arra
   duration: number;
   publishedAt: string;
 }>> {
+  // Ensure we're hitting the /videos tab
+  const target = channelUrl.includes("/videos") ? channelUrl : channelUrl.replace(/\/?$/, "/videos");
+
   const cmd = new Deno.Command("yt-dlp", {
     args: [
+      "--cookies", YT_COOKIES_PATH,
       "--dump-json",
-      "--flat-playlist",
+      "--skip-download",
       "--playlist-end", String(limit),
-      channelUrl,
+      target,
     ],
     stdout: "piped",
     stderr: "piped",
@@ -130,6 +145,7 @@ async function downloadVtt(videoId: string): Promise<string | null> {
 
   const cmd = new Deno.Command("yt-dlp", {
     args: [
+      "--cookies", YT_COOKIES_PATH,
       "--write-auto-sub",
       "--sub-lang", "en,de",
       "--skip-download",
@@ -367,11 +383,12 @@ async function processVideo(
   }
 
   // 8. Update yt_videos status
-  await supabase.from("yt_videos").update({
+  const { error: statusError } = await supabase.from("yt_videos").update({
     status: "embedded",
     chunk_count: segmentation.blocks.length,
     error_msg: null,
   }).eq("video_id", videoId);
+  if (statusError) console.error(`[YT] yt_videos status update failed:`, statusError);
 
   await sendTelemetry(`[YT] ✅ "${videoTitle}" — ${segmentation.blocks.length} Blöcke gespeichert.`);
 
@@ -383,11 +400,12 @@ async function processVideo(
  * Mirrors runBackgroundSync() in x.ts.
  */
 export async function runYtSync(
-  channel: string,
+  channelInput: string,
   limit: number,
   videoUrl: string | undefined,
   signal?: AbortSignal,
 ) {
+  let channel = channelInput; // may be overwritten in single-video mode
   const sessionId = `yt_sync_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const allSavedChunkIds: string[] = [];
 
@@ -404,7 +422,7 @@ export async function runYtSync(
 
       // Get video metadata via yt-dlp
       const cmd = new Deno.Command("yt-dlp", {
-        args: ["--dump-json", "--skip-download", videoUrl],
+        args: ["--cookies", YT_COOKIES_PATH, "--dump-json", "--skip-download", videoUrl],
         stdout: "piped",
         stderr: "piped",
       });
@@ -422,7 +440,10 @@ export async function runYtSync(
       }];
 
       // Ensure the channel entry exists for single video mode
+      // IMPORTANT: overwrite the channel parameter (which may be a syncKey like "video:URL")
+      // with the actual channel handle from yt-dlp metadata
       const channelHandle = meta.channel?.startsWith("@") ? meta.channel.toLowerCase() : `@${(meta.channel || meta.uploader || "unknown").toLowerCase()}`;
+      channel = channelHandle;
       const { data: existingChannel } = await supabase
         .from("yt_channels")
         .select("handle")
@@ -477,7 +498,7 @@ export async function runYtSync(
       if (signal?.aborted) throw new Error("Sync abgebrochen.");
 
       // Ensure yt_videos entry exists
-      await supabase.from("yt_videos").upsert({
+      const { error: upsertVideoError } = await supabase.from("yt_videos").upsert({
         video_id: video.videoId,
         channel: channel,
         title: video.title,
@@ -485,6 +506,10 @@ export async function runYtSync(
         published_at: video.publishedAt,
         status: "pending",
       }, { onConflict: "video_id" });
+      if (upsertVideoError) {
+        console.error(`[YT] yt_videos upsert failed for ${video.videoId}:`, upsertVideoError);
+        await sendTelemetry(`[YT] ⚠️ DB-Fehler beim Video-Eintrag: [${upsertVideoError.code}] ${upsertVideoError.message}`);
+      }
 
       try {
         const chunkIds = await processVideo(
@@ -542,7 +567,7 @@ export async function runYtSync(
       await sendTelemetry(`[YT Sync] Sync ${channel} fehlgeschlagen: ${err.message}`);
     }
   } finally {
-    activeYtSyncControllers.delete(channel);
+    activeYtSyncControllers.delete(channelInput);
   }
 }
 
