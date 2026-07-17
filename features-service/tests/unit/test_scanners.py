@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from src.scanners.madbo_breakout import MadboBreakoutScanner
 
-def generate_mock_data(n_days=200, breakout_index=-1, breakout_is_valid=True):
+def generate_mock_data(n_days=200, breakout_index=-1, breakout_is_valid=True, breakout_volume=2000.0):
     """
     Generates mock data for testing.
     All candles are standard, except potentially the breakout_index candle.
@@ -18,6 +18,7 @@ def generate_mock_data(n_days=200, breakout_index=-1, breakout_is_valid=True):
     closes = [105.0] * n_days
     highs = [107.0] * n_days
     lows = [97.0] * n_days
+    volumes = [1000.0] * n_days
     
     if breakout_index == -1:
         breakout_idx = n_days - 1
@@ -32,6 +33,7 @@ def generate_mock_data(n_days=200, breakout_index=-1, breakout_is_valid=True):
         closes[breakout_idx] = 139.0
         highs[breakout_idx] = 140.0
         lows[breakout_idx] = 100.0
+        volumes[breakout_idx] = breakout_volume
     else:
         # Invalid candle (e.g. too large wicks):
         # DR = 40. open = 100, close = 110, high = 130, low = 90.
@@ -40,13 +42,15 @@ def generate_mock_data(n_days=200, breakout_index=-1, breakout_is_valid=True):
         closes[breakout_idx] = 110.0
         highs[breakout_idx] = 130.0
         lows[breakout_idx] = 90.0
+        volumes[breakout_idx] = breakout_volume
 
     return pd.DataFrame({
         "timestamp": timestamps,
         "open": opens,
         "high": highs,
         "low": lows,
-        "close": closes
+        "close": closes,
+        "volume": volumes
     })
 
 def test_madbo_breakout_valid_latest():
@@ -56,6 +60,7 @@ def test_madbo_breakout_valid_latest():
         lookback_days=150,
         max_wick_pct=0.05,
         daily_range_ratio=2.0,
+        dollar_volume_ratio=1.5,
         history_lookback_days=1
     )
     result = scanner.scan_ticker("TEST", df)
@@ -72,11 +77,31 @@ def test_madbo_breakout_invalid_wicks():
         lookback_days=150,
         max_wick_pct=0.05,
         daily_range_ratio=2.0,
+        dollar_volume_ratio=1.5,
         history_lookback_days=1
     )
     result = scanner.scan_ticker("TEST", df)
     assert isinstance(result, list)
     assert len(result) == 0
+
+def test_madbo_breakout_dollar_volume_ratio():
+    """scan_ticker should filter out breakout candles if dollar volume ratio is too low."""
+    # Breakout with low volume (same as daily average: 1000)
+    df_low_vol = generate_mock_data(n_days=180, breakout_index=-1, breakout_is_valid=True, breakout_volume=1000.0)
+    scanner = MadboBreakoutScanner(
+        lookback_days=150,
+        max_wick_pct=0.05,
+        daily_range_ratio=2.0,
+        dollar_volume_ratio=1.5,
+        history_lookback_days=1
+    )
+    result = scanner.scan_ticker("TEST", df_low_vol)
+    assert len(result) == 0
+
+    # Breakout with high volume (2000 > 1.5 * 1000)
+    df_high_vol = generate_mock_data(n_days=180, breakout_index=-1, breakout_is_valid=True, breakout_volume=2000.0)
+    result_high = scanner.scan_ticker("TEST", df_high_vol)
+    assert len(result_high) == 1
 
 def test_madbo_breakout_history_window():
     """scan_ticker lookback window should control which candles are checked."""
@@ -88,6 +113,7 @@ def test_madbo_breakout_history_window():
         lookback_days=150,
         max_wick_pct=0.05,
         daily_range_ratio=2.0,
+        dollar_volume_ratio=1.5,
         history_lookback_days=1
     )
     result_latest = scanner_latest.scan_ticker("TEST", df)
@@ -98,6 +124,7 @@ def test_madbo_breakout_history_window():
         lookback_days=150,
         max_wick_pct=0.05,
         daily_range_ratio=2.0,
+        dollar_volume_ratio=1.5,
         history_lookback_days=10
     )
     result_history = scanner_history.scan_ticker("TEST", df)
@@ -115,6 +142,7 @@ def test_madbo_breakout_date_range():
         lookback_days=150,
         max_wick_pct=0.05,
         daily_range_ratio=2.0,
+        dollar_volume_ratio=1.5,
         start_date="2025-06-08",
         end_date="2025-06-12"
     )
@@ -126,6 +154,7 @@ def test_madbo_breakout_date_range():
         lookback_days=150,
         max_wick_pct=0.05,
         daily_range_ratio=2.0,
+        dollar_volume_ratio=1.5,
         start_date="2025-06-15",
         end_date="2025-06-20"
     )
@@ -142,6 +171,7 @@ def test_madbo_breakout_multiple_events():
     closes = [105.0] * n_days
     highs = [107.0] * n_days
     lows = [97.0] * n_days
+    volumes = [1000.0] * n_days
     
     # Two valid breakout candles at index 160 and 170
     for idx in [160, 170]:
@@ -149,24 +179,25 @@ def test_madbo_breakout_multiple_events():
         closes[idx] = 139.0
         highs[idx] = 140.0
         lows[idx] = 100.0
+        volumes[idx] = 2000.0
 
     df = pd.DataFrame({
         "timestamp": timestamps,
         "open": opens,
         "high": highs,
         "low": lows,
-        "close": closes
+        "close": closes,
+        "volume": volumes
     })
     
     scanner = MadboBreakoutScanner(
         lookback_days=150,
         max_wick_pct=0.05,
         daily_range_ratio=2.0,
+        dollar_volume_ratio=1.5,
         history_lookback_days=50  # Look back enough to cover both
     )
     result = scanner.scan_ticker("TEST", df)
     assert isinstance(result, list)
-    # At least the first breakout at 160 should match (170 may or may not since
-    # the close at 160 already set a new high that 170 must also exceed)
     assert len(result) >= 1
     assert result[0] == timestamps[160]

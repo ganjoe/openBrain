@@ -60,6 +60,7 @@ class ScannerRequest(BaseModel):
     lookback_days: int = 150
     max_wick_pct: float = 0.05
     daily_range_ratio: float = 2.0
+    dollar_volume_ratio: float = 1.5
     history_lookback_days: int = 1
     start_date: Optional[str] = None
     end_date: Optional[str] = None

@@ -270,8 +270,8 @@
 
   <div id="stats-view"></div>
 
-  <script src="/js/canvas_renderer.js?v=qmaggi-v1"></script>
-  <script src="/js/ws_client.js?v=qmaggi-v1"></script>
+  <script src="/js/canvas_renderer.js?v=pink-arrows"></script>
+  <script src="/js/ws_client.js?v=pink-arrows"></script>
   <script>
     // ─── URL parameters ──────────────────────────────────────
     const params = new URLSearchParams(location.search);
@@ -585,6 +585,9 @@
       // Load default first ticker from watchlist
       let defaultSymbol = 'NVDA';
       if (layoutConfig && layoutConfig.watchlist) {
+        if (layoutConfig.watchlist.startsWith("scanner_")) {
+          currentAnnotationsSource = layoutConfig.watchlist;
+        }
         try {
           const r = await fetch(`${PCA_API}/api/watchlists/${layoutConfig.watchlist}`);
           const wl = await r.json();

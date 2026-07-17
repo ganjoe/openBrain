@@ -9,6 +9,7 @@ class MadboBreakoutScanner(BaseScanner):
         lookback_days: int = 150,
         max_wick_pct: float = 0.05,
         daily_range_ratio: float = 2.0,
+        dollar_volume_ratio: float = 1.5,
         history_lookback_days: int = 1,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None
@@ -16,6 +17,7 @@ class MadboBreakoutScanner(BaseScanner):
         self.lookback_days = lookback_days
         self.max_wick_pct = max_wick_pct
         self.daily_range_ratio = daily_range_ratio
+        self.dollar_volume_ratio = dollar_volume_ratio
         self.history_lookback_days = history_lookback_days
         self.start_date = start_date
         self.end_date = end_date
@@ -25,6 +27,7 @@ class MadboBreakoutScanner(BaseScanner):
             "lookback_days": self.lookback_days,
             "max_wick_pct": self.max_wick_pct,
             "daily_range_ratio": self.daily_range_ratio,
+            "dollar_volume_ratio": self.dollar_volume_ratio,
             "history_lookback_days": self.history_lookback_days,
             "start_date": self.start_date,
             "end_date": self.end_date
@@ -33,11 +36,14 @@ class MadboBreakoutScanner(BaseScanner):
     def scan_ticker(self, ticker: str, df: pd.DataFrame) -> List[int]:
         # Check basic column requirements
         required_cols = {"timestamp", "open", "high", "low", "close"}
+        if self.dollar_volume_ratio > 0:
+            required_cols.add("volume")
+            
         if not required_cols.issubset(df.columns):
             return []
 
         n_rows = len(df)
-        min_required = max(self.lookback_days, 20) + 1
+        min_required = max(self.lookback_days, 20, 50 if self.dollar_volume_ratio > 0 else 0) + 1
         if n_rows < min_required:
             return []
 
@@ -86,6 +92,11 @@ class MadboBreakoutScanner(BaseScanner):
         # Calculate ADR20: shift(1) means c-20 to c-1 (preceding 20 days)
         adr20 = df["high"].sub(df["low"]).rolling(window=20).mean().shift(1).to_numpy()
 
+        # Calculate Dollar Volume rolling average
+        if self.dollar_volume_ratio > 0:
+            dollar_vol = df["close"].mul(df["volume"]).to_numpy()
+            avg_dollar_vol_50 = df["close"].mul(df["volume"]).rolling(window=50).mean().shift(1).to_numpy()
+
         # Raw timestamps for conversion to Unix seconds
         raw_timestamps = df["timestamp"].to_numpy()
 
@@ -113,7 +124,14 @@ class MadboBreakoutScanner(BaseScanner):
             if (top_wick + bottom_wick) > self.max_wick_pct * cur_range:
                 continue
 
-            # D. Breakout check
+            # D. Dollar Volume Ratio check
+            if self.dollar_volume_ratio > 0:
+                cur_dv = dollar_vol[c]
+                avg_dv = avg_dollar_vol_50[c]
+                if pd.isna(avg_dv) or avg_dv <= 0 or cur_dv < self.dollar_volume_ratio * avg_dv:
+                    continue
+
+            # E. Breakout check
             lookback_start = c - self.lookback_days
             if lookback_start < 0:
                 continue

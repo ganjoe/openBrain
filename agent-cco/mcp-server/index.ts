@@ -5,6 +5,7 @@ import { AGENT_ID, MCP_ACCESS_KEY } from "./tools/shared.ts";
 import { registerOpenBrainTools } from "./tools/openbrain.ts";
 import { registerXTools } from "./tools/x.ts";
 import { registerNexusTools } from "./tools/nexus.ts";
+import { registerYouTubeTools } from "./tools/youtube.ts";
 
 // --- MCP Server Setup ---
 const server = new McpServer({
@@ -16,6 +17,7 @@ const server = new McpServer({
 registerOpenBrainTools(server);
 registerXTools(server);
 registerNexusTools(server);
+registerYouTubeTools(server);
 
 // --- Hono App ---
 const app = new Hono();

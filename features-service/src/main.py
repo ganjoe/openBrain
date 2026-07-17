@@ -509,6 +509,7 @@ def create_app() -> FastAPI:
                 lookback_days=req.lookback_days,
                 max_wick_pct=req.max_wick_pct,
                 daily_range_ratio=req.daily_range_ratio,
+                dollar_volume_ratio=req.dollar_volume_ratio,
                 history_lookback_days=req.history_lookback_days,
                 start_date=req.start_date,
                 end_date=req.end_date

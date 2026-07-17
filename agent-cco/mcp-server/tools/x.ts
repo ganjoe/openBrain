@@ -34,7 +34,7 @@ async function getXUserId(username: string): Promise<{id: string, name: string}>
   return { id: userId, name: screenName };
 }
 
-async function runBackgroundSync(cleanName: string, username: string, limit?: number, start_time?: string, signal?: AbortSignal) {
+export async function runBackgroundSync(cleanName: string, username: string, limit?: number, start_time?: string, signal?: AbortSignal) {
   console.log(`[X Sync] Background job started for ${cleanName}`);
   // Generate a unique session id for this sync run so the CCO can analyze
   // exactly the posts saved in this run, not whatever the DB happens to contain.
@@ -122,7 +122,7 @@ async function runBackgroundSync(cleanName: string, username: string, limit?: nu
 
         if (nextToken) url += `&pagination_token=${nextToken}`;
 
-        await sendTelemetry(`[X API] Request: ${url.replace(X_BEARER_TOKEN, "***")}`);
+        await sendTelemetry(`[X API] Request: ${url.replace(X_BEARER_TOKEN || "", "***")}`);
         const res = await fetch(url, { headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` } });
         
         if (!res.ok) {
@@ -303,7 +303,7 @@ const llmCategorizationStats = {
   totalBacklogAtStart: 0,
 };
 
-async function runLlmCategorizationLoop() {
+export async function runLlmCategorizationLoop() {
   llmCategorizationStats.isRunning = true;
   llmCategorizationStats.startTime = Date.now();
   llmCategorizationStats.processedCount = 0;
@@ -472,7 +472,10 @@ export function registerXTools(server: McpServer) {
           .is("metadata->llm_categorized", null);
 
         let statusText = `=== LLM Categorization Status ===\n`;
-        statusText += `Status: ${llmCategorizationStats.isRunning ? 'LÄUFT 🟢' : 'GESTOPPT 🔴'}\n`;
+        const stateStr = (remainingCount === 0 && llmCategorizationStats.isRunning) 
+          ? 'WARTET (Kein Backlog) 🟢' 
+          : (llmCategorizationStats.isRunning ? 'LÄUFT 🟢' : 'GESTOPPT 🔴');
+        statusText += `Status: ${stateStr}\n`;
         statusText += `Noch im Backlog: ${remainingCount} Posts\n`;
         
         if (llmCategorizationStats.isRunning) {
@@ -490,7 +493,7 @@ export function registerXTools(server: McpServer) {
              else estRemainingStr = `${(estRemainingSecs / 3600).toFixed(1)} Stunden`;
           }
 
-          statusText += `In aktueller Batch verarbeitet: ${postsProcessed}\n`;
+          statusText += `Verarbeitet seit Prozess-Start: ${postsProcessed}\n`;
           statusText += `Verarbeitete Tokens: ${tokens} (Speed: ${tokensPerSec.toFixed(1)} t/s)\n`;
           statusText += `Durchschnitt: ${(postsPerSec * 60).toFixed(1)} Posts pro Minute\n`;
           statusText += `Geschätzte Restzeit für Backlog: ${estRemainingStr}\n`;
@@ -520,7 +523,8 @@ export function registerXTools(server: McpServer) {
       },
     },
     async ({ action, username, limit, start_time }: any) => {
-      if (action === "START") {
+      try {
+        if (action === "START") {
           if (!X_BEARER_TOKEN || X_BEARER_TOKEN.includes("YOUR_X_BEARER_TOKEN")) {
             return { content: [{ type: "text", text: "Error: X_BEARER_TOKEN is not configured in .env" }], isError: true };
           }
@@ -617,6 +621,9 @@ export function registerXTools(server: McpServer) {
           return { content: [{ type: "text", text: `Abbruch-Signal für den Sync von ${cleanName} wurde gesendet.` }] };
       }
       return { content: [{ type: "text", text: `Invalid action` }], isError: true };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
+      }
     }
   );
 

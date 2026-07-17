@@ -460,11 +460,11 @@ class ChartRenderer {
         if (ann.type === 'arrow_up') {
           const low = this._val(row, lI) ?? 0;
           const y   = toY(low);
-          this._drawArrowUp(ctx, mid, y, ann.color || '#22c55e', barW);
+          this._drawArrowUp(ctx, mid, y, ann.color || '#ff2d9b', barW);
         } else if (ann.type === 'arrow_down') {
           const high = this._val(row, hI) ?? 0;
           const y    = toY(high);
-          this._drawArrowDown(ctx, mid, y, ann.color || '#ef4444', barW);
+          this._drawArrowDown(ctx, mid, y, ann.color || '#ff2d9b', barW);
         } else if (ann.type === 'dot') {
           const close = this._val(row, this._col('close')) ?? 0;
           const y = toY(close);
@@ -478,7 +478,7 @@ class ChartRenderer {
    * Draw an upward-pointing arrow (triangle) below a candle.
    */
   _drawArrowUp(ctx, x, y, color, barW) {
-    const size = Math.min(16, Math.max(6, barW * 0.6));
+    const size = Math.min(22, Math.max(10, barW * 0.8));
     const tipY   = y + 4;           // Small gap below the candle low
     const baseY  = tipY + size;
     const halfW  = size * 0.45;
@@ -496,7 +496,7 @@ class ChartRenderer {
    * Draw a downward-pointing arrow (triangle) above a candle.
    */
   _drawArrowDown(ctx, x, y, color, barW) {
-    const size = Math.min(16, Math.max(6, barW * 0.6));
+    const size = Math.min(22, Math.max(10, barW * 0.8));
     const tipY   = y - 4;           // Small gap above the candle high
     const baseY  = tipY - size;
     const halfW  = size * 0.45;

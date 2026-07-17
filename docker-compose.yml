@@ -300,7 +300,9 @@ services:
         condition: service_started
     volumes:
       - ./agent-cco/metadata-prompt.txt:/app/metadata-prompt.txt:ro
+      - ./agent-cco/yt-segmentation-prompt.txt:/app/yt-segmentation-prompt.txt:ro
       - ./agent-cco/mcp-server/stdio.ts:/app/stdio.ts:ro
+      - yt-media:/data/yt
     environment:
       SUPABASE_URL: http://gateway:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
@@ -574,3 +576,4 @@ volumes:
   openbrain_pgdata:
   openbrain_ollama:
   openbrain_mqtt:
+  yt-media:
