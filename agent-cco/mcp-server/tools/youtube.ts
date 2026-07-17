@@ -76,14 +76,40 @@ async function resolveYtChannel(input: string): Promise<{ channelId: string; han
 }
 
 /**
- * Gets the latest video IDs from a channel.
- * Returns array of { videoId, title, duration, publishedAt }.
+ * Helper to determine if we should download the transcript in German or English.
+ * Original German or English transcripts are kept in their original language.
+ * Other languages (e.g. French, Spanish) are downloaded as English auto-translations.
+ */
+function determineTargetLang(meta: any): string {
+  const rawLang = meta.language || "";
+  if (rawLang.startsWith("de")) {
+    return "de";
+  } else if (rawLang.startsWith("en")) {
+    return "en";
+  }
+  
+  // Fallback to checking automatic_captions/subtitles
+  const autoKeys = Object.keys(meta.automatic_captions || {});
+  const hasDeOrig = autoKeys.includes("de-orig") || autoKeys.some(k => k.startsWith("de-orig"));
+  const hasEnOrig = autoKeys.includes("en-orig") || autoKeys.some(k => k.startsWith("en-orig"));
+  
+  if (hasDeOrig && !hasEnOrig) {
+    return "de";
+  }
+  
+  return "en";
+}
+
+/**
+ * Uses yt-dlp to list videos from a channel.
+ * Returns array of { videoId, title, duration, publishedAt, targetLang }.
  */
 async function getChannelVideos(channelUrl: string, limit: number): Promise<Array<{
   videoId: string;
   title: string;
   duration: number;
   publishedAt: string;
+  targetLang: string;
 }>> {
   // Ensure we're hitting the /videos tab
   const target = channelUrl.includes("/videos") ? channelUrl : channelUrl.replace(/\/?$/, "/videos");
@@ -107,12 +133,13 @@ async function getChannelVideos(channelUrl: string, limit: number): Promise<Arra
   }
 
   const lines = new TextDecoder().decode(output.stdout).trim().split("\n");
-  const videos: Array<{ videoId: string; title: string; duration: number; publishedAt: string }> = [];
+  const videos: Array<{ videoId: string; title: string; duration: number; publishedAt: string; targetLang: string }> = [];
 
   for (const line of lines) {
     if (!line.trim()) continue;
     try {
       const data = JSON.parse(line);
+      const targetLang = determineTargetLang(data);
       videos.push({
         videoId: data.id,
         title: data.title || "Unknown",
@@ -120,6 +147,7 @@ async function getChannelVideos(channelUrl: string, limit: number): Promise<Arra
         publishedAt: data.upload_date
           ? `${data.upload_date.substring(0, 4)}-${data.upload_date.substring(4, 6)}-${data.upload_date.substring(6, 8)}T00:00:00Z`
           : new Date().toISOString(),
+        targetLang,
       });
     } catch {
       // Skip unparseable lines
@@ -133,7 +161,7 @@ async function getChannelVideos(channelUrl: string, limit: number): Promise<Arra
  * Downloads the auto-generated subtitle (VTT) for a video.
  * Returns the raw VTT content as string, or null if no subtitles available.
  */
-async function downloadVtt(videoId: string): Promise<string | null> {
+async function downloadVtt(videoId: string, targetLang: string): Promise<string | null> {
   const outputDir = "/data/yt/vtt";
 
   // Ensure directory exists
@@ -147,7 +175,7 @@ async function downloadVtt(videoId: string): Promise<string | null> {
     args: [
       "--cookies", YT_COOKIES_PATH,
       "--write-auto-sub",
-      "--sub-lang", "en,de",
+      "--sub-lang", targetLang,
       "--skip-download",
       "--sub-format", "vtt",
       "--output", outputTemplate,
@@ -231,16 +259,19 @@ function vttToPlaintext(vttContent: string): string {
  * Sends the full transcript to LM Studio for semantic segmentation.
  * Uses the same LM Studio call pattern as runLlmCategorizationLoop in x.ts.
  */
-async function segmentTranscript(plaintext: string, signal?: AbortSignal): Promise<YtSegmentationResult> {
-  // Load segmentation prompt (same pattern as ticker-extraction-prompt.txt)
+async function segmentTranscript(plaintext: string, targetLang: string, signal?: AbortSignal): Promise<YtSegmentationResult> {
+  // Load segmentation prompt based on targetLang
   let promptText = "";
+  const promptFile = targetLang === "de" ? "yt-segmentation-prompt-de.txt" : "yt-segmentation-prompt-en.txt";
   try {
-    promptText = Deno.readTextFileSync("/app/yt-segmentation-prompt.txt");
+    promptText = Deno.readTextFileSync(`/app/${promptFile}`);
   } catch {
     try {
-      promptText = Deno.readTextFileSync("yt-segmentation-prompt.txt");
+      promptText = Deno.readTextFileSync(promptFile);
     } catch {
-      promptText = "Extract semantic blocks from this transcript. Return JSON with global_context and blocks array.";
+      promptText = targetLang === "de"
+        ? "Extrahiere semantische Blöcke aus diesem Transkript. Gib ein JSON mit global_context und blocks-Array zurück."
+        : "Extract semantic blocks from this transcript. Return JSON with global_context and blocks array.";
     }
   }
 
@@ -299,6 +330,7 @@ async function processVideo(
   channel: string,
   videoTitle: string,
   publishedAt: string,
+  targetLang: string,
   signal?: AbortSignal
 ): Promise<string[]> {
   const savedChunkIds: string[] = [];
@@ -307,8 +339,8 @@ async function processVideo(
   await supabase.from("yt_videos").update({ status: "processing" }).eq("video_id", videoId);
 
   // 2. Download VTT
-  await sendTelemetry(`[YT] Lade Untertitel für "${videoTitle}"...`);
-  const vttContent = await downloadVtt(videoId);
+  await sendTelemetry(`[YT] Lade Untertitel (${targetLang}) für "${videoTitle}"...`);
+  const vttContent = await downloadVtt(videoId, targetLang);
   if (!vttContent) {
     await supabase.from("yt_videos").update({
       status: "failed",
@@ -325,7 +357,7 @@ async function processVideo(
   await sendTelemetry(`[YT] Transkript: ${plaintext.length} Zeichen → LLM-Segmentierung...`);
 
   // 4. LLM Segmentation
-  const segmentation = await segmentTranscript(plaintext, signal);
+  const segmentation = await segmentTranscript(plaintext, targetLang, signal);
   await sendTelemetry(`[YT] Segmentierung: ${segmentation.blocks.length} Blöcke extrahiert.`);
 
   if (signal?.aborted) throw new Error("Sync abgebrochen.");
@@ -338,7 +370,11 @@ async function processVideo(
     const block = segmentation.blocks[i];
 
     // Augment: prepend global context to each block
-    const augmentedContent = `[Kontext] ${segmentation.global_context}\n\n[Inhalt] ${block.content}`;
+    const blockContent = block.content || (block as any).text || (block as any).block_content || (block as any).summary || (block as any).description || "";
+    if (!blockContent) {
+      console.warn(`[YT] Warnung: Block ${i} hat keinen Inhalt! Keys:`, Object.keys(block));
+    }
+    const augmentedContent = `[Kontext] ${segmentation.global_context}\n\n[Inhalt] ${blockContent}`;
     augmentedTexts.push(augmentedContent);
 
     batchToInsert.push({
@@ -352,7 +388,7 @@ async function processVideo(
         block_index: i,
         start_time: block.start_time,
         end_time: block.end_time,
-        topic: block.topic,
+        topic: block.topic || (block as any).title || (block as any).subject || "General Discussion",
         tickers: block.tickers || [],
         published_at: publishedAt,
       },
@@ -412,7 +448,7 @@ export async function runYtSync(
   try {
     await sendTelemetry(`[YT Sync] Hintergrund-Sync für ${channel} startet...`);
 
-    let videosToProcess: Array<{ videoId: string; title: string; duration: number; publishedAt: string }> = [];
+    let videosToProcess: Array<{ videoId: string; title: string; duration: number; publishedAt: string; targetLang: string }> = [];
 
     if (videoUrl) {
       // Single video mode: extract video ID from URL
@@ -437,6 +473,7 @@ export async function runYtSync(
         publishedAt: meta.upload_date
           ? `${meta.upload_date.substring(0, 4)}-${meta.upload_date.substring(4, 6)}-${meta.upload_date.substring(6, 8)}T00:00:00Z`
           : new Date().toISOString(),
+        targetLang: determineTargetLang(meta),
       }];
 
       // Ensure the channel entry exists for single video mode
@@ -517,6 +554,7 @@ export async function runYtSync(
           channel,
           video.title,
           video.publishedAt,
+          video.targetLang || "en",
           signal,
         );
         allSavedChunkIds.push(...chunkIds);
@@ -788,7 +826,7 @@ export function registerYouTubeTools(server: McpServer) {
         query: z.string().optional().describe("Search query for SEMANTIC or EXACT"),
         channel_filter: z.string().optional().describe("Limit search to a specific channel handle"),
         limit: z.number().optional().default(10).describe("Max results (default: 10)"),
-        threshold: z.number().optional().default(0.5).describe("Similarity threshold for SEMANTIC (default: 0.5)"),
+        threshold: z.number().optional().default(0.4).describe("Similarity threshold for SEMANTIC (default: 0.4)"),
         video_id: z.string().optional().describe("Video ID for CONTEXT and TRANSCRIPT"),
         block_index: z.number().optional().describe("Block index for CONTEXT (shows surrounding blocks)"),
         days_back: z.number().optional().describe("Filter blocks from the last X days"),
