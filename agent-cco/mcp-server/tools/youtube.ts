@@ -8,6 +8,17 @@ const YT_COOKIES_PATH = "/app/cookies.txt";
 // --- In-Memory Sync Lock (like activeSyncControllers in x.ts) ---
 export const activeYtSyncControllers = new Map<string, AbortController>();
 
+// --- In-Memory Discovery Loop State ---
+export let ytDiscoveryAbortController: AbortController | null = null;
+export const ytDiscoveryStats = {
+  isRunning: false,
+  startTime: 0,
+  lastRunTime: 0,
+  processedCount: 0,
+  failedCount: 0,
+  lastError: "",
+};
+
 // --- Types ---
 interface YtSegmentationResult {
   global_context: string;
@@ -104,7 +115,7 @@ function determineTargetLang(meta: any): string {
  * Uses yt-dlp to list videos from a channel.
  * Returns array of { videoId, title, duration, publishedAt, targetLang }.
  */
-async function getChannelVideos(channelUrl: string, limit: number): Promise<Array<{
+async function getChannelVideos(channelUrl: string, limit?: number): Promise<Array<{
   videoId: string;
   title: string;
   duration: number;
@@ -114,14 +125,23 @@ async function getChannelVideos(channelUrl: string, limit: number): Promise<Arra
   // Ensure we're hitting the /videos tab
   const target = channelUrl.includes("/videos") ? channelUrl : channelUrl.replace(/\/?$/, "/videos");
 
+  const useFlat = limit === undefined || limit > 30;
+
+  const args = [
+    "--cookies", YT_COOKIES_PATH,
+    "--dump-json",
+    "--skip-download",
+  ];
+  if (useFlat) {
+    args.push("--flat-playlist");
+  }
+  if (limit !== undefined) {
+    args.push("--playlist-end", String(limit));
+  }
+  args.push(target);
+
   const cmd = new Deno.Command("yt-dlp", {
-    args: [
-      "--cookies", YT_COOKIES_PATH,
-      "--dump-json",
-      "--skip-download",
-      "--playlist-end", String(limit),
-      target,
-    ],
+    args,
     stdout: "piped",
     stderr: "piped",
   });
@@ -139,14 +159,14 @@ async function getChannelVideos(channelUrl: string, limit: number): Promise<Arra
     if (!line.trim()) continue;
     try {
       const data = JSON.parse(line);
-      const targetLang = determineTargetLang(data);
+      const targetLang = useFlat ? "en" : determineTargetLang(data);
       videos.push({
         videoId: data.id,
         title: data.title || "Unknown",
         duration: data.duration || 0,
         publishedAt: data.upload_date
           ? `${data.upload_date.substring(0, 4)}-${data.upload_date.substring(4, 6)}-${data.upload_date.substring(6, 8)}T00:00:00Z`
-          : new Date().toISOString(),
+          : "", // Leave blank if flat-playlist has no upload_date
         targetLang,
       });
     } catch {
@@ -259,7 +279,12 @@ function vttToPlaintext(vttContent: string): string {
  * Sends the full transcript to LM Studio for semantic segmentation.
  * Uses the same LM Studio call pattern as runLlmCategorizationLoop in x.ts.
  */
-async function segmentTranscript(plaintext: string, targetLang: string, signal?: AbortSignal): Promise<YtSegmentationResult> {
+async function segmentTranscript(plaintext: string, targetLang: string, signal?: AbortSignal): Promise<{
+  result: YtSegmentationResult;
+  duration: number;
+  tokens: number;
+  ts: string;
+}> {
   // Load segmentation prompt based on targetLang
   let promptText = "";
   const promptFile = targetLang === "de" ? "yt-segmentation-prompt-de.txt" : "yt-segmentation-prompt-en.txt";
@@ -301,8 +326,6 @@ async function segmentTranscript(plaintext: string, targetLang: string, signal?:
   const tokens = d.usage?.total_tokens || 0;
   const ts = duration > 0 ? (tokens / duration).toFixed(1) : "0.0";
 
-  await sendTelemetry(`[LM Studio] Segmentierung: ${duration.toFixed(1)}s | ${tokens} Tokens | ${ts} t/s`);
-
   // Parse JSON from LLM response (same pattern as x.ts line 380-390)
   const content = d.choices?.[0]?.message?.content || "";
   const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -316,7 +339,7 @@ async function segmentTranscript(plaintext: string, targetLang: string, signal?:
     throw new Error("LLM JSON missing required fields (global_context, blocks)");
   }
 
-  return parsed;
+  return { result: parsed, duration, tokens, ts };
 }
 
 // --- Background Worker ---
@@ -331,6 +354,8 @@ async function processVideo(
   videoTitle: string,
   publishedAt: string,
   targetLang: string,
+  videoIndex: number,
+  totalVideos: number,
   signal?: AbortSignal
 ): Promise<string[]> {
   const savedChunkIds: string[] = [];
@@ -338,27 +363,41 @@ async function processVideo(
   // 1. Update status to processing
   await supabase.from("yt_videos").update({ status: "processing" }).eq("video_id", videoId);
 
-  // 2. Download VTT
-  await sendTelemetry(`[YT] Lade Untertitel (${targetLang}) für "${videoTitle}"...`);
-  const vttContent = await downloadVtt(videoId, targetLang);
-  if (!vttContent) {
-    await supabase.from("yt_videos").update({
-      status: "failed",
-      error_msg: "Keine Auto-Captions verfügbar",
-    }).eq("video_id", videoId);
-    await sendTelemetry(`[YT] ⚠️ Keine Untertitel für "${videoTitle}" — übersprungen.`);
-    return [];
+  // 2. Fetch transcript and language from DB
+  const { data: videoData, error: dbError } = await supabase
+    .from("yt_videos")
+    .select("transcript, language")
+    .eq("video_id", videoId)
+    .single();
+
+  let plaintext = videoData?.transcript;
+  let detectedLang = videoData?.language || targetLang || "en";
+
+  if (dbError || !plaintext) {
+    // Fallback: Download VTT and convert
+    await sendTelemetry(`📥 [${videoIndex}/${totalVideos}] Transkript nicht in DB für "${videoTitle}". Lade VTT...`);
+    const vttContent = await downloadVtt(videoId, detectedLang);
+    if (!vttContent) {
+      await supabase.from("yt_videos").update({
+        status: "failed",
+        error_msg: "Keine Auto-Captions verfügbar",
+      }).eq("video_id", videoId);
+      await sendTelemetry(`⚠️ [${videoIndex}/${totalVideos}] Keine Untertitel für "${videoTitle}" — übersprungen.`);
+      return [];
+    }
+    plaintext = vttToPlaintext(vttContent);
+    // save to DB for future reference
+    await supabase.from("yt_videos").update({ transcript: plaintext, language: detectedLang }).eq("video_id", videoId);
   }
 
   if (signal?.aborted) throw new Error("Sync abgebrochen.");
 
-  // 3. Convert VTT to plaintext
-  const plaintext = vttToPlaintext(vttContent);
-  await sendTelemetry(`[YT] Transkript: ${plaintext.length} Zeichen → LLM-Segmentierung...`);
+  await sendTelemetry(`📥 [${videoIndex}/${totalVideos}] Transkript geladen: ${plaintext.length} Zeichen (Sprache: ${detectedLang}) → LLM-Segmentierung...`);
 
   // 4. LLM Segmentation
-  const segmentation = await segmentTranscript(plaintext, targetLang, signal);
-  await sendTelemetry(`[YT] Segmentierung: ${segmentation.blocks.length} Blöcke extrahiert.`);
+  await sendTelemetry(`🧠 [${videoIndex}/${totalVideos}] Segmentiere Transkript via LM Studio für "${videoTitle}"...`);
+  const { result: segmentation, duration: segDuration, tokens: segTokens, ts: segSpeed } = await segmentTranscript(plaintext, detectedLang, signal);
+  await sendTelemetry(`🧠 [${videoIndex}/${totalVideos}] Segmentierung abgeschlossen: ${segmentation.blocks.length} Blöcke extrahiert (Dauer: ${segDuration.toFixed(1)}s | Speed: ${segSpeed} t/s).`);
 
   if (signal?.aborted) throw new Error("Sync abgebrochen.");
 
@@ -396,13 +435,17 @@ async function processVideo(
   }
 
   // 6. Batch Embedding via Ollama
-  await sendTelemetry(`[YT] Embedding: ${augmentedTexts.length} Blöcke...`);
+  await sendTelemetry(`⚡ [${videoIndex}/${totalVideos}] Generiere ${augmentedTexts.length} Vektoren (Embeddings) via Ollama...`);
+  const embedStart = Date.now();
   const embeddings = await getEmbeddingsBatch(augmentedTexts);
+  const embedDuration = (Date.now() - embedStart) / 1000;
   batchToInsert.forEach((item, idx) => {
     item.embedding = embeddings[idx];
   });
+  await sendTelemetry(`⚡ [${videoIndex}/${totalVideos}] Vektoren generiert in ${embedDuration.toFixed(1)}s (${(embedDuration / augmentedTexts.length).toFixed(2)}s pro Block).`);
 
   // 7. Insert into agent_workspace
+  await sendTelemetry(`💾 [${videoIndex}/${totalVideos}] Speichere ${augmentedTexts.length} Blöcke in der Datenbank...`);
   const { data: upsertedRows, error: upsertError } = await supabase
     .from("agent_workspace")
     .insert(batchToInsert)
@@ -426,9 +469,195 @@ async function processVideo(
   }).eq("video_id", videoId);
   if (statusError) console.error(`[YT] yt_videos status update failed:`, statusError);
 
-  await sendTelemetry(`[YT] ✅ "${videoTitle}" — ${segmentation.blocks.length} Blöcke gespeichert.`);
+  await sendTelemetry(`✅ [${videoIndex}/${totalVideos}] "${videoTitle}" erfolgreich verarbeitet (${segmentation.blocks.length} Blöcke).`);
 
   return savedChunkIds;
+}
+
+/**
+ * Main background sync function. Processes all new videos for a channel.
+ * Mirrors runBackgroundSync() in x.ts.
+ */
+/**
+ * Phase 1: Proactively discover new videos and download their transcripts (fast).
+ */
+export async function runYtDiscovery(
+  channelInput: string,
+  limit: number,
+  videoUrl: string | undefined,
+  signal?: AbortSignal,
+) {
+  let channel = channelInput;
+  let videosToProcess: Array<{ videoId: string; title: string; duration: number; publishedAt: string; targetLang: string }> = [];
+
+  try {
+    if (videoUrl) {
+      // Single video mode
+      const videoIdMatch = videoUrl.match(/(?:v=|youtu\.be\/|\/shorts\/)([a-zA-Z0-9_-]{11})/);
+      if (!videoIdMatch) throw new Error(`Ungültige YouTube-URL: ${videoUrl}`);
+      const videoId = videoIdMatch[1];
+
+      const cmd = new Deno.Command("yt-dlp", {
+        args: ["--cookies", YT_COOKIES_PATH, "--dump-json", "--skip-download", videoUrl],
+        stdout: "piped",
+        stderr: "piped",
+      });
+      const output = await cmd.output();
+      if (!output.success) throw new Error("yt-dlp metadata fetch failed");
+      const meta = JSON.parse(new TextDecoder().decode(output.stdout));
+
+      videosToProcess = [{
+        videoId,
+        title: meta.title || "Unknown",
+        duration: meta.duration || 0,
+        publishedAt: meta.upload_date
+          ? `${meta.upload_date.substring(0, 4)}-${meta.upload_date.substring(4, 6)}-${meta.upload_date.substring(6, 8)}T00:00:00Z`
+          : new Date().toISOString(),
+        targetLang: determineTargetLang(meta),
+      }];
+
+      const channelHandle = meta.channel?.startsWith("@") ? meta.channel.toLowerCase() : `@${(meta.channel || meta.uploader || "unknown").toLowerCase()}`;
+      channel = channelHandle;
+
+      const { data: existingChannel } = await supabase
+        .from("yt_channels")
+        .select("handle")
+        .eq("handle", channelHandle)
+        .single();
+
+      if (!existingChannel) {
+        await supabase.from("yt_channels").insert({
+          handle: channelHandle,
+          channel_id: meta.channel_id || "",
+          title: meta.channel || meta.uploader || "",
+          is_active: true,
+        });
+      }
+    } else {
+      // Channel mode
+      const { data: channelData } = await supabase
+        .from("yt_channels")
+        .select("handle, channel_id")
+        .eq("handle", channel)
+        .single();
+
+      if (!channelData) throw new Error(`Channel ${channel} nicht in der Datenbank gefunden.`);
+
+      const channelUrl = `https://www.youtube.com/${channelData.handle}`;
+      videosToProcess = await getChannelVideos(channelUrl, limit);
+    }
+
+    const videoIds = videosToProcess.map(v => v.videoId);
+    const { data: existingVideos } = await supabase
+      .from("yt_videos")
+      .select("video_id, status")
+      .in("video_id", videoIds);
+
+    const existingStatusMap = new Map<string, string>((existingVideos || []).map(v => [v.video_id, v.status]));
+
+    const newVideos = videosToProcess.filter(v => {
+      const status = existingStatusMap.get(v.videoId);
+      return !status || (status !== "downloaded" && status !== "embedded" && status !== "processing");
+    });
+
+    if (newVideos.length === 0) {
+      return;
+    }
+
+    for (const video of newVideos) {
+      if (signal?.aborted) throw new Error("Sync abgebrochen.");
+
+      // Upsert as pending
+      await supabase.from("yt_videos").upsert({
+        video_id: video.videoId,
+        channel: channel,
+        title: video.title,
+        duration: video.duration,
+        published_at: video.publishedAt,
+        status: "pending",
+        language: video.targetLang || "en",
+      }, { onConflict: "video_id" });
+
+      try {
+        await sendTelemetry(`[YT Discovery] Lade Transkript für "${video.title}"...`);
+        const vttContent = await downloadVtt(video.videoId, video.targetLang || "en");
+        if (!vttContent) {
+          await supabase.from("yt_videos").update({
+            status: "failed",
+            error_msg: "Keine Auto-Captions verfügbar",
+          }).eq("video_id", video.videoId);
+          ytDiscoveryStats.failedCount++;
+          continue;
+        }
+
+        const plaintext = vttToPlaintext(vttContent);
+        await supabase.from("yt_videos").update({
+          transcript: plaintext,
+          status: "downloaded",
+          error_msg: null,
+        }).eq("video_id", video.videoId);
+
+        ytDiscoveryStats.processedCount++;
+      } catch (err: any) {
+        if (err.message.includes("abgebrochen")) throw err;
+        console.error(`[YT Discovery] Fehler bei ${video.videoId}:`, err);
+        await supabase.from("yt_videos").update({
+          status: "failed",
+          error_msg: err.message?.substring(0, 500),
+        }).eq("video_id", video.videoId);
+        ytDiscoveryStats.failedCount++;
+      }
+    }
+  } catch (err: any) {
+    console.error(`[YT Discovery] Fehler bei Channel ${channel}:`, err);
+  }
+}
+
+/**
+ * Periodically runs Phase 1 for all active channels in the database.
+ */
+export async function runYtDiscoveryLoop() {
+  ytDiscoveryStats.isRunning = true;
+  ytDiscoveryStats.startTime = Date.now();
+  ytDiscoveryStats.processedCount = 0;
+  ytDiscoveryStats.failedCount = 0;
+  ytDiscoveryStats.lastError = "";
+
+  while (ytDiscoveryAbortController && !ytDiscoveryAbortController.signal.aborted) {
+    try {
+      const { data: channels, error } = await supabase
+        .from("yt_channels")
+        .select("handle")
+        .eq("is_active", true);
+
+      if (error) throw error;
+
+      if (channels && channels.length > 0) {
+        for (const ch of channels) {
+          if (!ytDiscoveryAbortController || ytDiscoveryAbortController.signal.aborted) break;
+          await runYtDiscovery(ch.handle, 10, undefined, ytDiscoveryAbortController.signal);
+        }
+      }
+
+      ytDiscoveryStats.lastRunTime = Date.now();
+
+      // Wait 60 minutes
+      const delay = 60 * 60 * 1000;
+      const step = 10000;
+      let waited = 0;
+      while (waited < delay && ytDiscoveryAbortController && !ytDiscoveryAbortController.signal.aborted) {
+        await new Promise(r => setTimeout(r, step));
+        waited += step;
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') break;
+      console.error("YT Discovery Loop Error:", err.message);
+      ytDiscoveryStats.lastError = err.message;
+      await new Promise(r => setTimeout(r, 60000));
+    }
+  }
+
+  ytDiscoveryStats.isRunning = false;
 }
 
 /**
@@ -466,6 +695,9 @@ export async function runYtSync(
       if (!output.success) throw new Error("yt-dlp metadata fetch failed");
       const meta = JSON.parse(new TextDecoder().decode(output.stdout));
 
+      const channelHandle = meta.channel?.startsWith("@") ? meta.channel.toLowerCase() : `@${(meta.channel || meta.uploader || "unknown").toLowerCase()}`;
+      channel = channelHandle;
+
       videosToProcess = [{
         videoId,
         title: meta.title || "Unknown",
@@ -477,10 +709,6 @@ export async function runYtSync(
       }];
 
       // Ensure the channel entry exists for single video mode
-      // IMPORTANT: overwrite the channel parameter (which may be a syncKey like "video:URL")
-      // with the actual channel handle from yt-dlp metadata
-      const channelHandle = meta.channel?.startsWith("@") ? meta.channel.toLowerCase() : `@${(meta.channel || meta.uploader || "unknown").toLowerCase()}`;
-      channel = channelHandle;
       const { data: existingChannel } = await supabase
         .from("yt_channels")
         .select("handle")
@@ -495,8 +723,19 @@ export async function runYtSync(
           is_active: true,
         });
       }
+
+      // Ensure the video entry exists in DB
+      await supabase.from("yt_videos").upsert({
+        video_id: videoId,
+        channel: channelHandle,
+        title: meta.title || "Unknown",
+        status: "downloaded",
+        duration: meta.duration || 0,
+        published_at: videosToProcess[0].publishedAt,
+        language: videosToProcess[0].targetLang,
+      });
     } else {
-      // Channel mode: get video list
+      // Channel mode: get downloaded videos from DB instead of scraping YouTube
       const { data: channelData } = await supabase
         .from("yt_channels")
         .select("handle, channel_id")
@@ -505,10 +744,23 @@ export async function runYtSync(
 
       if (!channelData) throw new Error(`Channel ${channel} nicht in der Datenbank gefunden.`);
 
-      const channelUrl = `https://www.youtube.com/${channelData.handle}`;
-      await sendTelemetry(`[YT Sync] Lade Videoliste von ${channelUrl} (max ${limit})...`);
-      videosToProcess = await getChannelVideos(channelUrl, limit);
-      await sendTelemetry(`[YT Sync] ${videosToProcess.length} Videos gefunden.`);
+      const { data: downloadedVideos, error: dbError } = await supabase
+        .from("yt_videos")
+        .select("video_id, title, duration, published_at, language")
+        .eq("channel", channel)
+        .eq("status", "downloaded")
+        .order("published_at", { ascending: false })
+        .limit(limit);
+
+      if (dbError) throw dbError;
+
+      videosToProcess = (downloadedVideos || []).map(v => ({
+        videoId: v.video_id,
+        title: v.title,
+        duration: v.duration || 0,
+        publishedAt: v.published_at || new Date().toISOString(),
+        targetLang: v.language || "en",
+      }));
     }
 
     // Filter out already processed videos
@@ -523,30 +775,16 @@ export async function runYtSync(
     const newVideos = videosToProcess.filter(v => !existingIds.has(v.videoId));
 
     if (newVideos.length === 0) {
-      await sendTelemetry(`[YT Sync] Keine neuen Videos für ${channel}. Alle ${videosToProcess.length} Videos sind bereits verarbeitet.`);
+      await sendTelemetry(`[YT Sync] Keine ausstehenden Videos zu verarbeiten für ${channel}.`);
       return;
     }
 
-    await sendTelemetry(`[YT Sync] ${newVideos.length} neue Videos zu verarbeiten (${existingIds.size} bereits vorhanden).`);
+    await sendTelemetry(`[YT Sync] ${newVideos.length} Videos werden segmentiert & eingebettet.`);
 
     // Process each video sequentially
     let processed = 0;
     for (const video of newVideos) {
       if (signal?.aborted) throw new Error("Sync abgebrochen.");
-
-      // Ensure yt_videos entry exists
-      const { error: upsertVideoError } = await supabase.from("yt_videos").upsert({
-        video_id: video.videoId,
-        channel: channel,
-        title: video.title,
-        duration: video.duration,
-        published_at: video.publishedAt,
-        status: "pending",
-      }, { onConflict: "video_id" });
-      if (upsertVideoError) {
-        console.error(`[YT] yt_videos upsert failed for ${video.videoId}:`, upsertVideoError);
-        await sendTelemetry(`[YT] ⚠️ DB-Fehler beim Video-Eintrag: [${upsertVideoError.code}] ${upsertVideoError.message}`);
-      }
 
       try {
         const chunkIds = await processVideo(
@@ -555,11 +793,12 @@ export async function runYtSync(
           video.title,
           video.publishedAt,
           video.targetLang || "en",
+          processed + 1,
+          newVideos.length,
           signal,
         );
         allSavedChunkIds.push(...chunkIds);
         processed++;
-        await sendTelemetry(`[YT Sync] Fortschritt: ${processed}/${newVideos.length} Videos.`);
       } catch (err: any) {
         if (err.message.includes("abgebrochen")) throw err;
         console.error(`[YT] Failed to process video ${video.videoId}:`, err);
@@ -607,6 +846,34 @@ export async function runYtSync(
   } finally {
     activeYtSyncControllers.delete(channelInput);
   }
+}
+
+// --- Channel Resolution Helper ---
+async function resolveChannelHandle(channel: string): Promise<string> {
+  let targetHandle = channel.startsWith("@") ? channel.toLowerCase() : `@${channel.toLowerCase()}`;
+
+  if (!channel.startsWith("@")) {
+    const queryEmbedding = (await getEmbeddingsBatch([channel]))[0];
+    const { data: searchResults, error: searchError } = await supabase.rpc("search_yt_channels", {
+      query_embedding: queryEmbedding,
+      query_text: channel,
+      match_threshold: 0.5,
+      match_count: 5,
+    });
+
+    if (!searchError && searchResults && searchResults.length > 0) {
+      const top = searchResults[0] as any;
+      const hasExactMatch = (top.match_quality ?? 0) >= 100;
+      const confident = hasExactMatch || top.similarity > 0.8 || top.handle === targetHandle;
+      if (searchResults.length === 1 || confident) {
+        targetHandle = top.handle;
+      } else {
+        const listStr = searchResults.map((r: any) => `- ${r.handle} (${r.title})`).join("\n");
+        throw new Error(`Mehrere Channels gefunden für '${channel}'. Bitte sei spezifischer:\n${listStr}`);
+      }
+    }
+  }
+  return targetHandle;
 }
 
 // --- Tool Registration ---
@@ -754,35 +1021,8 @@ export function registerYouTubeTools(server: McpServer) {
             };
           }
 
-          // Single channel mode — resolve fuzzy name
-          let targetHandle = channel.startsWith("@") ? channel.toLowerCase() : `@${channel.toLowerCase()}`;
-
-          if (!channel.startsWith("@")) {
-            const queryEmbedding = (await getEmbeddingsBatch([channel]))[0];
-            const { data: searchResults, error: searchError } = await supabase.rpc("search_yt_channels", {
-              query_embedding: queryEmbedding,
-              query_text: channel,
-              match_threshold: 0.5,
-              match_count: 5,
-            });
-
-            if (!searchError && searchResults && searchResults.length > 0) {
-              const top = searchResults[0] as any;
-              const hasExactMatch = (top.match_quality ?? 0) >= 100;
-              const confident = hasExactMatch || top.similarity > 0.8 || top.handle === targetHandle;
-              if (searchResults.length === 1 || confident) {
-                targetHandle = top.handle;
-              } else {
-                const listStr = searchResults.map((r: any) => `- ${r.handle} (${r.title})`).join("\n");
-                return {
-                  content: [{
-                    type: "text",
-                    text: `Mehrere Channels gefunden für '${channel}'. Bitte sei spezifischer:\n${listStr}`,
-                  }],
-                };
-              }
-            }
-          }
+          // Single channel mode
+          const targetHandle = await resolveChannelHandle(channel);
 
           // Check in-memory lock
           if (activeYtSyncControllers.has(targetHandle)) {
@@ -815,6 +1055,136 @@ export function registerYouTubeTools(server: McpServer) {
     },
   );
 
+  // Tool 2.5: list_yt_videos
+  server.registerTool(
+    "list_yt_videos",
+    {
+      title: "List YouTube Videos",
+      description: "List videos for a channel from the database, sorted by date.",
+      inputSchema: {
+        channel: z.string().describe("YouTube Handle or fuzzy channel name"),
+        limit: z.number().optional().default(10).describe("Max videos to return (default: 10, max: 50)"),
+      },
+    },
+    async ({ channel, limit }: any) => {
+      try {
+        const targetHandle = await resolveChannelHandle(channel);
+
+        const { data: videos, error } = await supabase
+          .from("yt_videos")
+          .select("video_id, title, duration, published_at, status, error_msg")
+          .eq("channel", targetHandle)
+          .order("published_at", { ascending: false })
+          .limit(Math.min(limit, 50));
+
+        if (error) throw error;
+        if (!videos || videos.length === 0) {
+          return { content: [{ type: "text", text: `Keine Videos in der Datenbank für ${targetHandle} gefunden.` }] };
+        }
+
+        const formatted = videos.map((v: any, idx: number) => {
+          const durationMin = Math.floor(v.duration / 60);
+          const durationSec = v.duration % 60;
+          const durationStr = `${durationMin}:${String(durationSec).padStart(2, "0")}`;
+          const dateStr = v.published_at ? new Date(v.published_at).toLocaleDateString("de-DE") : "Unbekannt";
+          let statusText = `[Status: ${v.status}]`;
+          if (v.status === "embedded") statusText = "✅ embedded";
+          else if (v.status === "downloaded") statusText = "📥 downloaded (ready for sync)";
+          else if (v.status === "processing") statusText = "⏳ processing";
+          else if (v.status === "failed") statusText = `❌ failed (${v.error_msg || "Unknown error"})`;
+          else if (v.status === "pending") statusText = "⏱️ pending";
+
+          return `${idx + 1}. ${dateStr} - **${v.title}** (${durationStr}) - ${statusText} (ID: ${v.video_id})`;
+        }).join("\n");
+
+        return { content: [{ type: "text", text: `Übersicht der Videos für ${targetHandle}:\n\n${formatted}` }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // Tool 2.5b: list_online_yt_videos
+  server.registerTool(
+    "list_online_yt_videos",
+    {
+      title: "List Online YouTube Videos",
+      description: "List available videos directly from a YouTube channel online using yt-dlp, without downloading or importing them.",
+      inputSchema: {
+        channel: z.string().describe("YouTube Handle or fuzzy channel name"),
+        limit: z.number().optional().describe("Max videos to return (if not specified, all videos will be listed)"),
+      },
+    },
+    async ({ channel, limit }: any) => {
+      try {
+        const targetHandle = await resolveChannelHandle(channel);
+        const channelUrl = targetHandle.startsWith("http") ? targetHandle : `https://www.youtube.com/${targetHandle}`;
+
+        await sendTelemetry(`[YT] Rufe Live-Video-Liste für ${targetHandle} ab...`);
+        const videos = await getChannelVideos(channelUrl, limit);
+
+        if (!videos || videos.length === 0) {
+          return { content: [{ type: "text", text: `Keine Online-Videos für ${targetHandle} gefunden.` }] };
+        }
+
+        const formatted = videos.map((v: any, idx: number) => {
+          const durationMin = Math.floor(v.duration / 60);
+          const durationSec = v.duration % 60;
+          const durationStr = `${durationMin}:${String(durationSec).padStart(2, "0")}`;
+          const dateStr = v.publishedAt ? new Date(v.publishedAt).toLocaleDateString("de-DE") : "Unbekannt";
+          return `${idx + 1}. [${dateStr}] - **${v.title}** (${durationStr}) - URL: https://www.youtube.com/watch?v=${v.videoId}`;
+        }).join("\n");
+
+        return { content: [{ type: "text", text: `Verfügbare Online-Videos für ${targetHandle}:\n\n${formatted}` }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // Tool 2.6: manage_yt_discovery
+  server.registerTool(
+    "manage_yt_discovery",
+    {
+      title: "Manage YouTube Discovery Loop",
+      description: "Controls the background proactive transcript discovery loop.",
+      inputSchema: {
+        action: z.enum(["START", "STOP", "STATUS"]).describe("Action to perform"),
+      },
+    },
+    async ({ action }: any) => {
+      try {
+        if (action === "START") {
+          if (ytDiscoveryStats.isRunning) {
+            return { content: [{ type: "text", text: "Der YouTube Discovery-Loop läuft bereits im Hintergrund." }] };
+          }
+          ytDiscoveryAbortController = new AbortController();
+          runYtDiscoveryLoop().catch(console.error);
+          return { content: [{ type: "text", text: "Background YouTube Discovery Loop erfolgreich gestartet." }] };
+        } else if (action === "STOP") {
+          if (!ytDiscoveryStats.isRunning || !ytDiscoveryAbortController) {
+            return { content: [{ type: "text", text: "Der Discovery-Loop läuft derzeit nicht." }] };
+          }
+          ytDiscoveryAbortController.abort();
+          ytDiscoveryAbortController = null;
+          return { content: [{ type: "text", text: "Abbruchsignal wurde an den Discovery-Loop gesendet." }] };
+        } else if (action === "STATUS") {
+          const statusText = `YouTube Discovery Loop Status:
+- Läuft: ${ytDiscoveryStats.isRunning ? "Ja" : "Nein"}
+- Gestartet: ${ytDiscoveryStats.startTime > 0 ? new Date(ytDiscoveryStats.startTime).toLocaleString("de-DE") : "N/A"}
+- Letzter Lauf: ${ytDiscoveryStats.lastRunTime > 0 ? new Date(ytDiscoveryStats.lastRunTime).toLocaleString("de-DE") : "N/A"}
+- Erfolgreich geladen: ${ytDiscoveryStats.processedCount}
+- Fehlgeschlagen: ${ytDiscoveryStats.failedCount}
+- Letzter Fehler: ${ytDiscoveryStats.lastError || "Keiner"}`;
+          return { content: [{ type: "text", text: statusText }] };
+        }
+        throw new Error("Ungültige Aktion");
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
   // Tool 3: search_yt_content (mirrors search_influencer_posts)
   server.registerTool(
     "search_yt_content",
@@ -822,7 +1192,7 @@ export function registerYouTubeTools(server: McpServer) {
       title: "Search YouTube Content",
       description: "Search through processed YouTube transcript blocks using semantic, exact, context, or transcript methods.",
       inputSchema: {
-        action: z.enum(["SEMANTIC", "EXACT", "CONTEXT", "TRANSCRIPT"]).describe("The type of search"),
+        action: z.enum(["SEMANTIC", "EXACT", "CONTEXT", "TRANSCRIPT", "TICKERS"]).describe("The type of search"),
         query: z.string().optional().describe("Search query for SEMANTIC or EXACT"),
         channel_filter: z.string().optional().describe("Limit search to a specific channel handle"),
         limit: z.number().optional().default(10).describe("Max results (default: 10)"),
@@ -944,6 +1314,36 @@ export function registerYouTubeTools(server: McpServer) {
           }
 
           return { content: [{ type: "text", text: resultText }] };
+        } else if (action === "TICKERS") {
+          const filterHandle = channel_filter
+            ? (channel_filter.startsWith("@") ? channel_filter.toLowerCase() : `@${channel_filter.toLowerCase()}`)
+            : null;
+
+          await sendTelemetry(`🔍 [TICKERS] Rufe Chunks mit Tickern ab (Channel: ${filterHandle || "alle"}, Tage: ${days_back || "alle"}, Limit: ${limit || 500})...`);
+
+          const { data, error } = await supabase.rpc("get_yt_chunks_with_tickers", {
+            p_agent_id: AGENT_ID,
+            p_channel_filter: filterHandle,
+            p_days_back: days_back || null,
+            p_limit: limit || 500,
+          });
+
+          if (error) throw error;
+          const count = data?.length || 0;
+          await sendTelemetry(`✅ [TICKERS] ${count} Chunks mit Tickern geladen.`);
+
+          if (!data || data.length === 0) {
+            return { content: [{ type: "text", text: "Keine Ergebnisse gefunden." }] };
+          }
+
+          if (dump_to_chat) {
+            await dumpYtResults("YouTube TICKERS search", data);
+            return { content: [{ type: "text", text: `${data.length} Blöcke an Chat gesendet. [STOP]` }] };
+          }
+
+          // TICKERS default should be full_text since we need to analyze tickers in context
+          const mode = return_mode === "snippets" ? "full_text" : return_mode;
+          return { content: [{ type: "text", text: formatYtResults(data, mode) }] };
         }
 
         throw new Error("Invalid action");
@@ -973,11 +1373,11 @@ function formatYtResults(data: any[], returnMode: string): string {
     // snippets (default)
     return data.map((d: any, i: number) => {
       const meta = d.metadata || {};
-      let snippet = d.content || "";
+      let content = d.content || "";
       // Strip context prefix for snippet view
-      snippet = snippet.replace(/^\[Kontext\].*?\n\n\[Inhalt\] /s, "");
-      if (snippet.length > 200) snippet = snippet.substring(0, 200) + "...";
-      return `[${i + 1}] Channel: ${meta.channel || "?"} | Video: ${meta.video_title || "?"} | ${meta.start_time || "?"}-${meta.end_time || "?"}\nTopic: ${meta.topic || "?"}\nSnippet: ${snippet}`;
+      content = content.replace(/^\[Kontext\].*?\n\n\[Inhalt\] /s, "");
+      const tickersStr = meta.tickers?.length ? meta.tickers.join(", ") : "None";
+      return `[${i + 1}] Channel: ${meta.channel || "?"} | Video: ${meta.video_title || "?"} | ${meta.start_time || "?"}-${meta.end_time || "?"}\nTopic: ${meta.topic || "?"}\nTickers: ${tickersStr}\nContent: ${content}`;
     }).join("\n\n");
   }
 }

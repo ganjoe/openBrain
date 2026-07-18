@@ -86,7 +86,18 @@ export async function extractMetadata(text: string, sendTelemetryMessage: boolea
   let d: any;
   let modelName = "unknown";
 
-  if (provider === "gemini" && GEMINI_API_KEY) {
+  if (provider && provider.startsWith("gemini") && GEMINI_API_KEY) {
+    let internalModel = "gemini-3-flash-preview";
+    if (provider === "gemini-pro") {
+      internalModel = "gemini-3.1-pro-preview";
+    } else if (provider === "gemini-3.5-flash") {
+      internalModel = "gemini-3.5-flash";
+    } else if (provider === "gemini-2.5-pro") {
+      internalModel = "gemini-2.5-pro";
+    } else if (provider === "gemini-2.5-flash") {
+      internalModel = "gemini-2.5-flash";
+    }
+
     let retries = 0;
     while (true) {
       if (signal?.aborted) throw new Error("Sync abgebrochen.");
@@ -97,7 +108,7 @@ export async function extractMetadata(text: string, sendTelemetryMessage: boolea
           "Authorization": `Bearer ${GEMINI_API_KEY}`
         },
         body: JSON.stringify({
-          model: "gemini-3-flash-preview",
+          model: internalModel,
           messages: [{ role: "system", content: systemPrompt }, { role: "user", content: text }],
           temperature: 0.1
         }),
@@ -122,7 +133,7 @@ export async function extractMetadata(text: string, sendTelemetryMessage: boolea
         throw new Error(`Gemini failed: ${res.status} - ${errText}`);
       }
       d = await res.json();
-      modelName = "gemini-3-flash";
+      modelName = internalModel;
       break;
     }
   } else {

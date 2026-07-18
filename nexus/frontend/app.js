@@ -283,6 +283,9 @@ function renderProviders() {
         <option value="local" ${currentProvider === 'local' ? 'selected' : ''}>Local</option>
         <option value="gemini" ${currentProvider === 'gemini' ? 'selected' : ''}>Gemini 3 Flash</option>
         <option value="gemini-pro" ${currentProvider === 'gemini-pro' ? 'selected' : ''}>Gemini 3.1 Pro (High)</option>
+        <option value="gemini-3.5-flash" ${currentProvider === 'gemini-3.5-flash' ? 'selected' : ''}>Gemini 3.5 Flash</option>
+        <option value="gemini-2.5-pro" ${currentProvider === 'gemini-2.5-pro' ? 'selected' : ''}>Gemini 2.5 Pro</option>
+        <option value="gemini-2.5-flash" ${currentProvider === 'gemini-2.5-flash' ? 'selected' : ''}>Gemini 2.5 Flash</option>
       </select>
     `;
     

@@ -94,7 +94,18 @@ export async function extractMetadata(text: string): Promise<Record<string, unkn
   let d: any;
   let modelName = "unknown";
 
-  if (provider === "gemini" && GEMINI_API_KEY) {
+  if (provider && provider.startsWith("gemini") && GEMINI_API_KEY) {
+    let internalModel = "gemini-3-flash-preview";
+    if (provider === "gemini-pro") {
+      internalModel = "gemini-3.1-pro-preview";
+    } else if (provider === "gemini-3.5-flash") {
+      internalModel = "gemini-3.5-flash";
+    } else if (provider === "gemini-2.5-pro") {
+      internalModel = "gemini-2.5-pro";
+    } else if (provider === "gemini-2.5-flash") {
+      internalModel = "gemini-2.5-flash";
+    }
+
     const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: { 
@@ -102,14 +113,14 @@ export async function extractMetadata(text: string): Promise<Record<string, unkn
         "Authorization": `Bearer ${GEMINI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "gemini-3-flash-preview",
+        model: internalModel,
         messages: [{ role: "system", content: systemPrompt }, { role: "user", content: text }],
         temperature: 0.1
       }),
     });
     if (!res.ok) throw new Error(`Gemini failed: ${res.status} - ${await res.text()}`);
     d = await res.json();
-    modelName = "gemini-3-flash";
+    modelName = internalModel;
   } else {
     const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
       method: "POST",

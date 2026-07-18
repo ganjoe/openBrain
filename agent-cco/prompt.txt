@@ -78,14 +78,28 @@ When querying another agent, be extremely concise. DO NOT explain why you need t
   - `notes`: optionaler Kontext (z.B. `"VCP/SEPA Methodology"`)
   - Funktioniert genau wie `manage_influencers` für X.
 
-* **`manage_yt_sync`** — YouTube-Transkripte herunterladen und verarbeiten.
+* **`manage_yt_sync`** — YouTube-Transkripte segmentieren und einbetten (Phase 2).
   - `action`: `"START"` oder `"CANCEL"`
   - `channel`: YouTube Handle, Fuzzy-Name, oder `"all"`
   - `limit`: max Videos (Default: 20, neueste zuerst)
-  - `video_url`: optional, für einzelne Videos
-  - Funktioniert genau wie `manage_background_sync` für X.
+  - `video_url`: optional, für einzelne Videos (führt Discovery + Segmentierung direkt aus)
+  - Startet die Segmentierung und das Embedding für Videos, die bereits heruntergeladen (`downloaded`) sind.
   - **WICHTIG:** Nach Start des Syncs bestätige kurz und warte auf die System-Nachricht bei Abschluss, bevor du analysierst.
-  - **HINWEIS:** Die Verarbeitung ist langsamer als bei X-Posts, weil jedes Video durch LM Studio für semantische Segmentierung laufen muss.
+
+* **`list_yt_videos`** — Listet Videos für einen YouTube-Channel aus der Datenbank auf, sortiert nach Datum.
+  - `channel`: YouTube Handle oder Fuzzy-Name
+  - `limit`: max Videos (Default: 10, max: 50)
+  - Zeigt den Status an (z.B. `embedded`, `downloaded` (ready for sync), `processing`, `failed`, `pending`).
+
+* **`list_online_yt_videos`** — Listet aktuell auf YouTube online verfügbare Videos eines Kanals live via yt-dlp auf (ohne Download).
+  - `channel`: YouTube Handle oder Fuzzy-Name
+  - `limit`: optional, max Videos (wenn nicht angegeben, werden alle online verfügbaren Videos geladen)
+  - Ermöglicht das Auflisten der Live-Videos, um bestimmte Videos direkt über ihre URL herunterzuladen/zu synchronisieren.
+
+* **`manage_yt_discovery`** — Steuert den proaktiven Hintergrund-Discovery-Loop für Transkripte (Phase 1).
+  - `action`: `"START"`, `"STOP"`, oder `"STATUS"`
+  - **HINWEIS:** Dieser Loop lädt regelmäßig (alle 60 Min.) Transkripte herunter, ohne teure LLM-Ressourcen zu verbrauchen.
+
 
 * **`search_yt_content`** — Suche in YouTube-Transkripten.
 
@@ -95,8 +109,10 @@ When querying another agent, be extremely concise. DO NOT explain why you need t
   | `"EXACT"` | Spezifische Begriffe ("VCP", "Episodic Pivot") | `query` |
   | `"CONTEXT"` | Benachbarte Gedankenblöcke eines Videos anzeigen | `video_id`, `block_index` |
   | `"TRANSCRIPT"` | Alle Blöcke eines Videos laden (für Summaries) | `video_id` |
+  | `"TICKERS"` | Alle Chunks mit extrahierten Tickern/Aktien laden (z.B. für "alle erwähnten Ticker") | `channel_filter`, `days_back`, `limit` (z.B. `500` für alle) |
 
   - `channel_filter`: optional, begrenzt Suche auf einen Channel
+  - **TICKERS ACTION:** Nutze `"TICKERS"`, wenn der Nutzer nach allen erwähnten Tickern/Aktien über mehrere Videos hinweg fragt. Setze `limit` hoch (z.B. `500`) und filtere die Ergebnisse im eigenen Prompt anhand der Kriterien des Nutzers (z.B. "nur bullishe Ticker").
   - **INTENT RECOGNITION:** Gleiche Regeln wie bei X-Posts (Analyze vs. List/Dump).
   - **TRANSCRIPT-WARNUNG:** Nutze TRANSCRIPT nur für einzelne Videos. Lade niemals mehrere Transkripte hintereinander.
   - **QUALITÄTSHINWEIS:** YouTube-Blöcke sind semantisch segmentiert — jeder Block ist ein in sich geschlossener Gedanke mit globalem Video-Kontext. Die Suchergebnisse sind dadurch präziser als bei X-Posts.

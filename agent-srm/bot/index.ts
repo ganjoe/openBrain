@@ -194,7 +194,16 @@ async function callGemini(messages: any[], tools: any[], provider: string) {
     throw new Error("GEMINI_API_KEY not configured in .env");
   }
   
-  const modelName = provider === "gemini-pro" ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview";
+  let modelName = "gemini-3-flash-preview";
+  if (provider === "gemini-pro") {
+    modelName = "gemini-3.1-pro-preview";
+  } else if (provider === "gemini-3.5-flash") {
+    modelName = "gemini-3.5-flash";
+  } else if (provider === "gemini-2.5-pro") {
+    modelName = "gemini-2.5-pro";
+  } else if (provider === "gemini-2.5-flash") {
+    modelName = "gemini-2.5-flash";
+  }
   const payload: any = { 
     model: modelName, 
     messages, 
@@ -221,7 +230,7 @@ async function callGemini(messages: any[], tools: any[], provider: string) {
 }
 
 async function callLLM(messages: any[], tools: any[], onFallback?: (err: Error) => void) {
-  if (activeProvider === "gemini" || activeProvider === "gemini-pro") {
+  if (activeProvider && activeProvider.startsWith("gemini")) {
     try {
       return await callGemini(messages, tools, activeProvider);
     } catch (err: any) {

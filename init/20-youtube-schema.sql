@@ -25,9 +25,12 @@ CREATE TABLE IF NOT EXISTS yt_videos (
   title             TEXT NOT NULL,
   duration          INTEGER,                     -- Seconds
   published_at      TIMESTAMPTZ,
-  status            TEXT DEFAULT 'pending',      -- pending → processing → embedded → failed
+  status            TEXT DEFAULT 'pending',      -- pending → downloaded → processing → embedded → failed
   chunk_count       INTEGER DEFAULT 0,
   error_msg         TEXT,                        -- Last error (for retry)
+  transcript        TEXT,                        -- Raw transcript text (downloaded phase)
+  language          TEXT DEFAULT 'en',           -- Detected language ('en', 'de', etc.)
+
   -- Future fields (Phase 2/3, created now to avoid migration later):
   transcript_source TEXT DEFAULT 'auto_captions', -- 'auto_captions' | 'whisper' (Phase 2)
   media_path        TEXT,                        -- Path to downloaded video file (Phase 2)
