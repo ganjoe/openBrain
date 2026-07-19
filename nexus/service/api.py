@@ -122,6 +122,7 @@ async def get_agents():
 
     seen.discard("nexus")  # internal nexus system agent (Redundant: has its own button)
     seen.discard("all")    # discard broadcast address (Breaks hierarchy)
+    seen.discard("yt_segmentation")  # YouTube chunking is a setting, not an agent
     return sorted(seen)
 
 

@@ -40,15 +40,45 @@ let activeProvider = "local"; // Dynamically updated via Nexus
 let contextLimit = 10; // Dynamically updated via Nexus
 
 // ─────────────────────────────────────────────────────────────
-// 3. System prompt (mounted via Docker volume)
+// 3. System prompt (mounted via Docker volume, hot-reloaded on every LLM call)
 // ─────────────────────────────────────────────────────────────
 let SYSTEM_PROMPT = `Du bist ${config.agent.name}. Bitte mounte eine prompt.txt.`;
 const PROMPT_PATH = process.env.PROMPT_PATH || "/app/prompt.txt";
-if (fs.existsSync(PROMPT_PATH)) {
-  SYSTEM_PROMPT = fs.readFileSync(PROMPT_PATH, "utf-8");
-} else {
-  console.warn(`⚠️  No prompt.txt at ${PROMPT_PATH} — using fallback.`);
+let promptMtimeMs = 0;
+
+/**
+ * Load the system prompt from disk, cached by mtime. Called on every LLM
+ * invocation so editing prompt.txt on the host (and waiting at most one ReAct
+ * loop) is enough to take effect — no container restart required.
+ */
+function loadSystemPrompt(): string {
+  try {
+    const stat = fs.statSync(PROMPT_PATH);
+    if (stat.mtimeMs !== promptMtimeMs) {
+      const fresh = fs.readFileSync(PROMPT_PATH, "utf-8");
+      if (fresh.length > 0) {
+        SYSTEM_PROMPT = fresh;
+        promptMtimeMs = stat.mtimeMs;
+        console.log(
+          `[prompt] Reloaded ${PROMPT_PATH} (${SYSTEM_PROMPT.length} chars, ` +
+            `mtime=${new Date(promptMtimeMs).toISOString()})`,
+        );
+      }
+    }
+  } catch (err: any) {
+    if (!SYSTEM_PROMPT || SYSTEM_PROMPT.startsWith("Du bist ")) {
+      SYSTEM_PROMPT = `Du bist ${config.agent.name}. Bitte mounte eine prompt.txt.`;
+    }
+    // First boot without a prompt: warn once, then stay silent.
+    if (promptMtimeMs === 0) {
+      console.warn(`⚠️  No prompt.txt at ${PROMPT_PATH} — using fallback.`);
+    }
+  }
+  return SYSTEM_PROMPT;
 }
+
+// Initial load at boot (logs nothing if missing).
+loadSystemPrompt();
 
 // ─────────────────────────────────────────────────────────────
 // 4. Pending cross-agent MCP request callbacks
@@ -306,7 +336,7 @@ async function handleIncoming(
   const history = await historyPromise;
   const currentDateTime = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
   const messages: any[] = [
-    { role: "system", content: `${SYSTEM_PROMPT}\n\nAktuelle Zeit: ${currentDateTime}` },
+    { role: "system", content: `${loadSystemPrompt()}\n\nAktuelle Zeit: ${currentDateTime}` },
     ...history,
     { role: "user", content: text },
   ];

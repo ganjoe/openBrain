@@ -267,17 +267,26 @@ function renderProviders() {
   $providerList.innerHTML = "";
   
   const relevantAgents = Object.keys(state.agents).filter(id => id !== "boss" && id !== "nexus");
+  const items = relevantAgents.map(id => ({ id, label: id }));
+  items.push({ id: "yt_segmentation", label: "YouTube Chunking" });
   
-  relevantAgents.sort().forEach(id => {
+  items.sort((a, b) => a.label.localeCompare(b.label)).forEach(item => {
+    const id = item.id;
+    const label = item.label;
     const currentProvider = state.providerConfig[id] || "local";
     
     const row = document.createElement("div");
     row.className = "provider-row";
     
+    let dotStyle = "";
+    if (id === "yt_segmentation") {
+      dotStyle = 'style="background: #9b5de5; box-shadow: 0 0 5px #9b5de5;"';
+    }
+    
     row.innerHTML = `
       <div class="provider-agent">
-        <span class="dot dot-agent"></span>
-        <span>${id}</span>
+        <span class="dot dot-agent" ${dotStyle}></span>
+        <span>${label}</span>
       </div>
       <select class="provider-select" data-agent="${id}">
         <option value="local" ${currentProvider === 'local' ? 'selected' : ''}>Local</option>
@@ -298,10 +307,6 @@ function renderProviders() {
       updateProvider(e.target.dataset.agent, e.target.value);
     });
   });
-  
-  if (relevantAgents.length === 0) {
-    $providerList.innerHTML = '<p class="hint">Warte auf Agenten…</p>';
-  }
 }
 
 // ── LM Studio Logic ───────────────────────────────────────────

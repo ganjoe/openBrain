@@ -72,6 +72,35 @@ When querying another agent, be extremely concise. DO NOT explain why you need t
 
 **7. YouTube-Transkripte**
 
+```
+★★★ AUSWAHLREGEL FÜR YT-IMPORTS (VOR jedem Tool-Call prüfen!) ★★★
+
+Schritt 1: ENTHÄLT die User-Nachricht YouTube-URLs?
+  → Pattern: /(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)[a-zA-Z0-9_-]{11}/
+  → JA: NUTZE manage_yt_sync(action="START", video_urls=[alle extrahierten URLs])
+        NIEMALS channel=, NIEMALS limit=, NIEMALS manage_yt_import.
+        Beispiel: User schickt 50 URLs in Backticks → video_urls=[die 50 URLs].
+
+Schritt 2: HAT der User ein Datums-Wort? ("seit 2026-01-01", "die letzten 50",
+                                   "ab letztem Monat", "von [Channel] seit [Datum]")
+  → JA: NUTZE manage_yt_import(channel="...", since="YYYY-MM-DD", limit=N).
+        Das Tool holt die URLs selbst, du musst sie NICHT extrahieren.
+
+Schritt 3: SONST (User sagt nur "sync @channel" ohne URLs/Datum)
+  → manage_yt_sync(action="START", channel="@handle", limit=20)
+    (verarbeitet nur bereits in DB befindliche `downloaded` Videos).
+```
+
+* **`manage_yt_import`** — Atomischer Bulk-Import mit Datumsbereich.
+  - `channel`: YouTube Handle, Fuzzy-Name, oder URL
+  - `since`: ISO-Datum `YYYY-MM-DD` (Default: 30 Tage zurück)
+  - `until`: ISO-Datum `YYYY-MM-DD` (Default: heute)
+  - `limit`: max Videos im Range (Default: 20, max: 100, neueste zuerst)
+  - `force`: bool (Default: false). Falls true: bereits `embedded` Videos werden re-segmentiert.
+  - Macht intern: yt-dlp mit `--dateafter`/`--datebefore` → Worker-Pool mit Concurrency 3 → Discovery + Segmentierung + Embedding für jedes Video.
+  - Identische Telemetrie wie `video_urls=[]` (Worker-Tags, Heartbeat, Per-Stage-Timings, SYNC_SESSION_PAYLOAD am Ende).
+  - Use-Case: "lade alle Videos von @stockbeevideos (max 50) seit Jahresbeginn" → `manage_yt_import(channel="@stockbeevideos", since="2026-01-01", limit=50)`.
+
 * **`manage_yt_channels`** — YouTube-Channels verwalten.
   - `action`: `"LIST"`, `"ADD"`, oder `"REMOVE"`
   - `channel`: YouTube Handle (z.B. `@MarkMinervini`) oder Channel-URL
@@ -80,10 +109,15 @@ When querying another agent, be extremely concise. DO NOT explain why you need t
 
 * **`manage_yt_sync`** — YouTube-Transkripte segmentieren und einbetten (Phase 2).
   - `action`: `"START"` oder `"CANCEL"`
-  - `channel`: YouTube Handle, Fuzzy-Name, oder `"all"`
-  - `limit`: max Videos (Default: 20, neueste zuerst)
-  - `video_url`: optional, für einzelne Videos (führt Discovery + Segmentierung direkt aus)
-  - Startet die Segmentierung und das Embedding für Videos, die bereits heruntergeladen (`downloaded`) sind.
+  - `channel`: YouTube Handle, Fuzzy-Name, oder `"all"`. **WICHTIG:** `"all"` bedeutet "alle verwalteten Kanäle, NUR die Videos, die bereits in `yt_videos` mit `status="downloaded"` sind" — KEIN Fetch von neuen Online-Videos. Für "lade alle Online-Videos herunter" muss eine URL-Liste mit `video_urls=[]` übergeben werden.
+  - `limit`: max Videos (Default: 20, neueste zuerst; nur Channel-Modus)
+  - `video_url`: optional, EIN einzelnes YouTube-Video (Discovery + Sync direkt in einem Schritt)
+  - `video_urls`: optional, **ARRAY** von YouTube-URLs für **BULK-IMPORT** (parallele Verarbeitung, Worker-Pool mit Concurrency 3, Default; konfigurierbar via `YT_BULK_CONCURRENCY` env).
+    - **WICHTIG:** Wenn der User eine Liste von Videos gibt (z. B. 40 Titel/Links), NUTZE DIESEN PARAMETER. Nicht 40× `video_url` aufrufen.
+    - Dedupliziert die Liste intern, so dass identische Listen nicht doppelt verarbeitet werden.
+    - Das System sendet pro Video Fortschritts-Telemetrie (✅/❌) und triggert am Ende den CCO mit allen Block-IDs.
+  - `batch_key`: nur für CANCEL — der vom Bulk-START zurückgegebene Key (`bulk:<hash>`)
+  - **WICHTIG (Channel-Modus):** Ohne vorherigen `manage_yt_discovery`-Lauf findet der Sync nichts. Falls der Channel keine `downloaded`-Videos hat, sofort `manage_yt_discovery` starten ODER dem User raten, `video_urls` zu nutzen, falls er eine konkrete Liste hat.
   - **WICHTIG:** Nach Start des Syncs bestätige kurz und warte auf die System-Nachricht bei Abschluss, bevor du analysierst.
 
 * **`list_yt_videos`** — Listet Videos für einen YouTube-Channel aus der Datenbank auf, sortiert nach Datum.
@@ -95,6 +129,8 @@ When querying another agent, be extremely concise. DO NOT explain why you need t
   - `channel`: YouTube Handle oder Fuzzy-Name
   - `limit`: optional, max Videos (wenn nicht angegeben, werden alle online verfügbaren Videos geladen)
   - Ermöglicht das Auflisten der Live-Videos, um bestimmte Videos direkt über ihre URL herunterzuladen/zu synchronisieren.
+  - **WICHTIG (Anker):** Die Response enthält am Ende eine Zeile `URLs: ["...", "..."]` mit allen kanonischen URLs. Diese URLs sind der EINGABEWERT für `video_urls=[]` in `manage_yt_sync`. Niemals die URLs aus deiner eigenen formatierten Zusammenfassung ziehen — die `URLs:`-Zeile ist die Single Source of Truth.
+  - **WICHTIG (Anti-Halluzination):** Wenn der User direkt nach dem Anzeigen dieser Liste sagt "lade alle herunter" / "importiere alle" / "verarbeite die Liste", NUTZE `video_urls=[]` mit den URLs aus der `URLs:`-Zeile. NIEMALS `channel="all"` — das verarbeitet nur bereits in der DB befindliche Videos und ist ein No-Op für eine frische Online-Liste.
 
 * **`manage_yt_discovery`** — Steuert den proaktiven Hintergrund-Discovery-Loop für Transkripte (Phase 1).
   - `action`: `"START"`, `"STOP"`, oder `"STATUS"`

@@ -52,7 +52,7 @@ export async function getEmbeddingsBatch(texts: string[]): Promise<number[][]> {
 }
 
 // --- Provider helper ---
-export async function getActiveProvider(): Promise<string> {
+export async function getActiveProvider(key: string = AGENT_ID): Promise<string> {
   try {
     const { data } = await supabase
       .from("system_settings")
@@ -60,11 +60,11 @@ export async function getActiveProvider(): Promise<string> {
       .eq("key", "provider_config")
       .single();
     
-    if (data?.value && data.value[AGENT_ID]) {
-      return data.value[AGENT_ID];
+    if (data?.value && data.value[key]) {
+      return data.value[key];
     }
   } catch (e) {
-    console.warn("[Provider] Failed to fetch config, defaulting to local.");
+    console.warn(`[Provider] Failed to fetch config for ${key}, defaulting to local.`);
   }
   return "local";
 }

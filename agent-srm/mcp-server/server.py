@@ -15,7 +15,6 @@ import sys
 sys.path.append("/app")
 from backtesting.engine import BacktestEngine
 from backtesting.data_loader import load_watchlist, load_ohlcv, load_bt_config
-from backtesting.winner_attribution import attribute_winner_performance
 
 TELEMETRY_URL = os.environ.get("TELEMETRY_URL", "http://nexus-service:7734/api/send")
 MQTT_BROKER_HOST = os.environ.get("MQTT_BROKER_HOST", "nexus-broker")
@@ -258,17 +257,6 @@ async def handle_mcp_request(req: JsonRpcRequest):
                                 "content": {"type": "string", "description": "Optional: The content (ticker list, newline separated) when using CREATE action."}
                             },
                             "required": ["action"]
-                        }
-                    },
-                    {
-                        "name": "attribute_winner_performance",
-                        "description": "Analyze a finished backtest run and attribute the winners to ticker-level features. Computes per-ticker Parquet-derived features (avg_volume_20d, atr_pct, price_level, vol_of_vol, adx_proxy, setup_density), joins them with per-ticker performance (win_rate, avg_r_multiple, total_pnl), and returns a Spearman rank-correlation matrix plus a winner-vs-loser median-split group comparison. Use this AFTER a run_backtest to investigate which stock characteristics correlate with profitability in this strategy.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "run_id": {"type": "integer", "description": "The bt_runs.run_id to analyze. Must reference a run with status='completed' and at least one row in bt_trades."}
-                            },
-                            "required": ["run_id"]
                         }
                     }
                 ]
@@ -986,66 +974,5 @@ async def handle_mcp_request(req: JsonRpcRequest):
                 
             except Exception as e:
                 return error_response(req.id, f"Error executing batch optimization: {str(e)}")
-
-        elif tool_name == "attribute_winner_performance":
-            try:
-                run_id = int(args.get("run_id"))
-                if not run_id:
-                    return error_response(req.id, "run_id is required for attribute_winner_performance")
-
-                result = attribute_winner_performance(supabase, run_id)
-                if "error" in result:
-                    return error_response(req.id, result["error"])
-
-                n_tickers = result.get("n_tickers", 0)
-                top_assoc = result.get("strongest_associations", [])[:5]
-                assoc_lines = []
-                for a in top_assoc:
-                    rho = a.get("rho")
-                    p = a.get("p")
-                    assoc_lines.append(
-                        f"  - {a['feature']} ↔ {a['metric']}: rho={rho:+.3f} (p={p if p is not None else 'n/a'})"
-                    )
-                assoc_text = "\n".join(assoc_lines) if assoc_lines else "  (keine)"
-
-                split = result.get("winner_vs_loser_split", {})
-                upper = split.get("upper_half", [])
-                lower = split.get("lower_half", [])
-
-                summary = (
-                    f"### Winner Attribution für Run #{run_id}\n"
-                    f"- Ticker im Run: **{n_tickers}** | Trades gesamt: **{result.get('n_trades', 0)}**\n"
-                    f"- Headline: Win-Rate Ø {result['headline_metrics']['win_rate_mean']:.1f}%, "
-                    f"Avg-R {result['headline_metrics']['avg_r_multiple_mean']:+.2f}, "
-                    f"Total PnL {result['headline_metrics']['total_pnl_sum']:+,.2f}\n"
-                    f"- **Top Assoziationen (|Spearman rho|)**:\n{assoc_text}\n"
-                    f"- **Median-Split auf total_pnl**:\n"
-                    f"  - Winner (obere Hälfte): {upper}\n"
-                    f"  - Loser (untere Hälfte): {lower}\n"
-                )
-                if result.get("warning"):
-                    summary += f"\n⚠️ **Caveat:** {result['warning']}\n"
-
-                telemetry_msg = (
-                    f"🔬 **Winner Attribution für Run #{run_id}**\n"
-                    f"Ticker: {n_tickers} | Top-Assoziation: "
-                    f"{top_assoc[0]['feature']}↔{top_assoc[0]['metric']} rho={top_assoc[0]['rho']:+.3f}"
-                    if top_assoc
-                    else f"🔬 Winner Attribution für Run #{run_id}: keine Assoziationen"
-                )
-                send_telemetry(telemetry_msg)
-
-                return {
-                    "jsonrpc": "2.0",
-                    "id": req.id,
-                    "result": {
-                        "content": [
-                            {"type": "text", "text": summary + "\n\n```json\n" + json.dumps(result, indent=2, default=str) + "\n```"}
-                        ]
-                    }
-                }
-
-            except Exception as e:
-                return error_response(req.id, f"Error in winner attribution: {str(e)}")
-
+                
         return error_response(req.id, f"Unknown tool: {tool_name}")

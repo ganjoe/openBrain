@@ -1,12 +1,41 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { supabase, getEmbeddingsBatch, sendTelemetry, LM_STUDIO_URL, AGENT_ID } from "./shared.ts";
+import { supabase, getEmbeddingsBatch, sendTelemetry, LM_STUDIO_URL, AGENT_ID, getActiveProvider, GEMINI_API_KEY, OLLAMA_EMBED_MODEL } from "./shared.ts";
 
 // --- Constants ---
 const YT_COOKIES_PATH = "/app/cookies.txt";
+// Concurrency for video_urls bulk import. Tunable via env.
+const YT_BULK_CONCURRENCY = parseInt(Deno.env.get("YT_BULK_CONCURRENCY") || "3");
 
 // --- In-Memory Sync Lock (like activeSyncControllers in x.ts) ---
 export const activeYtSyncControllers = new Map<string, AbortController>();
+
+// --- Per-stage timings for a single video's processing pipeline ---
+// Populated by processVideo() when called with a workerCtx.timings bag.
+type VideoTimings = {
+  vttMs?: number;
+  segmentationMs?: number;
+  embeddingMs?: number;
+  insertMs?: number;
+};
+
+// Optional context for parallel (bulk) processing.
+type WorkerCtx = {
+  workerId?: number;
+  timings?: VideoTimings;
+};
+
+// --- Deterministic Hash for bulk batch keys ---
+// djb2 produces a stable, short hex string from the sorted URL list, so
+// re-submitting the same set of URLs hits the existing in-memory lock.
+async function djb2(input: string): Promise<string> {
+  let hash = 5381;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0;
+  }
+  // Convert to unsigned 32-bit hex
+  return ("00000000" + (hash >>> 0).toString(16)).slice(-8);
+}
 
 // --- In-Memory Discovery Loop State ---
 export let ytDiscoveryAbortController: AbortController | null = null;
@@ -112,10 +141,25 @@ function determineTargetLang(meta: any): string {
 }
 
 /**
+ * Resolves a channel handle from yt-dlp metadata.
+ */
+function extractHandleFromMeta(meta: any): string {
+  const handle = meta.channel_url?.match(/@[\w.-]+/)?.[0]?.toLowerCase()
+    || (meta.uploader_id?.startsWith("@") ? meta.uploader_id.toLowerCase() : "")
+    || `@${(meta.channel || meta.uploader || "unknown").toLowerCase().replace(/^@/, "").replace(/\s+/g, "")}`;
+  return handle;
+}
+
+/**
  * Uses yt-dlp to list videos from a channel.
  * Returns array of { videoId, title, duration, publishedAt, targetLang }.
  */
-async function getChannelVideos(channelUrl: string, limit?: number): Promise<Array<{
+async function getChannelVideos(
+  channelUrl: string,
+  limit?: number,
+  dateAfter?: string, // ISO YYYY-MM-DD (will be converted to YYYYMMDD for yt-dlp)
+  dateBefore?: string, // ISO YYYY-MM-DD
+): Promise<Array<{
   videoId: string;
   title: string;
   duration: number;
@@ -137,6 +181,13 @@ async function getChannelVideos(channelUrl: string, limit?: number): Promise<Arr
   }
   if (limit !== undefined) {
     args.push("--playlist-end", String(limit));
+  }
+  if (dateAfter) {
+    // ISO YYYY-MM-DD → YYYYMMDD for yt-dlp
+    args.push("--dateafter", dateAfter.replace(/-/g, ""));
+  }
+  if (dateBefore) {
+    args.push("--datebefore", dateBefore.replace(/-/g, ""));
   }
   args.push(target);
 
@@ -301,27 +352,86 @@ async function segmentTranscript(plaintext: string, targetLang: string, signal?:
   }
 
   const start = Date.now();
+  const provider = await getActiveProvider("yt_segmentation");
+  let d: any;
 
-  const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "local-model",
-      messages: [
-        { role: "system", content: promptText },
-        { role: "user", content: plaintext },
-      ],
-      temperature: 0.1,
-    }),
-    signal: signal,
-  });
+  if (provider && provider.startsWith("gemini") && GEMINI_API_KEY) {
+    let internalModel = "gemini-3-flash-preview";
+    if (provider === "gemini-pro") {
+      internalModel = "gemini-3.1-pro-preview";
+    } else if (provider === "gemini-3.5-flash") {
+      internalModel = "gemini-3.5-flash";
+    } else if (provider === "gemini-2.5-pro") {
+      internalModel = "gemini-2.5-pro";
+    } else if (provider === "gemini-2.5-flash") {
+      internalModel = "gemini-2.5-flash";
+    }
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`LM Studio segmentation failed (${res.status}): ${errText.substring(0, 200)}`);
+    let retries = 0;
+    while (true) {
+      if (signal?.aborted) throw new Error("Sync abgebrochen.");
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${GEMINI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: internalModel,
+          messages: [
+            { role: "system", content: promptText },
+            { role: "user", content: plaintext },
+          ],
+          temperature: 0.1,
+          response_format: { type: "json_object" }
+        }),
+        signal: signal,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        if (res.status === 503) {
+          retries++;
+          await sendTelemetry(`[Gemini Chunker] 503 Error. Warte 5 Sekunden (Versuch ${retries})...`);
+          await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(resolve, 5000);
+            if (signal) {
+              signal.addEventListener('abort', () => {
+                clearTimeout(timeout);
+                reject(new Error("Sync abgebrochen."));
+              }, { once: true });
+            }
+          });
+          continue;
+        }
+        throw new Error(`Gemini chunker failed (${res.status}): ${errText}`);
+      }
+      d = await res.json();
+      break;
+    }
+  } else {
+    // Local LM Studio
+    const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "local-model",
+        messages: [
+          { role: "system", content: promptText },
+          { role: "user", content: plaintext },
+        ],
+        temperature: 0.1,
+      }),
+      signal: signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`LM Studio segmentation failed (${res.status}): ${errText.substring(0, 200)}`);
+    }
+    d = await res.json();
   }
 
-  const d = await res.json();
   const duration = (Date.now() - start) / 1000;
   const tokens = d.usage?.total_tokens || 0;
   const ts = duration > 0 ? (tokens / duration).toFixed(1) : "0.0";
@@ -346,7 +456,8 @@ async function segmentTranscript(plaintext: string, targetLang: string, signal?:
 
 /**
  * Processes a single video: download VTT → plaintext → LLM segmentation → embedding → DB insert.
- * Returns the number of chunks saved.
+ * Returns the chunk IDs. Optionally tags all telemetry with a worker prefix
+ * and records per-stage timings (passed in via workerCtx.timings).
  */
 async function processVideo(
   videoId: string,
@@ -356,9 +467,16 @@ async function processVideo(
   targetLang: string,
   videoIndex: number,
   totalVideos: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  workerCtx?: WorkerCtx,
 ): Promise<string[]> {
   const savedChunkIds: string[] = [];
+  const w = workerCtx?.workerId;
+  // Unified tag: "[W2 3/40]" in parallel mode, "[3/40]" in sequential mode.
+  const tag = w !== undefined
+    ? `[W${w} ${videoIndex}/${totalVideos}]`
+    : `[${videoIndex}/${totalVideos}]`;
+  const tm = workerCtx?.timings;
 
   // 1. Update status to processing
   await supabase.from("yt_videos").update({ status: "processing" }).eq("video_id", videoId);
@@ -375,29 +493,33 @@ async function processVideo(
 
   if (dbError || !plaintext) {
     // Fallback: Download VTT and convert
-    await sendTelemetry(`📥 [${videoIndex}/${totalVideos}] Transkript nicht in DB für "${videoTitle}". Lade VTT...`);
+    const vttStart = Date.now();
+    await sendTelemetry(`📥 ${tag} Transkript nicht in DB für "${videoTitle}". Lade VTT...`);
     const vttContent = await downloadVtt(videoId, detectedLang);
     if (!vttContent) {
       await supabase.from("yt_videos").update({
         status: "failed",
         error_msg: "Keine Auto-Captions verfügbar",
       }).eq("video_id", videoId);
-      await sendTelemetry(`⚠️ [${videoIndex}/${totalVideos}] Keine Untertitel für "${videoTitle}" — übersprungen.`);
+      await sendTelemetry(`⚠️ ${tag} Keine Untertitel für "${videoTitle}" — übersprungen.`);
       return [];
     }
     plaintext = vttToPlaintext(vttContent);
+    if (tm) tm.vttMs = Date.now() - vttStart;
     // save to DB for future reference
     await supabase.from("yt_videos").update({ transcript: plaintext, language: detectedLang }).eq("video_id", videoId);
   }
 
   if (signal?.aborted) throw new Error("Sync abgebrochen.");
 
-  await sendTelemetry(`📥 [${videoIndex}/${totalVideos}] Transkript geladen: ${plaintext.length} Zeichen (Sprache: ${detectedLang}) → LLM-Segmentierung...`);
+  await sendTelemetry(`📥 ${tag} Transkript geladen: ${plaintext.length} Zeichen (Sprache: ${detectedLang}) → LLM-Segmentierung...`);
 
   // 4. LLM Segmentation
-  await sendTelemetry(`🧠 [${videoIndex}/${totalVideos}] Segmentiere Transkript via LM Studio für "${videoTitle}"...`);
+  await sendTelemetry(`🧠 ${tag} Segmentiere Transkript via LM Studio/Gemini für "${videoTitle}"...`);
+  const segStart = Date.now();
   const { result: segmentation, duration: segDuration, tokens: segTokens, ts: segSpeed } = await segmentTranscript(plaintext, detectedLang, signal);
-  await sendTelemetry(`🧠 [${videoIndex}/${totalVideos}] Segmentierung abgeschlossen: ${segmentation.blocks.length} Blöcke extrahiert (Dauer: ${segDuration.toFixed(1)}s | Speed: ${segSpeed} t/s).`);
+  if (tm) tm.segmentationMs = Date.now() - segStart;
+  await sendTelemetry(`🧠 ${tag} Segmentierung abgeschlossen: ${segmentation.blocks.length} Blöcke extrahiert (Dauer: ${segDuration.toFixed(1)}s | Speed: ${segSpeed} t/s).`);
 
   if (signal?.aborted) throw new Error("Sync abgebrochen.");
 
@@ -435,17 +557,19 @@ async function processVideo(
   }
 
   // 6. Batch Embedding via Ollama
-  await sendTelemetry(`⚡ [${videoIndex}/${totalVideos}] Generiere ${augmentedTexts.length} Vektoren (Embeddings) via Ollama...`);
+  await sendTelemetry(`⚡ ${tag} Generiere ${augmentedTexts.length} Vektoren (Embeddings) via Ollama...`);
   const embedStart = Date.now();
   const embeddings = await getEmbeddingsBatch(augmentedTexts);
   const embedDuration = (Date.now() - embedStart) / 1000;
+  if (tm) tm.embeddingMs = Date.now() - embedStart;
   batchToInsert.forEach((item, idx) => {
     item.embedding = embeddings[idx];
   });
-  await sendTelemetry(`⚡ [${videoIndex}/${totalVideos}] Vektoren generiert in ${embedDuration.toFixed(1)}s (${(embedDuration / augmentedTexts.length).toFixed(2)}s pro Block).`);
+  await sendTelemetry(`⚡ ${tag} Vektoren generiert in ${embedDuration.toFixed(1)}s (${(embedDuration / augmentedTexts.length).toFixed(2)}s pro Block, Modell: ${OLLAMA_EMBED_MODEL || "?"}).`);
 
   // 7. Insert into agent_workspace
-  await sendTelemetry(`💾 [${videoIndex}/${totalVideos}] Speichere ${augmentedTexts.length} Blöcke in der Datenbank...`);
+  await sendTelemetry(`💾 ${tag} Speichere ${augmentedTexts.length} Blöcke in der Datenbank...`);
+  const insertStart = Date.now();
   const { data: upsertedRows, error: upsertError } = await supabase
     .from("agent_workspace")
     .insert(batchToInsert)
@@ -460,6 +584,8 @@ async function processVideo(
       if (row?.id) savedChunkIds.push(row.id);
     }
   }
+  const insertMs = Date.now() - insertStart;
+  if (tm) tm.insertMs = insertMs;
 
   // 8. Update yt_videos status
   const { error: statusError } = await supabase.from("yt_videos").update({
@@ -469,15 +595,89 @@ async function processVideo(
   }).eq("video_id", videoId);
   if (statusError) console.error(`[YT] yt_videos status update failed:`, statusError);
 
-  await sendTelemetry(`✅ [${videoIndex}/${totalVideos}] "${videoTitle}" erfolgreich verarbeitet (${segmentation.blocks.length} Blöcke).`);
+  await sendTelemetry(
+    `✅ ${tag} "${videoTitle}" fertig — ` +
+      `${segmentation.blocks.length} Blöcke | VTT: ${(tm?.vttMs ? tm.vttMs / 1000 : 0).toFixed(1)}s | ` +
+      `Seg: ${(segDuration).toFixed(1)}s (${segSpeed} t/s) | ` +
+      `Emb: ${embedDuration.toFixed(1)}s | Ins: ${(insertMs / 1000).toFixed(1)}s`,
+  );
 
   return savedChunkIds;
 }
 
 /**
- * Main background sync function. Processes all new videos for a channel.
- * Mirrors runBackgroundSync() in x.ts.
+ * Resolves a YouTube URL to a normalized video record + its channel handle.
+ * Ensures the channel and video rows exist in the DB (idempotent upsert).
+ * Used by both single-URL mode and bulk video_urls[] mode.
  */
+export async function prepareVideoFromUrl(
+  videoUrl: string,
+  signal?: AbortSignal,
+): Promise<{
+  video: { videoId: string; title: string; duration: number; publishedAt: string; targetLang: string };
+  channelHandle: string;
+}> {
+  if (signal?.aborted) throw new Error("Sync abgebrochen.");
+  const videoIdMatch = videoUrl.match(/(?:v=|youtu\.be\/|\/shorts\/)([a-zA-Z0-9_-]{11})/);
+  if (!videoIdMatch) throw new Error(`Ungültige YouTube-URL: ${videoUrl}`);
+  const videoId = videoIdMatch[1];
+
+  const cmd = new Deno.Command("yt-dlp", {
+    args: ["--cookies", YT_COOKIES_PATH, "--dump-json", "--skip-download", videoUrl],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const output = await cmd.output();
+  if (!output.success) {
+    const errText = new TextDecoder().decode(output.stderr);
+    throw new Error(`yt-dlp metadata fetch failed for ${videoUrl}: ${errText.substring(0, 200)}`);
+  }
+  const meta = JSON.parse(new TextDecoder().decode(output.stdout));
+
+  const channelHandle = extractHandleFromMeta(meta);
+  const publishedAt = meta.upload_date
+    ? `${meta.upload_date.substring(0, 4)}-${meta.upload_date.substring(4, 6)}-${meta.upload_date.substring(6, 8)}T00:00:00Z`
+    : new Date().toISOString();
+  const targetLang = determineTargetLang(meta);
+
+  // Ensure channel row exists
+  const { data: existingChannel } = await supabase
+    .from("yt_channels")
+    .select("handle")
+    .eq("handle", channelHandle)
+    .single();
+  if (!existingChannel) {
+    await supabase.from("yt_channels").insert({
+      handle: channelHandle,
+      channel_id: meta.channel_id || "",
+      title: meta.channel || meta.uploader || "",
+      is_active: true,
+    });
+  }
+
+  // Ensure video row exists with status=downloaded
+  await supabase.from("yt_videos").upsert({
+    video_id: videoId,
+    channel: channelHandle,
+    title: meta.title || "Unknown",
+    status: "downloaded",
+    duration: meta.duration || 0,
+    published_at: publishedAt,
+    language: targetLang,
+  });
+
+  return {
+    video: {
+      videoId,
+      title: meta.title || "Unknown",
+      duration: meta.duration || 0,
+      publishedAt,
+      targetLang,
+    },
+    channelHandle,
+  };
+}
+
 /**
  * Phase 1: Proactively discover new videos and download their transcripts (fast).
  */
@@ -516,7 +716,7 @@ export async function runYtDiscovery(
         targetLang: determineTargetLang(meta),
       }];
 
-      const channelHandle = meta.channel?.startsWith("@") ? meta.channel.toLowerCase() : `@${(meta.channel || meta.uploader || "unknown").toLowerCase()}`;
+      const channelHandle = extractHandleFromMeta(meta);
       channel = channelHandle;
 
       const { data: existingChannel } = await supabase
@@ -661,79 +861,318 @@ export async function runYtDiscoveryLoop() {
 }
 
 /**
+ * Bulk-import a list of video URLs (Phase 1 + Phase 2 combined).
+ * Each URL is prepared (yt-dlp metadata + channel/video row creation) and
+ * processed (segmentation + embedding) with a bounded worker pool.
+ * Per-video errors do NOT abort the batch.
+ */
+export async function runYtBulkUrls(
+  videoUrls: string[],
+  sessionId: string,
+  allSavedChunkIds: string[],
+  signal?: AbortSignal,
+) {
+  // Dedupe and basic format check
+  const uniqueUrls = Array.from(
+    new Set(videoUrls.map((u) => (u || "").trim()).filter((u) => /youtu\.?be/.test(u))),
+  );
+  if (uniqueUrls.length === 0) {
+    await sendTelemetry(`[YT Sync] Bulk-Import: keine gültigen YouTube-URLs in der Liste.`);
+    return;
+  }
+
+  await sendTelemetry(
+    `[YT Sync] Bulk-Import startet: ${uniqueUrls.length} eindeutige URLs ` +
+      `(Concurrency: ${YT_BULK_CONCURRENCY}). Phase 1 (Discovery) + Phase 2 (Segmentierung + Embedding) pro Video...`,
+  );
+
+  const stats = { succeeded: 0, failed: 0, total: uniqueUrls.length };
+  const allChannelHandles = new Set<string>();
+  const allFailedUrls: { url: string; error: string }[] = [];
+  // Aggregate per-stage timings across the whole batch (summing all workers).
+  const stageTotals = { vttMs: 0, segmentationMs: 0, embeddingMs: 0, insertMs: 0 };
+  let cursor = 0;
+  const batchStartTime = Date.now();
+
+  // Heartbeat: every 60s, emit progress with rate + ETA. Helps the user see
+  // the batch is alive and not stuck on a single slow video.
+  const HEARTBEAT_MS = 60_000;
+  const heartbeat = setInterval(() => {
+    const done = stats.succeeded + stats.failed;
+    if (done === 0) return; // nothing to report yet
+    const elapsed = (Date.now() - batchStartTime) / 1000;
+    const rate = done / elapsed; // videos per second
+    const remaining = (stats.total - done) / Math.max(rate, 0.001);
+    const etaMin = Math.round(remaining / 60);
+    sendTelemetry(
+      `[YT Sync] ❤️ Heartbeat: ${done}/${stats.total} ` +
+        `(${stats.succeeded} ✅ ${stats.failed} ❌) | ` +
+        `Rate: ${rate.toFixed(2)} v/s | ETA: ~${etaMin}min | ` +
+        `${allSavedChunkIds.length} Blöcke bisher`,
+    ).catch(() => {});
+  }, HEARTBEAT_MS);
+  // Don't keep the process alive just for the heartbeat.
+  if (typeof (heartbeat as any).unref === "function") (heartbeat as any).unref();
+
+  // Worker pool with shared cursor
+  async function worker(workerId: number): Promise<void> {
+    while (true) {
+      if (signal?.aborted) return;
+      const idx = cursor++;
+      if (idx >= uniqueUrls.length) return;
+      const url = uniqueUrls[idx];
+      const displayIdx = idx + 1;
+
+      try {
+        await sendTelemetry(
+          `[YT Sync] [W${workerId} ${displayIdx}/${stats.total}] → ${url}`,
+        );
+
+        const { video, channelHandle } = await prepareVideoFromUrl(url, signal);
+        allChannelHandles.add(channelHandle);
+
+        if (signal?.aborted) throw new Error("Sync abgebrochen.");
+
+        // Per-video timings bag — merged into stageTotals on success.
+        const timings: VideoTimings = {};
+        const chunkIds = await processVideo(
+          video.videoId,
+          channelHandle,
+          video.title,
+          video.publishedAt,
+          video.targetLang || "en",
+          displayIdx,
+          stats.total,
+          signal,
+          { workerId, timings },
+        );
+
+        allSavedChunkIds.push(...chunkIds);
+        if (timings.vttMs) stageTotals.vttMs += timings.vttMs;
+        if (timings.segmentationMs) stageTotals.segmentationMs += timings.segmentationMs;
+        if (timings.embeddingMs) stageTotals.embeddingMs += timings.embeddingMs;
+        if (timings.insertMs) stageTotals.insertMs += timings.insertMs;
+        stats.succeeded++;
+        await sendTelemetry(
+          `[YT Sync] [W${workerId} ${displayIdx}/${stats.total}] ✅ "${video.title}" (${channelHandle}, ${chunkIds.length} Blöcke)`,
+        );
+      } catch (err: any) {
+        if (err.name === "AbortError" || err.message?.includes("abgebrochen")) {
+          await sendTelemetry(
+            `[YT Sync] [W${workerId} ${displayIdx}/${stats.total}] ⏹️ Worker abgebrochen.`,
+          );
+          return;
+        }
+        stats.failed++;
+        const shortErr = err.message?.substring(0, 150) || "Unknown error";
+        allFailedUrls.push({ url, error: shortErr });
+        await sendTelemetry(
+          `[YT Sync] [W${workerId} ${displayIdx}/${stats.total}] ❌ ${shortErr}`,
+        );
+        // Best-effort: mark video as failed if we extracted an ID
+        const m = url.match(/(?:v=|youtu\.be\/|\/shorts\/)([a-zA-Z0-9_-]{11})/);
+        if (m) {
+          try {
+            await supabase.from("yt_videos").update({
+              status: "failed",
+              error_msg: shortErr,
+            }).eq("video_id", m[1]);
+          } catch { /* ignore */ }
+        }
+      }
+    }
+  }
+
+  const numWorkers = Math.min(YT_BULK_CONCURRENCY, uniqueUrls.length);
+  await Promise.all(
+    Array.from({ length: numWorkers }, (_, i) => worker(i + 1)),
+  );
+  clearInterval(heartbeat);
+
+  // Final summary with per-stage timing breakdown
+  const totalElapsedSec = (Date.now() - batchStartTime) / 1000;
+  const fmtMs = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
+  const summaryParts = [
+    `[YT Sync] Bulk-Import abgeschlossen in ${totalElapsedSec.toFixed(1)}s: ` +
+      `✅${stats.succeeded} ❌${stats.failed} von ${stats.total}`,
+    `${allSavedChunkIds.length} Blöcke gespeichert`,
+    `Channels: ${Array.from(allChannelHandles).join(", ") || "(keine)"}`,
+    `Stage-Timings (Σ über alle Videos): ` +
+      `VTT=${fmtMs(stageTotals.vttMs)} | ` +
+      `LLM-Seg=${fmtMs(stageTotals.segmentationMs)} | ` +
+      `Embeddings=${fmtMs(stageTotals.embeddingMs)} | ` +
+      `DB-Insert=${fmtMs(stageTotals.insertMs)}`,
+  ];
+  await sendTelemetry(summaryParts.join(" | "));
+
+  if (allFailedUrls.length > 0) {
+    await sendTelemetry(
+      `[YT Sync] Fehler-Details:\n` +
+        allFailedUrls.map((f) => `  - ${f.url}\n    → ${f.error}`).join("\n"),
+    );
+  }
+
+  // Trigger CCO summary only if we actually saved chunks
+  if (allSavedChunkIds.length > 0) {
+    try {
+      const summaryText = allFailedUrls.length > 0
+        ? `Der YouTube-Bulk-Sync ist abgeschlossen. ${stats.succeeded}/${stats.total} Videos erfolgreich verarbeitet, ${allFailedUrls.length} fehlgeschlagen, ${allSavedChunkIds.length} Blöcke gespeichert. Analysiere die neuen Inhalte und schreibe die Zusammenfassung an 'boss'.`
+        : `Der YouTube-Bulk-Sync ist abgeschlossen. ${stats.succeeded}/${stats.total} Videos verarbeitet, ${allSavedChunkIds.length} Blöcke gespeichert. Analysiere die neuen Inhalte und schreibe die Zusammenfassung an 'boss'.`;
+
+      await fetch("http://nexus-service:7734/api/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from_agent: "system",
+          to: "cco",
+          text: summaryText,
+          msg_type: "chat",
+          metadata: {
+            sync_session_id: sessionId,
+            sync_type: "youtube_bulk",
+            sync_url_count: stats.total,
+            sync_succeeded: stats.succeeded,
+            sync_failed: stats.failed,
+            sync_chunk_ids: allSavedChunkIds,
+            sync_chunk_count: allSavedChunkIds.length,
+            sync_channels: Array.from(allChannelHandles),
+            sync_failed_urls: allFailedUrls,
+          },
+        }),
+      });
+    } catch (e) {
+      console.error("Failed to trigger CCO summary:", e);
+    }
+  }
+}
+
+/**
+ * Atomic bulk-import: list all videos in a date range for a channel via yt-dlp,
+ * filter out already-processed (unless `force`), then delegate to runYtBulkUrls().
+ * This is the "give me everything from @channel since YYYY-MM-DD" workflow in
+ * a single call.
+ */
+export async function runYtImportRange(
+  channelInput: string,
+  since: string,        // ISO YYYY-MM-DD
+  until: string,        // ISO YYYY-MM-DD
+  limit: number,
+  force: boolean,
+  sessionId: string,
+  allSavedChunkIds: string[],
+  signal?: AbortSignal,
+) {
+  // 1. Resolve channel
+  const channelHandle = await resolveChannelHandle(channelInput);
+  const channelUrl = channelHandle.startsWith("http")
+    ? channelHandle
+    : `https://www.youtube.com/${channelHandle}`;
+
+  await sendTelemetry(
+    `[YT Import] Starte Range-Import für ${channelHandle} ` +
+      `(since=${since}, until=${until}, limit=${limit}, force=${force})...`,
+  );
+
+  // 2. Fetch video list with date filter. We over-fetch by 2x to account for
+  // already-processed videos that we'll filter out below.
+  const fetchLimit = Math.min(limit * 2, 200);
+  let videos: Awaited<ReturnType<typeof getChannelVideos>>;
+  try {
+    videos = await getChannelVideos(channelUrl, fetchLimit, since, until);
+  } catch (err: any) {
+    await sendTelemetry(`[YT Import] ❌ yt-dlp listing failed: ${err.message?.substring(0, 150)}`);
+    throw err;
+  }
+
+  if (!videos || videos.length === 0) {
+    await sendTelemetry(
+      `[YT Import] Keine Videos für ${channelHandle} im Zeitraum ${since}–${until} gefunden.`,
+    );
+    return;
+  }
+
+  // 3. Filter out already-embedded (unless force). Already-downloaded and
+  // pending videos are kept — processVideo() will re-segment them.
+  let toProcess = videos;
+  if (!force) {
+    const ids = videos.map((v) => v.videoId);
+    const { data: existing } = await supabase
+      .from("yt_videos")
+      .select("video_id, status")
+      .in("video_id", ids);
+    const skipSet = new Set(
+      (existing || [])
+        .filter((r) => r.status === "embedded")
+        .map((r) => r.video_id),
+    );
+    toProcess = videos.filter((v) => !skipSet.has(v.videoId));
+    if (skipSet.size > 0) {
+      await sendTelemetry(
+        `[YT Import] Überspringe ${skipSet.size} bereits eingebettete Videos (force=false).`,
+      );
+    }
+  }
+
+  // 4. Apply limit (newest first — getChannelVideos returns newest first).
+  toProcess = toProcess.slice(0, limit);
+
+  if (toProcess.length === 0) {
+    await sendTelemetry(
+      `[YT Import] Keine neuen Videos nach Filter. Alle ${videos.length} im Range sind bereits embedded.`,
+    );
+    return;
+  }
+
+  await sendTelemetry(
+    `[YT Import] ${toProcess.length} Videos aus ${videos.length} gelisteten ausgewählt. Starte Bulk-Import...`,
+  );
+
+  // 5. Convert to URLs and delegate to runYtBulkUrls.
+  const urls = toProcess.map((v) => `https://www.youtube.com/watch?v=${v.videoId}`);
+  await runYtBulkUrls(urls, sessionId, allSavedChunkIds, signal);
+}
+
+/**
  * Main background sync function. Processes all new videos for a channel.
  * Mirrors runBackgroundSync() in x.ts.
+ * Dispatches to runYtBulkUrls() when videoUrls[] is provided.
  */
 export async function runYtSync(
   channelInput: string,
   limit: number,
   videoUrl: string | undefined,
+  videoUrls: string[] | undefined,
   signal?: AbortSignal,
 ) {
-  let channel = channelInput; // may be overwritten in single-video mode
   const sessionId = `yt_sync_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const allSavedChunkIds: string[] = [];
+  let channel = channelInput; // may be overwritten in single-video mode
 
   try {
+    // BULK URL MODE — takes precedence over single-URL and channel mode
+    if (videoUrls && videoUrls.length > 0) {
+      // Lock-key needs to be dedupable, so we recompute the same djb2 scheme
+      // the tool handler used. If the caller didn't pass one, fall back to a
+      // timestamp-based key (no dedup across retries).
+      const sorted = [...videoUrls].map((u) => (u || "").trim()).filter((u) => u).sort();
+      const bulkKey = `bulk:${await djb2(sorted.join("|"))}`;
+      try {
+        await runYtBulkUrls(videoUrls, sessionId, allSavedChunkIds, signal);
+      } finally {
+        activeYtSyncControllers.delete(bulkKey);
+      }
+      return;
+    }
+
     await sendTelemetry(`[YT Sync] Hintergrund-Sync für ${channel} startet...`);
 
     let videosToProcess: Array<{ videoId: string; title: string; duration: number; publishedAt: string; targetLang: string }> = [];
 
     if (videoUrl) {
-      // Single video mode: extract video ID from URL
-      const videoIdMatch = videoUrl.match(/(?:v=|youtu\.be\/|\/shorts\/)([a-zA-Z0-9_-]{11})/);
-      if (!videoIdMatch) throw new Error(`Ungültige YouTube-URL: ${videoUrl}`);
-      const videoId = videoIdMatch[1];
-
-      // Get video metadata via yt-dlp
-      const cmd = new Deno.Command("yt-dlp", {
-        args: ["--cookies", YT_COOKIES_PATH, "--dump-json", "--skip-download", videoUrl],
-        stdout: "piped",
-        stderr: "piped",
-      });
-      const output = await cmd.output();
-      if (!output.success) throw new Error("yt-dlp metadata fetch failed");
-      const meta = JSON.parse(new TextDecoder().decode(output.stdout));
-
-      const channelHandle = meta.channel?.startsWith("@") ? meta.channel.toLowerCase() : `@${(meta.channel || meta.uploader || "unknown").toLowerCase()}`;
+      // Single video mode: reuse the shared prep helper
+      const { video, channelHandle } = await prepareVideoFromUrl(videoUrl, signal);
       channel = channelHandle;
-
-      videosToProcess = [{
-        videoId,
-        title: meta.title || "Unknown",
-        duration: meta.duration || 0,
-        publishedAt: meta.upload_date
-          ? `${meta.upload_date.substring(0, 4)}-${meta.upload_date.substring(4, 6)}-${meta.upload_date.substring(6, 8)}T00:00:00Z`
-          : new Date().toISOString(),
-        targetLang: determineTargetLang(meta),
-      }];
-
-      // Ensure the channel entry exists for single video mode
-      const { data: existingChannel } = await supabase
-        .from("yt_channels")
-        .select("handle")
-        .eq("handle", channelHandle)
-        .single();
-
-      if (!existingChannel) {
-        await supabase.from("yt_channels").insert({
-          handle: channelHandle,
-          channel_id: meta.channel_id || "",
-          title: meta.channel || meta.uploader || "",
-          is_active: true,
-        });
-      }
-
-      // Ensure the video entry exists in DB
-      await supabase.from("yt_videos").upsert({
-        video_id: videoId,
-        channel: channelHandle,
-        title: meta.title || "Unknown",
-        status: "downloaded",
-        duration: meta.duration || 0,
-        published_at: videosToProcess[0].publishedAt,
-        language: videosToProcess[0].targetLang,
-      });
+      videosToProcess = [video];
     } else {
       // Channel mode: get downloaded videos from DB instead of scraping YouTube
       const { data: channelData } = await supabase
@@ -967,18 +1406,40 @@ export function registerYouTubeTools(server: McpServer) {
     "manage_yt_sync",
     {
       title: "Manage YouTube Sync",
-      description: "Start or cancel background sync for YouTube transcripts.",
+      description: "Start or cancel background sync for YouTube transcripts. Supports channel mode, single-URL mode, and bulk video_urls[] mode (parallel processing).",
       inputSchema: {
         action: z.enum(["START", "CANCEL"]).describe("The action to perform"),
-        channel: z.string().describe("YouTube Handle, fuzzy name, or 'all'"),
-        limit: z.number().optional().describe("Max videos to process (default: 20, newest first)"),
-        video_url: z.string().optional().describe("Optional: process a single video URL instead of a channel"),
+        channel: z.string().optional().describe("YouTube Handle, fuzzy name, or 'all' (for channel mode)"),
+        limit: z.number().optional().describe("Max videos to process in channel mode (default: 20, newest first)"),
+        video_url: z.string().optional().describe("Optional: a single YouTube video URL (Discovery + Sync in one go)"),
+        video_urls: z.array(z.string()).optional().describe("Optional: ARRAY of YouTube URLs for BULK import (parallel processing with worker pool). Use this when the user provides a list of videos."),
+        batch_key: z.string().optional().describe("For CANCEL only: the batch key returned by a previous bulk START (format 'bulk:<hash>')"),
       },
     },
-    async ({ action, channel, limit, video_url }: any) => {
+    async ({ action, channel, limit, video_url, video_urls, batch_key }: any) => {
       try {
         if (action === "START") {
           const targetLimit = limit || 20;
+
+          // ── BULK URL MODE ──────────────────────────────────────────────
+          // Deterministic batch key prevents re-processing the same list.
+          if (video_urls && Array.isArray(video_urls) && video_urls.length > 0) {
+            const sorted = [...video_urls].map((u) => (u || "").trim()).filter((u) => u).sort();
+            const hash = await djb2(sorted.join("|"));
+            const batchKey = `bulk:${hash}`;
+            if (activeYtSyncControllers.has(batchKey)) {
+              return { content: [{ type: "text", text: `Ein Bulk-Sync für genau diese Liste (${video_urls.length} URLs) läuft bereits. Nutze batch_key="${batchKey}" zum Abbrechen.` }] };
+            }
+            const controller = new AbortController();
+            activeYtSyncControllers.set(batchKey, controller);
+            runYtSync("", 0, undefined, video_urls, controller.signal);
+            return {
+              content: [{
+                type: "text",
+                text: `Bulk-Sync für ${video_urls.length} YouTube-URLs gestartet (Concurrency: ${YT_BULK_CONCURRENCY}, dedupliziert). Fortschritt erscheint in der Telemetrie. Abbrechen mit batch_key="${batchKey}".`,
+              }],
+            };
+          }
 
           // Single video mode
           if (video_url) {
@@ -988,8 +1449,12 @@ export function registerYouTubeTools(server: McpServer) {
             }
             const controller = new AbortController();
             activeYtSyncControllers.set(syncKey, controller);
-            runYtSync(syncKey, 1, video_url, controller.signal);
+            runYtSync(syncKey, 1, video_url, undefined, controller.signal);
             return { content: [{ type: "text", text: `Hintergrund-Sync für einzelnes Video gestartet. Ich informiere dich via Chat über den Fortschritt.` }] };
+          }
+
+          if (!channel) {
+            return { content: [{ type: "text", text: "Fehler: channel, video_url oder video_urls ist erforderlich." }], isError: true };
           }
 
           // "all" mode
@@ -1009,7 +1474,7 @@ export function registerYouTubeTools(server: McpServer) {
                 if (activeYtSyncControllers.has(ch.handle)) continue;
                 const controller = new AbortController();
                 activeYtSyncControllers.set(ch.handle, controller);
-                await runYtSync(ch.handle, targetLimit, undefined, controller.signal);
+                await runYtSync(ch.handle, targetLimit, undefined, undefined, controller.signal);
               }
             })();
 
@@ -1031,7 +1496,7 @@ export function registerYouTubeTools(server: McpServer) {
 
           const controller = new AbortController();
           activeYtSyncControllers.set(targetHandle, controller);
-          runYtSync(targetHandle, targetLimit, undefined, controller.signal);
+          runYtSync(targetHandle, targetLimit, undefined, undefined, controller.signal);
 
           return {
             content: [{
@@ -1040,13 +1505,133 @@ export function registerYouTubeTools(server: McpServer) {
             }],
           };
         } else if (action === "CANCEL") {
-          const cleanHandle = channel.startsWith("@") ? channel.toLowerCase() : `@${channel.toLowerCase()}`;
-          const controller = activeYtSyncControllers.get(cleanHandle);
-          if (!controller) {
-            return { content: [{ type: "text", text: `Es läuft aktuell kein Sync für ${cleanHandle}.` }] };
+          // Allow cancelling a bulk batch by its key (preferred path)
+          if (batch_key && activeYtSyncControllers.has(batch_key)) {
+            activeYtSyncControllers.get(batch_key)!.abort();
+            activeYtSyncControllers.delete(batch_key);
+            return { content: [{ type: "text", text: `Bulk-Sync ${batch_key} wurde abgebrochen.` }] };
           }
-          controller.abort();
-          return { content: [{ type: "text", text: `Abbruch-Signal für den Sync von ${cleanHandle} wurde gesendet.` }] };
+          // Fallback: cancel by channel handle / single video URL
+          const candidates: string[] = [];
+          if (channel) {
+            const cleanHandle = channel.startsWith("@") ? channel.toLowerCase() : `@${channel.toLowerCase()}`;
+            candidates.push(cleanHandle);
+          }
+          if (video_url) candidates.push(`video:${video_url}`);
+          for (const k of candidates) {
+            const controller = activeYtSyncControllers.get(k);
+            if (controller) {
+              controller.abort();
+              activeYtSyncControllers.delete(k);
+              return { content: [{ type: "text", text: `Abbruch-Signal für den Sync "${k}" wurde gesendet.` }] };
+            }
+          }
+          return { content: [{ type: "text", text: `Es läuft aktuell kein passender Sync.` }] };
+        }
+        return { content: [{ type: "text", text: "Invalid action" }], isError: true };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
+      }
+    },
+  );
+
+  // Tool 2.4: manage_yt_import — atomic bulk import with date range
+  server.registerTool(
+    "manage_yt_import",
+    {
+      title: "Manage YouTube Import (Date Range)",
+      description: "Atomic bulk-import for a channel within a date range. Single call: lists videos via yt-dlp with --dateafter/--datebefore, filters out already-embedded (unless force=true), then runs the full pipeline (Discovery + Segmentation + Embedding) in parallel. Returns a batch_key for status tracking.",
+      inputSchema: {
+        action: z.enum(["START", "CANCEL"]).describe("The action to perform"),
+        channel: z.string().describe("YouTube Handle, fuzzy name, or URL"),
+        since: z.string().optional().describe("ISO date YYYY-MM-DD. Default: 30 days ago."),
+        until: z.string().optional().describe("ISO date YYYY-MM-DD. Default: today."),
+        limit: z.number().min(1).max(100).optional().describe("Max videos to import (default: 20, max: 100, newest first)"),
+        force: z.boolean().optional().describe("Re-segment already-embedded videos (default: false)"),
+        batch_key: z.string().optional().describe("For CANCEL only: the batch key returned by a previous START"),
+      },
+    },
+    async ({ action, channel, since, until, limit, force, batch_key }: any) => {
+      try {
+        if (action === "START") {
+          if (!channel) {
+            return { content: [{ type: "text", text: "Fehler: channel ist erforderlich." }], isError: true };
+          }
+
+          // Defaults
+          const targetLimit = limit ?? 20;
+          const targetForce = force ?? false;
+          const now = new Date();
+          const today = now.toISOString().slice(0, 10);
+          const thirtyAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+          const targetSince = since ?? thirtyAgo;
+          const targetUntil = until ?? today;
+
+          // Basic ISO date validation
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(targetSince) || !/^\d{4}-\d{2}-\d{2}$/.test(targetUntil)) {
+            return { content: [{ type: "text", text: "Fehler: since/until müssen ISO-Format YYYY-MM-DD haben." }], isError: true };
+          }
+          if (targetSince > targetUntil) {
+            return { content: [{ type: "text", text: "Fehler: since liegt nach until." }], isError: true };
+          }
+
+          // Deterministic batch key so re-submitting identical params hits the lock.
+          const paramKey = `${channel}|${targetSince}|${targetUntil}|${targetLimit}|${targetForce}`;
+          const hash = await djb2(paramKey);
+          const batchKey = `import:${hash}`;
+          if (activeYtSyncControllers.has(batchKey)) {
+            return {
+              content: [{
+                type: "text",
+                text: `Range-Import für genau diese Parameter läuft bereits. Nutze batch_key="${batchKey}" zum Abbrechen.`,
+              }],
+            };
+          }
+
+          const controller = new AbortController();
+          activeYtSyncControllers.set(batchKey, controller);
+
+          // Fire-and-forget: run the import in the background, telemetry streams
+          // back via the existing sendTelemetry() channel. At the end a
+          // SYNC_SESSION_PAYLOAD is posted to CCO via nexus-service.
+          (async () => {
+            const sessionId = `yt_import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const allSavedChunkIds: string[] = [];
+            try {
+              await runYtImportRange(
+                channel,
+                targetSince,
+                targetUntil,
+                targetLimit,
+                targetForce,
+                sessionId,
+                allSavedChunkIds,
+                controller.signal,
+              );
+            } catch (err: any) {
+              await sendTelemetry(`[YT Import] ❌ Fehler: ${err.message?.substring(0, 200)}`);
+            } finally {
+              activeYtSyncControllers.delete(batchKey);
+            }
+          })();
+
+          return {
+            content: [{
+              type: "text",
+              text: `Range-Import gestartet für ${channel} ` +
+                `(${targetSince} bis ${targetUntil}, max ${targetLimit} Videos, ` +
+                `force=${targetForce}, Concurrency ${YT_BULK_CONCURRENCY}). ` +
+                `Batch-Key: ${batchKey}. Telemetrie läuft. ` +
+                `Abbrechen mit batch_key="${batchKey}".`,
+            }],
+          };
+        } else if (action === "CANCEL") {
+          if (batch_key && activeYtSyncControllers.has(batch_key)) {
+            activeYtSyncControllers.get(batch_key)!.abort();
+            activeYtSyncControllers.delete(batch_key);
+            return { content: [{ type: "text", text: `Range-Import ${batch_key} wurde abgebrochen.` }] };
+          }
+          return { content: [{ type: "text", text: "Kein passender Range-Import läuft (batch_key fehlt oder unbekannt)." }] };
         }
         return { content: [{ type: "text", text: "Invalid action" }], isError: true };
       } catch (err: any) {
@@ -1135,7 +1720,20 @@ export function registerYouTubeTools(server: McpServer) {
           return `${idx + 1}. [${dateStr}] - **${v.title}** (${durationStr}) - URL: https://www.youtube.com/watch?v=${v.videoId}`;
         }).join("\n");
 
-        return { content: [{ type: "text", text: `Verfügbare Online-Videos für ${targetHandle}:\n\n${formatted}` }] };
+        // Machine-readable URL anchor + import hint. The CCO is prone to drop
+        // long URLs when reformatting the display; this keeps the canonical
+        // list available so `video_urls=[]` can be populated from the previous
+        // tool response without re-scraping.
+        const urlList = JSON.stringify(
+          videos.map((v: any) => `https://www.youtube.com/watch?v=${v.videoId}`),
+        );
+        const anchor = `\n\nURLs: ${urlList}`;
+        const hint =
+          `\n\n💡 Um diese ${videos.length} Videos zu importieren, rufe ` +
+          `manage_yt_sync(action="START", video_urls=<URLs-Array oben>) auf — ` +
+          `nicht channel="all" (das verarbeitet nur bereits in der DB befindliche Videos).`;
+
+        return { content: [{ type: "text", text: `Verfügbare Online-Videos für ${targetHandle}:\n\n${formatted}${anchor}${hint}` }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
       }
