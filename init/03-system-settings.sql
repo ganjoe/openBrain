@@ -28,6 +28,12 @@ INSERT INTO system_settings (key, value)
 VALUES ('provider_config', '{"ea": "local", "cco": "local", "pca": "local"}'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
+-- Initial Ollama Config: Default to CPU mode
+INSERT INTO system_settings (key, value)
+VALUES ('ollama_config', '{"mode": "cpu"}'::jsonb)
+ON CONFLICT (key) DO NOTHING;
+
 -- Grants
 GRANT ALL ON TABLE public.system_settings TO anon;
 GRANT ALL ON TABLE public.system_settings TO service_role;
+

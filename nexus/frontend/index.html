@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Pacifico&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=9" />
+  <link rel="stylesheet" href="style.css?v=10" />
   <!-- marked.js for Markdown rendering -->
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 </head>
@@ -76,6 +76,30 @@
           <p class="hint">Prüfe Status…</p>
         </div>
       </details>
+
+      <!-- Ollama Section -->
+      <details class="panel panel-ollama" open>
+        <summary>
+          <h2>Ollama Status</h2>
+        </summary>
+        <div class="panel-content">
+          <div class="ollama-mode-row" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-size: 13px; color: var(--text);">Mode:</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="ollama-mode-cpu-label" class="ollama-toggle-label">CPU</span>
+              <label class="switch" title="Toggle between CPU and GPU for Ollama">
+                <input type="checkbox" id="ollama-mode-toggle">
+                <span class="slider round"></span>
+              </label>
+              <span id="ollama-mode-gpu-label" class="ollama-toggle-label">GPU</span>
+            </div>
+          </div>
+          <div class="ollama-backend-info" style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px;">
+            <span>CPU Node: <span id="ollama-cpu-indicator" class="indicator offline">●</span></span>
+            <span>GPU Node: <span id="ollama-gpu-indicator" class="indicator offline">●</span></span>
+          </div>
+        </div>
+      </details>
     </aside>
 
     <!-- ── Main stream ──────────────────────────────────────── -->
@@ -112,7 +136,7 @@
 
   </div>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
   <script>
     // Auto-collapse filters on mobile
     if (window.innerWidth <= 768) {

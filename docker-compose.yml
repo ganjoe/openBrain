@@ -89,22 +89,65 @@ services:
       PG_META_DB_USER: ${POSTGRES_USER}
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
 
-  # --- Ollama: Local embedding model (CPU-only) ---
-  # No --gpus flag = CPU-only, won't interfere with LM Studio GPU usage
-  ollama:
+  # --- Ollama: Local embedding model (CPU backend) ---
+  ollama-cpu:
     image: ollama/ollama
-    container_name: openbrain-ollama
+    container_name: openbrain-ollama-cpu
     restart: unless-stopped
     volumes:
       - openbrain_ollama:/root/.ollama
-    ports:
-      - "11434:11434"
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 10s
       retries: 15
       start_period: 10s
+
+  # --- Ollama: Local embedding model (GPU backend - AMD ROCm) ---
+  ollama-gpu:
+    image: ollama/ollama:rocm
+    container_name: openbrain-ollama-gpu
+    restart: unless-stopped
+    volumes:
+      - openbrain_ollama:/root/.ollama
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "44"
+      - "991"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 10s
+
+
+  # --- Ollama Router: Dynamically routes to CPU/GPU backend ---
+  ollama:
+    build:
+      context: ./ollama-router
+      dockerfile: Dockerfile
+    container_name: openbrain-ollama-router
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      CPU_URL: http://ollama-cpu:11434
+      GPU_URL: http://ollama-gpu:11434
+    depends_on:
+      ollama-cpu:
+        condition: service_healthy
+      ollama-gpu:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "deno", "eval", "const r = await fetch('http://localhost:11434/_router/mode'); if (!r.ok) throw new Error();"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
 
   # --- Gateway: Nginx proxy for /rest/v1 paths ---
   gateway:

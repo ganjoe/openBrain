@@ -563,9 +563,105 @@ async def unload_lmstudio_model(req: UnloadModelRequest):
         except Exception as e:
             raise HTTPException(status_code=502, detail=str(e))
 
+# ─── Ollama Settings ─────────────────────────────────────────────────────────
+
+OLLAMA_ROUTER_URL = "http://ollama:11434"
+
+@router.get("/api/ollama/status")
+async def get_ollama_status():
+    """Fetch current Ollama router mode and check backend availability."""
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        # Check router status
+        current_mode = "cpu"
+        try:
+            r = await client.get(f"{OLLAMA_ROUTER_URL}/_router/mode")
+            if r.status_code == 200:
+                current_mode = r.json().get("mode", "cpu")
+        except Exception as e:
+            logger.error(f"Failed to fetch ollama router mode: {e}")
+            current_mode = "offline"
+
+        # Check CPU backend
+        cpu_status = "offline"
+        try:
+            r_cpu = await client.get("http://ollama-cpu:11434/api/tags")
+            if r_cpu.status_code == 200:
+                cpu_status = "online"
+        except Exception:
+            pass
+
+        # Check GPU backend
+        gpu_status = "offline"
+        try:
+            r_gpu = await client.get("http://ollama-gpu:11434/api/tags")
+            if r_gpu.status_code == 200:
+                gpu_status = "online"
+        except Exception:
+            pass
+
+        return {
+            "mode": current_mode,
+            "cpu_backend": cpu_status,
+            "gpu_backend": gpu_status
+        }
+
+class OllamaModeRequest(BaseModel):
+    mode: str
+
+@router.post("/api/ollama/mode")
+async def set_ollama_mode(req: OllamaModeRequest, background_tasks: BackgroundTasks):
+    """Set Ollama router mode (cpu or gpu). Restarts GPU container on switch to CPU."""
+    if req.mode not in ("cpu", "gpu"):
+        raise HTTPException(status_code=400, detail="Invalid mode")
+    
+    # 1. Update router mode
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            r = await client.post(
+                f"{OLLAMA_ROUTER_URL}/_router/mode",
+                json={"mode": req.mode}
+            )
+            if r.status_code != 200:
+                raise HTTPException(status_code=502, detail=f"Router error: {r.text}")
+        except Exception as e:
+            logger.error(f"Failed to set mode in ollama router: {e}")
+            raise HTTPException(status_code=502, detail=f"Router error: {str(e)}")
+
+        # 2. Save to DB for persistence
+        try:
+            await client.patch(
+                f"{GATEWAY_URL}/rest/v1/system_settings?key=eq.ollama_config",
+                headers={**DB_HEADERS, "Content-Type": "application/json"},
+                json={"value": {"mode": req.mode}}
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save ollama_config to DB: {e}")
+
+    # 3. If switching to CPU, trigger brute force container restart in background to free VRAM
+    if req.mode == "cpu":
+        background_tasks.add_task(docker_container_action, "openbrain-ollama-gpu", "restart")
+
+    return {"status": "success", "mode": req.mode}
+
+async def init_ollama_router_mode():
+    """Initializes the Ollama router target backend based on last saved database value."""
+    await asyncio.sleep(5.0)  # Wait for docker networks/router container to start up fully
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            rows = await _db_get("system_settings", {"key": "eq.ollama_config"})
+            if rows:
+                mode = rows[0].get("value", {}).get("mode", "cpu")
+                logger.info(f"Initializing Ollama router mode to: {mode}")
+                await client.post(
+                    f"{OLLAMA_ROUTER_URL}/_router/mode",
+                    json={"mode": mode}
+                )
+        except Exception as e:
+            logger.warning(f"Could not initialize Ollama router mode: {e}")
 
 
 # ─── Server-Sent Events ───────────────────────────────────────────────────────
+
 
 @router.get("/api/stream")
 async def sse_stream():

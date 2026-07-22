@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from api import router
+from api import router, init_ollama_router_mode
 from mqtt_listener import start_mqtt_client
 
 logging.basicConfig(
@@ -47,6 +47,8 @@ async def startup():
     loop = asyncio.get_event_loop()
     start_mqtt_client(loop)
     logger.info("✅ Nexus Service started — MQTT listener active")
+    asyncio.create_task(init_ollama_router_mode())
+
 
 
 @app.get("/health")

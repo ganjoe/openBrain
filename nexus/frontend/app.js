@@ -610,16 +610,100 @@ function applyModeBtnState(mode, status, isActive) {
 });
 
 
+// ── Ollama Status & Mode Logic ─────────────────────────────────
+const $ollamaToggle = document.getElementById("ollama-mode-toggle");
+const $ollamaCpuLabel = document.getElementById("ollama-mode-cpu-label");
+const $ollamaGpuLabel = document.getElementById("ollama-mode-gpu-label");
+const $ollamaCpuInd = document.getElementById("ollama-cpu-indicator");
+const $ollamaGpuInd = document.getElementById("ollama-gpu-indicator");
+
+async function fetchOllamaStatus() {
+  if (!$ollamaToggle) return;
+  try {
+    const r = await fetch(`${API}/api/ollama/status`);
+    const data = await r.json();
+    
+    // Update toggle state (checked means GPU)
+    $ollamaToggle.checked = data.mode === "gpu";
+    updateOllamaLabels(data.mode);
+    
+    // Update backend indicator dots (online/offline)
+    if ($ollamaCpuInd) {
+      $ollamaCpuInd.className = `indicator ${data.cpu_backend}`;
+    }
+    if ($ollamaGpuInd) {
+      $ollamaGpuInd.className = `indicator ${data.gpu_backend}`;
+    }
+  } catch (e) {
+    console.error("Failed to fetch Ollama status:", e);
+  }
+}
+
+function updateOllamaLabels(mode) {
+  if (!$ollamaCpuLabel || !$ollamaGpuLabel) return;
+  if (mode === "gpu") {
+    $ollamaGpuLabel.classList.add("active");
+    $ollamaCpuLabel.classList.remove("active");
+  } else {
+    $ollamaCpuLabel.classList.add("active");
+    $ollamaGpuLabel.classList.remove("active");
+  }
+}
+
+if ($ollamaToggle) {
+  $ollamaToggle.addEventListener("change", async () => {
+    const desiredMode = $ollamaToggle.checked ? "gpu" : "cpu";
+    updateOllamaLabels(desiredMode);
+    
+    $ollamaToggle.disabled = true;
+    
+    try {
+      const r = await fetch(`${API}/api/ollama/mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: desiredMode })
+      });
+      const data = await r.json();
+      if (data.status !== "success") {
+        console.error("Failed to switch Ollama mode");
+        fetchOllamaStatus();
+      } else {
+        // Wait a bit to let the target settle (especially GPU restart)
+        setTimeout(fetchOllamaStatus, 2000);
+      }
+    } catch (e) {
+      console.error(e);
+      fetchOllamaStatus();
+    } finally {
+      $ollamaToggle.disabled = false;
+    }
+  });
+}
+
+
 // ── Boot ──────────────────────────────────────────────────────
 (async () => {
   $sendFrom.value = "boss"; // Initial value
-  await loadContextConfig();
-  await loadProviderConfig();
-  await loadAgents();
-  await loadHistory();
+  
+  // Non-blocking status updates
+  fetchOllamaStatus();
   fetchLMStudioStatus();
   fetchIBGatewayStatus();
-  setInterval(fetchIBGatewayStatus, 5000);
-  connectSSE();
   updateRoomLabel();
+  connectSSE();
+  
+  // Set intervals for periodic updates (5s)
+  setInterval(fetchIBGatewayStatus, 5000);
+  setInterval(fetchOllamaStatus, 5000);
+
+  // Awaited loaders
+  try {
+    await loadContextConfig();
+    await loadProviderConfig();
+    await loadAgents();
+    await loadHistory();
+  } catch (e) {
+    console.error("Failed to load initial data:", e);
+  }
 })();
+
