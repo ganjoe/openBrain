@@ -366,6 +366,24 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # --- draw.io MCP Server ---
+  mcp-drawio:
+    build:
+      context: ./mcp-drawio
+      dockerfile: Dockerfile
+    container_name: openbrain-mcp-drawio
+    restart: unless-stopped
+    environment:
+      PORT: "8796"
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REFRESH_TOKEN: ${GOOGLE_REFRESH_TOKEN}
+    ports:
+      - "8796:8796"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   # --- CCO Bot: Chief Communication Officer ---
   agent-cco-bot:
     build:

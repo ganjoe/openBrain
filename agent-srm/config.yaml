@@ -17,3 +17,5 @@ mcp:
   local_servers:
     - url: "http://mcp-srm:8793"
       label: "openbrain-srm-memory"
+    - url: "http://mcp-drawio:8796"
+      label: "drawio-diagrams"

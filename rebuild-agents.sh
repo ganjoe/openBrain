@@ -4,7 +4,7 @@ cd /home/daniel/openBrain
 echo "🛠️  Rebuilding all custom services in parallel..."
 docker compose build \
   ollama \
-  mcp-server mcp-cco mcp-pta mcp-pca mcp-cda mcp-srm \
+  mcp-server mcp-cco mcp-pta mcp-pca mcp-cda mcp-srm mcp-drawio \
   nexus-frontend nexus-service \
   agent-cco-bot agent-ea-bot agent-pta-bot agent-pca-bot agent-cda-bot agent-srm-bot \
   agent-pca-service chart-frontend
@@ -12,7 +12,7 @@ docker compose build \
 echo "🚀 Starting updated services..."
 docker compose up -d \
   ollama \
-  mcp-server mcp-cco mcp-pta mcp-pca mcp-cda mcp-srm \
+  mcp-server mcp-cco mcp-pta mcp-pca mcp-cda mcp-srm mcp-drawio \
   nexus-frontend nexus-service \
   agent-cco-bot agent-ea-bot agent-pta-bot agent-pca-bot agent-cda-bot agent-srm-bot \
   agent-pca-service chart-frontend

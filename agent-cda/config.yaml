@@ -15,3 +15,5 @@ mcp:
   local_servers:
     - url: "http://mcp-cda:8795"
       label: "openbrain-cda-tools"
+    - url: "http://mcp-drawio:8796"
+      label: "drawio-diagrams"

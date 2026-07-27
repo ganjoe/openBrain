@@ -15,3 +15,5 @@ mcp:
   local_servers:
     - url: "http://mcp-pca:8790"
       label: "openbrain-pca-charts"
+    - url: "http://mcp-drawio:8795"
+      label: "drawio-diagrams"

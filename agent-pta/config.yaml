@@ -17,3 +17,5 @@ mcp:
   local_servers:
     - url: "http://mcp-pta:8789"
       label: "openbrain-pta-execution"
+    - url: "http://mcp-drawio:8795"
+      label: "drawio-diagrams"
