@@ -4,6 +4,36 @@ import { supabase, getEmbeddingsBatch, extractMetadata, sendTelemetry, X_BEARER_
 
 export const activeSyncControllers = new Map<string, AbortController>();
 
+// --- Sync Log Helper ---
+async function syncLog(actionType: string, username: string | null, message: string) {
+  console.log(`[X Sync Log] [${actionType}] ${username || 'system'}: ${message}`);
+  try {
+    await supabase.from("x_sync_logs").insert({ action_type: actionType, username, message });
+  } catch (e) {
+    console.error("Failed to write sync log:", e);
+  }
+}
+
+// --- First Mention Helper ---
+export async function updateFirstMentions(author: string, tickers: string[], publishedAt: string, postId: string) {
+  if (!tickers || tickers.length === 0 || !publishedAt || !postId) return;
+  const cleanAuthor = author.toLowerCase().startsWith("@") ? author.toLowerCase() : `@${author.toLowerCase()}`;
+  for (const ticker of tickers) {
+    const cleanTicker = ticker.toUpperCase().replace(/^[$#]/, "");
+    if (!cleanTicker) continue;
+    try {
+      await supabase.from("x_first_mentions").upsert({
+        ticker: cleanTicker,
+        author: cleanAuthor,
+        first_mentioned_at: publishedAt,
+        post_id: postId
+      }, { onConflict: "ticker,author" });
+    } catch (e) {
+      console.error(`Failed to update first mention for ${cleanTicker}:`, e);
+    }
+  }
+}
+
 // --- X API Helpers ---
 async function getXUserId(username: string): Promise<{id: string, name: string}> {
   const cleanName = username.startsWith("@") ? username.substring(1) : username;
@@ -145,7 +175,6 @@ export async function runBackgroundSync(cleanName: string, username: string, lim
         
         // Processing
         const batchToInsert: any[] = [];
-        const textsForEmbedding: string[] = [];
         
         for (const tweet of data.data) {
           if (signal?.aborted) throw new Error("Sync wurde vom Benutzer abgebrochen.");
@@ -174,12 +203,13 @@ export async function runBackgroundSync(cleanName: string, username: string, lim
             tickers: Array.from(new Set(tickers)),
           };
 
-          textsForEmbedding.push(content);
+          // Discovery phase: save as 'pending' WITHOUT embedding
           batchToInsert.push({
             agent_id: AGENT_ID,
             artifact_type: "x_post",
             content: content,
             metadata: finalMetadata,
+            status: "pending",
           });
 
           // Inform user via system channel (human readable)
@@ -192,12 +222,6 @@ export async function runBackgroundSync(cleanName: string, username: string, lim
             `🔑 Tickers: ${tickersStr}`
           );
         }
-
-        // Embeddings
-        const embeddings = await getEmbeddingsBatch(textsForEmbedding);
-        batchToInsert.forEach((item, idx) => {
-          item.embedding = embeddings[idx];
-        });
 
         // Bulk Upsert to Supabase
         const { data: upsertedRows, error: upsertError } = await supabase
@@ -212,7 +236,13 @@ export async function runBackgroundSync(cleanName: string, username: string, lim
 
         if (upsertedRows) {
           for (const row of upsertedRows) {
-            if (row?.id) savedPostIds.push(row.id);
+            if (row?.id) {
+              savedPostIds.push(row.id);
+              const meta = row.metadata || {};
+              if (meta.author && meta.tickers && meta.published_at) {
+                updateFirstMentions(meta.author, meta.tickers, meta.published_at, row.id).catch(console.error);
+              }
+            }
           }
         }
 
@@ -254,7 +284,11 @@ export async function runBackgroundSync(cleanName: string, username: string, lim
       }
     }
 
-    await sendTelemetry(`[System] Sync ${cleanName} abgeschlossen: ${totalSaved} neu/aktualisiert gespeichert.`);
+    await syncLog("discovery", username, `Sync abgeschlossen: ${totalSaved} Posts gespeichert (status: pending).`);
+    await sendTelemetry(`[System] Sync ${cleanName} abgeschlossen: ${totalSaved} neu/aktualisiert gespeichert (Embeddings werden asynchron generiert).`);
+
+    // Trigger embedding processing for the newly discovered posts
+    processXPendingPosts();
     
     // Trigger CCO to generate the promised summary using the exact post IDs from this sync session.
     if (savedPostIds.length > 0) {
@@ -290,6 +324,54 @@ export async function runBackgroundSync(cleanName: string, username: string, lim
     // Release in-memory lock
     activeSyncControllers.delete(cleanName);
   }
+}
+
+// --- Embedding Processing Worker (pending -> embedded) ---
+let isProcessingPending = false;
+export async function processXPendingPosts(): Promise<number> {
+  if (isProcessingPending) return 0;
+  isProcessingPending = true;
+  let totalProcessed = 0;
+  
+  try {
+    while (true) {
+      // Fetch batch of posts with status = 'pending' (or null embedding fallback)
+      const { data: pendingPosts, error } = await supabase
+        .from("agent_workspace")
+        .select("id, content")
+        .eq("agent_id", AGENT_ID)
+        .eq("artifact_type", "x_post")
+        .or("status.eq.pending,embedding.is.null")
+        .limit(50);
+
+      if (error || !pendingPosts || pendingPosts.length === 0) break;
+
+      const texts = pendingPosts.map((p: any) => p.content);
+      const embeddings = await getEmbeddingsBatch(texts);
+
+      for (let i = 0; i < pendingPosts.length; i++) {
+        const post = pendingPosts[i];
+        const emb = embeddings[i];
+        await supabase
+          .from("agent_workspace")
+          .update({ embedding: emb, status: "embedded" })
+          .eq("id", post.id);
+      }
+
+      totalProcessed += pendingPosts.length;
+      console.log(`[X Processing] Embedded batch of ${pendingPosts.length} posts (Total: ${totalProcessed})`);
+    }
+
+    if (totalProcessed > 0) {
+      await syncLog("embedding", null, `${totalProcessed} Posts erfolgreich ge-embeddet (status: embedded).`);
+    }
+  } catch (err: any) {
+    console.error(`[X Processing] Failed to process pending embeddings:`, err);
+    await syncLog("error", null, `Embedding-Fehler: ${err.message}`);
+  } finally {
+    isProcessingPending = false;
+  }
+  return totalProcessed;
 }
 
 // --- LLM Categorization Worker ---
@@ -415,8 +497,12 @@ export async function runLlmCategorizationLoop() {
 
         await supabase
           .from("agent_workspace")
-          .update({ metadata: updatedMetadata })
+          .update({ metadata: updatedMetadata, status: "categorized" })
           .eq("id", post.id);
+
+        if (updatedMetadata.author && newTickers.length > 0 && updatedMetadata.published_at) {
+          updateFirstMentions(updatedMetadata.author, newTickers, updatedMetadata.published_at, post.id).catch(console.error);
+        }
       }));
 
       llmCategorizationStats.processedCount += posts.length;
@@ -435,7 +521,95 @@ export async function runLlmCategorizationLoop() {
   llmCategorizationStats.isRunning = false;
 }
 
+// --- Periodic 60-Minute X Discovery & Processing Loops ---
+let xDiscoveryAbortController: AbortController | null = null;
+const xDiscoveryStats = {
+  isRunning: false,
+  startTime: 0,
+  lastRunTime: 0,
+  cycleCount: 0,
+};
+
+export async function runXDiscoveryLoop() {
+  xDiscoveryStats.isRunning = true;
+  xDiscoveryStats.startTime = Date.now();
+  await syncLog("started", null, "Periodischer X-Discovery-Loop gestartet (Interval: 60 Sekunden)");
+
+  const intervalMs = parseInt(Deno.env.get("X_DISCOVERY_INTERVAL_MS") || "60000"); // Default: 60 seconds (1 min)
+
+  while (xDiscoveryAbortController && !xDiscoveryAbortController.signal.aborted) {
+    try {
+      xDiscoveryStats.lastRunTime = Date.now();
+      xDiscoveryStats.cycleCount++;
+      
+      const { data: influencers } = await supabase
+        .from("x_users")
+        .select("username")
+        .eq("is_active", true);
+
+      if (influencers && influencers.length > 0) {
+        await syncLog("info", null, `Starte Discovery-Zyklus #${xDiscoveryStats.cycleCount} für ${influencers.length} aktive Influencer...`);
+        for (const inf of influencers) {
+          if (!xDiscoveryAbortController || xDiscoveryAbortController.signal.aborted) break;
+          const cleanName = `@${inf.username}`;
+          if (activeSyncControllers.has(cleanName)) continue;
+          
+          const controller = new AbortController();
+          activeSyncControllers.set(cleanName, controller);
+          try {
+            await runBackgroundSync(cleanName, inf.username, 100, undefined, controller.signal);
+          } catch (e: any) {
+            console.error(`[X Loop Error] Failed for ${cleanName}:`, e.message);
+          }
+        }
+      }
+
+      // Process any pending embeddings after discovery
+      await processXPendingPosts();
+
+      // Sleep until next 60-minute cycle
+      let waited = 0;
+      while (waited < intervalMs && xDiscoveryAbortController && !xDiscoveryAbortController.signal.aborted) {
+        await new Promise(r => setTimeout(r, 10000));
+        waited += 10000;
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') break;
+      await syncLog("error", null, `Discovery Loop Fehler: ${err.message}`);
+      await new Promise(r => setTimeout(r, 60000));
+    }
+  }
+
+  xDiscoveryStats.isRunning = false;
+  await syncLog("stopped", null, "Periodischer X-Discovery-Loop gestoppt");
+}
+
+export async function runXProcessingLoop() {
+  while (xDiscoveryAbortController && !xDiscoveryAbortController.signal.aborted) {
+    try {
+      const processed = await processXPendingPosts();
+      if (processed === 0) {
+        let waited = 0;
+        while (waited < 10000 && xDiscoveryAbortController && !xDiscoveryAbortController.signal.aborted) {
+          await new Promise(r => setTimeout(r, 2000));
+          waited += 2000;
+        }
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') break;
+      await new Promise(r => setTimeout(r, 10000));
+    }
+  }
+}
+
 export function registerXTools(server: McpServer) {
+  // Auto-start periodic 60-minute loops on boot
+  if (!xDiscoveryStats.isRunning) {
+    xDiscoveryAbortController = new AbortController();
+    runXDiscoveryLoop().catch(console.error);
+    runXProcessingLoop().catch(console.error);
+    runLlmCategorizationLoop().catch(console.error);
+  }
   server.registerTool(
     "manage_llm_categorization",
     {
@@ -511,25 +685,28 @@ export function registerXTools(server: McpServer) {
   );
 
   server.registerTool(
-    "manage_background_sync",
+    "manage_x_sync",
     {
-      title: "Manage Background Sync",
-      description: "Start or cancel background syncs for influencer news.",
+      title: "Manage X Sync",
+      description: "Start, stop, or check status of background X (Twitter) syncs for influencer posts.",
       inputSchema: {
-        action: z.enum(["START", "CANCEL"]).describe("The action to perform"),
-        username: z.string().describe("The X username (e.g. @elonmusk) or 'all'"),
+        action: z.enum(["START", "STOP", "STATUS"]).describe("The action to perform"),
+        username: z.string().optional().default("all").describe("The X username (e.g. @elonmusk) or 'all' (default: 'all')"),
         limit: z.number().optional().describe("Max tweets to fetch (for START)"),
         start_time: z.string().optional().describe("ISO 8601 date string for historical backfill (for START)"),
+        hours_back: z.number().optional().default(24).describe("Hours of sync history to show (for STATUS, default: 24)"),
       },
     },
-    async ({ action, username, limit, start_time }: any) => {
+    async ({ action, username, limit, start_time, hours_back }: any) => {
       try {
         if (action === "START") {
           if (!X_BEARER_TOKEN || X_BEARER_TOKEN.includes("YOUR_X_BEARER_TOKEN")) {
             return { content: [{ type: "text", text: "Error: X_BEARER_TOKEN is not configured in .env" }], isError: true };
           }
 
-          if (username.toLowerCase() === "all") {
+          const effectiveUsername = username || "all";
+
+          if (effectiveUsername.toLowerCase() === "all") {
             const { data: influencers, error } = await supabase.from("x_users").select("username").eq("is_active", true);
             if (error || !influencers || influencers.length === 0) {
                return { content: [{ type: "text", text: "Es wurden keine aktiven Influencer in der Datenbank gefunden." }] };
@@ -549,15 +726,15 @@ export function registerXTools(server: McpServer) {
             return { content: [{ type: "text", text: `Massen-Sync für ${influencers.length} Influencer gestartet. Dies geschieht nacheinander im Hintergrund.` }] };
           }
 
-          let cleanName = (username.startsWith("@") ? username : `@${username}`).toLowerCase();
-          let targetUsername = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
+          let cleanName = (effectiveUsername.startsWith("@") ? effectiveUsername : `@${effectiveUsername}`).toLowerCase();
+          let targetUsername = effectiveUsername.startsWith("@") ? effectiveUsername.substring(1).toLowerCase() : effectiveUsername.toLowerCase();
 
           // If not explicitly @ handle, try fuzzy search
-          if (!username.startsWith("@")) {
-             const queryEmbedding = (await getEmbeddingsBatch([username]))[0];
+          if (!effectiveUsername.startsWith("@")) {
+             const queryEmbedding = (await getEmbeddingsBatch([effectiveUsername]))[0];
              const { data: searchResults, error: searchError } = await supabase.rpc("search_influencers", {
                query_embedding: queryEmbedding,
-               query_text: username,
+               query_text: effectiveUsername,
                match_threshold: 0.5,
                match_count: 5
              });
@@ -571,7 +748,7 @@ export function registerXTools(server: McpServer) {
                    cleanName = `@${targetUsername}`;
                 } else {
                    const listStr = searchResults.map((r: any) => `- @${r.username} (${r.screen_name})`).join("\n");
-                   return { content: [{ type: "text", text: `Ich habe mehrere mögliche Influencer gefunden für '${username}'. Bitte sei spezifischer (z.B. mit @handle):\n${listStr}` }] };
+                   return { content: [{ type: "text", text: `Ich habe mehrere mögliche Influencer gefunden für '${effectiveUsername}'. Bitte sei spezifischer (z.B. mit @handle):\n${listStr}` }] };
                 }
              }
           }
@@ -599,7 +776,7 @@ export function registerXTools(server: McpServer) {
              };
           }
 
-          // In-Memory Lock Check Check
+          // In-Memory Lock Check
           if (activeSyncControllers.has(cleanName)) {
              return { content: [{ type: "text", text: `Ein Hintergrund-Sync für ${cleanName} läuft bereits.` }] };
           }
@@ -611,16 +788,203 @@ export function registerXTools(server: McpServer) {
           runBackgroundSync(cleanName, targetUsername, limit, start_time, controller.signal);
 
           return { content: [{ type: "text", text: `Hintergrund-Sync für ${cleanName} erfolgreich gestartet. Ich informiere dich via Chat über den Fortschritt.` }] };
-      } else if (action === "CANCEL") {
-          const cleanName = (username.startsWith("@") ? username : `@${username}`).toLowerCase();
+
+      } else if (action === "STOP") {
+          const effectiveUsername = username || "all";
+          if (effectiveUsername.toLowerCase() === "all") {
+            const stopped: string[] = [];
+            for (const [name, controller] of activeSyncControllers.entries()) {
+              controller.abort();
+              stopped.push(name);
+            }
+            if (stopped.length === 0) return { content: [{ type: "text", text: "Es laufen aktuell keine Syncs." }] };
+            return { content: [{ type: "text", text: `Abbruch-Signal für ${stopped.length} laufende Syncs gesendet: ${stopped.join(", ")}` }] };
+          }
+          const cleanName = (effectiveUsername.startsWith("@") ? effectiveUsername : `@${effectiveUsername}`).toLowerCase();
           const controller = activeSyncControllers.get(cleanName);
           if (!controller) {
             return { content: [{ type: "text", text: `Es läuft aktuell kein Sync für ${cleanName}.` }] };
           }
           controller.abort();
           return { content: [{ type: "text", text: `Abbruch-Signal für den Sync von ${cleanName} wurde gesendet.` }] };
+
+      } else if (action === "STATUS") {
+          let statusText = `=== X Sync Status ===\n\n`;
+
+          // 1. Periodic 60-Sekunden Discovery Loop Status
+          const loopState = xDiscoveryStats.isRunning ? "LÄUFT 🟢 (alle 60 Sek)" : "GESTOPPT 🔴";
+          const lastRunStr = xDiscoveryStats.lastRunTime ? new Date(xDiscoveryStats.lastRunTime).toLocaleTimeString('de-DE') : "Noch nie";
+          statusText += `🔄 Periodic 60-Sek Sync Loop: ${loopState}\n`;
+          statusText += `  Abgeschlossene Zyklen: ${xDiscoveryStats.cycleCount}\n`;
+          statusText += `  Letzter Zyklus-Start: ${lastRunStr}\n\n`;
+
+          // 2. Active user syncs
+          const runningSyncs = Array.from(activeSyncControllers.keys());
+          statusText += `⚡ Aktuell aktive User-Syncs: ${runningSyncs.length > 0 ? runningSyncs.join(", ") : "Keine"}\n\n`;
+
+          // 2. Pipeline counts
+          const { count: totalPosts } = await supabase
+            .from("agent_workspace")
+            .select("*", { count: "exact", head: true })
+            .eq("agent_id", AGENT_ID)
+            .eq("artifact_type", "x_post");
+
+          const { count: pendingPosts } = await supabase
+            .from("agent_workspace")
+            .select("*", { count: "exact", head: true })
+            .eq("agent_id", AGENT_ID)
+            .eq("artifact_type", "x_post")
+            .eq("status", "pending");
+
+          const { count: embeddedPosts } = await supabase
+            .from("agent_workspace")
+            .select("*", { count: "exact", head: true })
+            .eq("agent_id", AGENT_ID)
+            .eq("artifact_type", "x_post")
+            .eq("status", "embedded");
+
+          const { count: categorizedPosts } = await supabase
+            .from("agent_workspace")
+            .select("*", { count: "exact", head: true })
+            .eq("agent_id", AGENT_ID)
+            .eq("artifact_type", "x_post")
+            .eq("status", "categorized");
+
+          statusText += `📊 Pipeline-Übersicht:\n`;
+          statusText += `  Total Posts: ${totalPosts || 0}\n`;
+          statusText += `  ⏳ Pending (ohne Embedding): ${pendingPosts || 0}\n`;
+          statusText += `  🔤 Embedded (ohne LLM): ${embeddedPosts || 0}\n`;
+          statusText += `  🏷️ Categorized (vollständig): ${categorizedPosts || 0}\n\n`;
+
+          // 2b. Recent Sync Logs
+          const cutoff = new Date(Date.now() - (hours_back || 24) * 60 * 60 * 1000).toISOString();
+          const { data: logs } = await supabase
+            .from("x_sync_logs")
+            .select("action_type, username, message, created_at")
+            .gte("created_at", cutoff)
+            .order("created_at", { ascending: false })
+            .limit(5);
+
+          if (logs && logs.length > 0) {
+            statusText += `📜 Letzte Sync-Aktivitäten (letzte ${hours_back || 24}h):\n`;
+            for (const log of logs) {
+              const dateStr = new Date(log.created_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+              statusText += `  [${dateStr}] [${log.action_type.toUpperCase()}] ${log.username ? '@' + log.username + ': ' : ''}${log.message}\n`;
+            }
+            statusText += `\n`;
+          }
+
+          // 3. LLM Categorization Status
+          if (llmCategorizationStats.isRunning) {
+            const runTimeSecs = (Date.now() - llmCategorizationStats.startTime) / 1000;
+            const postsPerSec = llmCategorizationStats.processedCount / (runTimeSecs || 1);
+            statusText += `🤖 LLM-Kategorisierung: LÄUFT 🟢\n`;
+            statusText += `  Verarbeitet: ${llmCategorizationStats.processedCount} Posts\n`;
+            statusText += `  Speed: ${(postsPerSec * 60).toFixed(1)} Posts/Min\n`;
+            if (llmCategorizationStats.lastError) {
+              statusText += `  Letzter Fehler: ${llmCategorizationStats.lastError}\n`;
+            }
+          } else {
+            statusText += `🤖 LLM-Kategorisierung: GESTOPPT 🔴\n`;
+          }
+
+          // 4. Per-influencer post counts
+          const { data: influencers } = await supabase.from("x_users").select("username, screen_name").eq("is_active", true).order("username");
+          if (influencers && influencers.length > 0) {
+            statusText += `\n👥 Influencer-Übersicht:\n`;
+            for (const inf of influencers) {
+              const { count: infCount } = await supabase
+                .from("agent_workspace")
+                .select("*", { count: "exact", head: true })
+                .eq("agent_id", AGENT_ID)
+                .eq("artifact_type", "x_post")
+                .contains("metadata", { author: `@${inf.username}` });
+              const syncStatus = activeSyncControllers.has(`@${inf.username}`) ? "🔄" : "⏸️";
+              statusText += `  ${syncStatus} @${inf.username} (${inf.screen_name || 'N/A'}): ${infCount || 0} Posts\n`;
+            }
+          }
+
+          return { content: [{ type: "text", text: statusText }] };
       }
       return { content: [{ type: "text", text: `Invalid action` }], isError: true };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // Tool: Show X Content (DATABASE / ONLINE)
+  server.registerTool(
+    "show_x_content",
+    {
+      title: "Show X Content",
+      description: "View X/Twitter content. DATABASE lists stored posts chronologically. ONLINE fetches a single tweet live from the X API.",
+      inputSchema: {
+        action: z.enum(["DATABASE", "ONLINE"]).describe("DATABASE = list stored posts. ONLINE = fetch a single tweet live."),
+        username: z.string().optional().describe("Filter by influencer handle (for DATABASE, e.g. '@elonmusk')"),
+        limit: z.number().optional().default(10).describe("Max posts to show (for DATABASE, default: 10)"),
+        days_back: z.number().optional().describe("Filter posts from the last X days (for DATABASE)"),
+        tweet_id: z.string().optional().describe("Tweet ID or URL to fetch (for ONLINE)"),
+      },
+    },
+    async ({ action, username, limit, days_back, tweet_id }: any) => {
+      try {
+        if (action === "DATABASE") {
+          let query = supabase
+            .from("agent_workspace")
+            .select("id, content, metadata, created_at")
+            .eq("agent_id", AGENT_ID)
+            .eq("artifact_type", "x_post")
+            .order("created_at", { ascending: false })
+            .limit(limit || 10);
+
+          if (username) {
+            const cleanAuthor = username.startsWith("@") ? username.toLowerCase() : `@${username.toLowerCase()}`;
+            query = query.contains("metadata", { author: cleanAuthor });
+          }
+
+          if (days_back) {
+            const cutoff = new Date(Date.now() - days_back * 24 * 60 * 60 * 1000).toISOString();
+            query = query.gte("created_at", cutoff);
+          }
+
+          const { data, error } = await query;
+          if (error) throw error;
+          if (!data || data.length === 0) return { content: [{ type: "text", text: "Keine Posts in der Datenbank gefunden." }] };
+
+          const formatted = data.map((p: any, i: number) => {
+            const author = p.metadata?.author || "Unknown";
+            const dateStr = p.metadata?.published_at ? new Date(p.metadata.published_at).toLocaleString('de-DE') : new Date(p.created_at).toLocaleString('de-DE');
+            const tickers = p.metadata?.tickers?.length ? p.metadata.tickers.join(", ") : "Keine";
+            return `[${i + 1}] 📅 ${dateStr} | 👤 ${author} | 🔑 ${tickers}\n${p.content}`;
+          }).join("\n\n---\n\n");
+
+          return { content: [{ type: "text", text: `${data.length} Posts gefunden:\n\n${formatted}` }] };
+
+        } else if (action === "ONLINE") {
+          if (!tweet_id) throw new Error("tweet_id is required for ONLINE action");
+          if (!X_BEARER_TOKEN || X_BEARER_TOKEN.includes("YOUR_X_BEARER_TOKEN")) {
+            return { content: [{ type: "text", text: "Error: X_BEARER_TOKEN is not configured" }], isError: true };
+          }
+
+          // Extract tweet ID from URL if needed
+          let id = tweet_id;
+          const urlMatch = tweet_id.match(/status\/(\d+)/);
+          if (urlMatch) id = urlMatch[1];
+
+          const res = await fetch(`https://api.twitter.com/2/tweets/${id}?tweet.fields=created_at,author_id,entities`, {
+            headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` }
+          });
+          if (!res.ok) throw new Error(`X API failed: ${res.status}`);
+          const data = await res.json();
+          if (!data.data) throw new Error("Tweet not found");
+
+          const tweet = data.data;
+          const dateStr = tweet.created_at ? new Date(tweet.created_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
+          return { content: [{ type: "text", text: `📅 ${dateStr} | Author ID: ${tweet.author_id}\n\n${tweet.text}` }] };
+        }
+
+        throw new Error("Invalid action");
       } catch (err: any) {
         return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
       }
@@ -668,13 +1032,26 @@ export function registerXTools(server: McpServer) {
               is_active: true
             });
             if (error) throw error;
-            return { content: [{ type: "text", text: `Influencer @${cleanName} (${screenName}) wurde erfolgreich zur Datenbank hinzugefügt.` }] };
+
+            // Auto-trigger initial sync (fire-and-forget, default 200 posts)
+            const initialSyncLimit = 200;
+            const autoCleanName = `@${cleanName}`;
+            if (X_BEARER_TOKEN && !X_BEARER_TOKEN.includes("YOUR_X_BEARER_TOKEN")) {
+              if (!activeSyncControllers.has(autoCleanName)) {
+                const controller = new AbortController();
+                activeSyncControllers.set(autoCleanName, controller);
+                console.log(`[X Sync] Auto-starting initial sync for ${autoCleanName} (limit: ${initialSyncLimit})...`);
+                runBackgroundSync(autoCleanName, cleanName, initialSyncLimit, undefined, controller.signal);
+              }
+            }
+
+            return { content: [{ type: "text", text: `Influencer @${cleanName} (${screenName}) wurde erfolgreich hinzugefügt. Initial-Sync für die letzten ${initialSyncLimit} Posts wurde automatisch gestartet.` }] };
         } else if (action === "REMOVE") {
             if (!username) throw new Error("username is required for REMOVE");
             const cleanName = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
-            const { error } = await supabase.from("x_users").delete().eq("username", cleanName);
+            const { error } = await supabase.from("x_users").update({ is_active: false }).eq("username", cleanName);
             if (error) throw error;
-            return { content: [{ type: "text", text: `Influencer @${cleanName} wurde erfolgreich aus der Datenbank entfernt.` }] };
+            return { content: [{ type: "text", text: `Influencer @${cleanName} wurde deaktiviert (Soft-Delete). Posts bleiben erhalten.` }] };
         }
         throw new Error("Invalid action");
       } catch (err: any) {

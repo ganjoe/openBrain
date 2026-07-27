@@ -29,6 +29,12 @@ docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-init
 echo "🗃️  Applying Influencer Directory Schema (search_influencers v2 with match_quality)..."
 docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/05-influencers.sql
 
+echo "🗃️  Applying X Sync Logs & Pipeline Status Schema..."
+docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/06-x-sync-logs.sql
+
+echo "🗃️  Applying X First Mentions Table & RPC Schema..."
+docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/07-x-first-mentions.sql
+
 echo "🗃️  Applying YouTube Sync Logs Schema..."
 docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/21-yt-sync-logs.sql
 

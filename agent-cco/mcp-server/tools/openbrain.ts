@@ -122,65 +122,33 @@ export function registerOpenBrainTools(server: McpServer) {
     }
   );
 
-  // Tool: Search Influencer Posts
+  // Tool: Search Influencer Posts (Simplified: READ / SHOW / READ_IDS)
   server.registerTool(
     "search_influencer_posts",
     {
       title: "Search Influencer Posts",
-      description: "Search the workspace for influencer posts using semantic, exact, or ID-based methods, or find first mentions.",
+      description: "Search the workspace for influencer posts. Use READ to get results in LLM context, or SHOW to dump them to the user's chat via telemetry (no LLM context overhead).",
       inputSchema: {
-        action: z.enum(["SEMANTIC", "EXACT", "READ_IDS", "FIRST_MENTIONS_AND_DISCOVERY"]).describe("The type of search"),
-        query: z.string().optional().describe("Search query for SEMANTIC or EXACT. Leave empty for EXACT to list recent posts."),
+        action: z.enum(["READ", "SHOW", "READ_IDS"]).describe("READ = results to LLM context. SHOW = dump to chat via telemetry. READ_IDS = fetch specific posts by ID."),
+        query: z.string().optional().describe("Search query (ticker, topic, keyword). Leave empty to list recent posts."),
         limit: z.number().optional().default(200).describe("Max results (default: 200)"),
-        threshold: z.number().optional().default(0.5).describe("Similarity threshold for SEMANTIC (default: 0.5)"),
+        threshold: z.number().optional().default(0.5).describe("Similarity threshold for semantic search (default: 0.5)"),
         artifact_type: z.string().optional().describe("Filter by artifact type (default: 'x_post')"),
         days_back: z.number().optional().describe("Filter posts from the last X days"),
-        dump_to_chat: z.boolean().optional().default(false).describe("If true, dump results to chat instead of returning text"),
-        return_mode: z.enum(["ids_only", "snippets", "full_text"]).optional().default("snippets").describe("Return format"),
-        ids: z.array(z.string()).optional().describe("Array of post IDs (for READ_IDS)"),
-        keywords: z.array(z.string()).optional().describe("Keywords for FIRST_MENTIONS_AND_DISCOVERY. If empty, searches for completely new tickers globally."),
-        authors: z.array(z.string()).optional().describe("CRITICAL: If the user asks for a specific influencer/author (like 'von serenity'), you MUST pass their name here! Do not perform a global search if an author is requested."),
-        start_date: z.string().optional().describe("Optional start date (ISO format) for FIRST_MENTIONS_AND_DISCOVERY"),
+        return_mode: z.enum(["ids_only", "snippets", "full_text"]).optional().default("snippets").describe("Return format for READ (default: snippets)"),
+        ids: z.array(z.string()).optional().describe("Array of post IDs (for READ_IDS only)"),
+        authors: z.array(z.string()).optional().describe("CRITICAL: If the user asks for a specific influencer/author (like 'von serenity'), you MUST pass their name here!"),
         ...(GLOBAL_BRAIN_ACCESS ? { owner: z.string().optional().describe("Filter by agent ID.") } : {})
       },
     },
-    async ({ action, query, limit, threshold, artifact_type, days_back, dump_to_chat, return_mode, ids, keywords, authors, start_date, owner }: any) => {
+    async ({ action, query, limit, threshold, artifact_type, days_back, return_mode, ids, authors, owner }: any) => {
       try {
         const p_agent_id = GLOBAL_BRAIN_ACCESS ? (owner || null) : AGENT_ID;
-        
-        if (action === "SEMANTIC") {
-            const actual_query = query || "";
-            const qEmb = await getEmbedding(actual_query);
-            const { data, error } = await supabase.rpc("semantic_search_workspace", {
-              query_embedding: qEmb, match_threshold: threshold, match_count: limit,
-              p_agent_id: p_agent_id, p_artifact_type: artifact_type || null, p_days_back: days_back || null
-            });
-            if (error) throw error;
-            await sendSearchTelemetry(actual_query, data || []);
-            if (!data || data.length === 0) return { content: [{ type: "text", text: "No results found." }] };
-            if (dump_to_chat) {
-              await dumpToChat(actual_query, data);
-              return { content: [{ type: "text", text: `Success. ${data.length} posts dumped to chat. [STOP]` }] };
-            }
-            return { content: [{ type: "text", text: formatSearchResults(data, return_mode) }] };
-        } else if (action === "EXACT") {
-            const actual_keyword = query || "";
-            const { data, error } = await supabase.rpc("exact_search_workspace", {
-              p_exact_keyword: actual_keyword === "" ? null : actual_keyword,
-              match_count: limit, p_agent_id: p_agent_id, p_artifact_type: artifact_type || null, p_days_back: days_back || null
-            });
-            if (error) throw error;
-            await sendSearchTelemetry(actual_keyword === "" ? "Letzte Posts" : actual_keyword, data || []);
-            if (!data || data.length === 0) return { content: [{ type: "text", text: "No results found." }] };
-            if (dump_to_chat) {
-              await dumpToChat(actual_keyword === "" ? "Letzte Posts" : actual_keyword, data);
-              return { content: [{ type: "text", text: `Success. ${data.length} posts dumped to chat. [STOP]` }] };
-            }
-            return { content: [{ type: "text", text: formatSearchResults(data, return_mode) }] };
-        } else if (action === "READ_IDS") {
+
+        // READ_IDS: Fetch specific posts by ID (used internally by bot for sync-session)
+        if (action === "READ_IDS") {
             if (!ids || ids.length === 0) return { content: [{ type: "text", text: "No IDs provided." }] };
             
-            // Chunk IDs into batches of 50 to avoid "414 Request-URI Too Large" / "502 Bad Gateway"
             const CHUNK_SIZE = 50;
             const chunks: string[][] = [];
             for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
@@ -199,40 +167,110 @@ export function registerOpenBrainTools(server: McpServer) {
             if (!data || data.length === 0) return { content: [{ type: "text", text: "No posts found for IDs." }] };
             const resultsText = data.map((t: any, i: number) => `[${i + 1}] ID: ${t.id} | Date: ${new Date(t.created_at).toLocaleDateString()}\nContent: ${t.content}\nMetadata: ${JSON.stringify(t.metadata)}`);
             return { content: [{ type: "text", text: resultsText.join("\n\n") }] };
-        } else if (action === "FIRST_MENTIONS_AND_DISCOVERY") {
-            const targetAuthors = authors && authors.length > 0 ? authors.map((a: string) => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`) : null;
-            const targetKeywords = keywords && keywords.length > 0 ? keywords : null;
-            
-            const { data, error } = await supabase.rpc("discover_first_mentions", { 
-                p_keywords: targetKeywords, 
-                p_authors: targetAuthors, 
-                p_start_date: start_date || null,
-                p_limit: limit 
-            });
-            if (error) throw error;
-            if (!data || data.length === 0) return { content: [{ type: "text", text: "Keine ersten Erwähnungen gefunden." }] };
-            
-            const title = targetKeywords ? `Erste Erwähnungen für: ${targetKeywords.join(', ')}` : (targetAuthors ? `Zuletzt entdeckte Ticker von ${targetAuthors.join(', ')}` : "Zuletzt entdeckte (neue) Ticker");
-            
-            if (dump_to_chat) {
-              let dumpText = `**${title}**\n\n`;
-              data.forEach((r: any) => {
-                const dateStr = r.first_mentioned_at ? new Date(r.first_mentioned_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
-                dumpText += `### Ticker/Keyword: ${r.keyword}\n📅 ${dateStr} | 👤 ${r.author} | 🔗 ID: ${r.post_id}\n📝 "${r.post_content}"\n\n---\n\n`;
-              });
-              await sendTelemetry(dumpText);
-              return { content: [{ type: "text", text: `Success. ${data.length} records have been published directly to the chat via telemetry. Do not summarize them. Just output [STOP].` }] };
-            } else {
-              const results = data.map((r: any) => `Ticker: ${r.keyword} | First Mentioned: ${new Date(r.first_mentioned_at).toLocaleString('de-DE')} | Author: ${r.author} | Content: ${r.post_content}`);
-              return { content: [{ type: "text", text: `Hier sind die Daten:\n${results.join('\n\n')}` }] };
-            }
         }
-        throw new Error("Invalid action");
+
+        // Smart search routing: decide semantic vs exact based on query
+        const actual_query = query || "";
+        const isDumpToChat = action === "SHOW";
+        
+        // Heuristic: if query looks like a short ticker/keyword or is empty → exact search
+        // If it's a longer phrase → semantic search
+        const isLikelyExact = actual_query === "" || /^[A-Z0-9$.#]{1,10}$/i.test(actual_query) || actual_query.startsWith("@");
+        
+        let data: any[];
+        
+        if (isLikelyExact) {
+          // Exact / keyword search
+          const { data: exactData, error } = await supabase.rpc("exact_search_workspace", {
+            p_exact_keyword: actual_query === "" ? null : actual_query,
+            match_count: limit, p_agent_id: p_agent_id, p_artifact_type: artifact_type || null, p_days_back: days_back || null
+          });
+          if (error) throw error;
+          data = exactData || [];
+        } else {
+          // Semantic search
+          const qEmb = await getEmbedding(actual_query);
+          const { data: semData, error } = await supabase.rpc("semantic_search_workspace", {
+            query_embedding: qEmb, match_threshold: threshold, match_count: limit,
+            p_agent_id: p_agent_id, p_artifact_type: artifact_type || null, p_days_back: days_back || null
+          });
+          if (error) throw error;
+          data = semData || [];
+        }
+
+        // Filter by authors if specified
+        if (authors && authors.length > 0) {
+          const normalizedAuthors = authors.map((a: string) => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`);
+          data = data.filter((t: any) => {
+            const postAuthor = (t.metadata?.author || "").toLowerCase();
+            return normalizedAuthors.some((a: string) => postAuthor === a || postAuthor === a.replace("@", ""));
+          });
+        }
+
+        await sendSearchTelemetry(actual_query || "Letzte Posts", data);
+        if (!data || data.length === 0) return { content: [{ type: "text", text: "Keine Ergebnisse gefunden." }] };
+
+        if (isDumpToChat) {
+          await dumpToChat(actual_query || "Letzte Posts", data);
+          return { content: [{ type: "text", text: `Success. ${data.length} posts dumped to chat. [STOP]` }] };
+        }
+
+        return { content: [{ type: "text", text: formatSearchResults(data, return_mode) }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
       }
     }
   );
+
+  // Tool: Discover Ticker Mentions (First-Mention Detection)
+  server.registerTool(
+    "discover_ticker_mentions",
+    {
+      title: "Discover Ticker Mentions",
+      description: "Find tickers that an influencer mentioned for the VERY FIRST TIME ever. This is NOT a search — it's an analysis query that compares against the influencer's entire post history to find genuinely new ticker mentions.",
+      inputSchema: {
+        keywords: z.array(z.string()).optional().describe("Specific tickers to check (e.g. ['NVDA']): 'When did this influencer first mention this ticker?' If omitted, discovers all first-ever mentions globally."),
+        authors: z.array(z.string()).optional().describe("Filter to specific influencers (e.g. ['@serenity'])"),
+        start_date: z.string().optional().describe("Time window for discovery (ISO format, e.g. 'show first-mentions from the last week')"),
+        limit: z.number().optional().default(10).describe("Max results (default: 10)"),
+        dump_to_chat: z.boolean().optional().default(false).describe("If true, dump results directly to user chat via telemetry"),
+      },
+    },
+    async ({ keywords, authors, start_date, limit, dump_to_chat }: any) => {
+      try {
+        const targetAuthors = authors && authors.length > 0 ? authors.map((a: string) => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`) : null;
+        const targetKeywords = keywords && keywords.length > 0 ? keywords : null;
+        
+        const { data, error } = await supabase.rpc("get_first_mentions_v2", { 
+            p_keywords: targetKeywords, 
+            p_authors: targetAuthors, 
+            p_start_date: start_date || null,
+            p_limit: limit 
+        });
+        if (error) throw error;
+        if (!data || data.length === 0) return { content: [{ type: "text", text: "Keine ersten Erwähnungen gefunden." }] };
+        
+        const title = targetKeywords ? `Erste Erwähnungen für: ${targetKeywords.join(', ')}` : (targetAuthors ? `Zuletzt entdeckte Ticker von ${targetAuthors.join(', ')}` : "Zuletzt entdeckte (neue) Ticker");
+        
+        if (dump_to_chat) {
+          let dumpText = `**${title}**\n\n`;
+          data.forEach((r: any) => {
+            const dateStr = r.first_mentioned_at ? new Date(r.first_mentioned_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
+            dumpText += `### Ticker/Keyword: ${r.keyword}\n📅 ${dateStr} | 👤 ${r.author} | 🔗 ID: ${r.post_id}\n📝 "${r.post_content}"\n\n---\n\n`;
+          });
+          await sendTelemetry(dumpText);
+          return { content: [{ type: "text", text: `Success. ${data.length} records have been published directly to the chat via telemetry. Do not summarize them. Just output [STOP].` }] };
+        } else {
+          const results = data.map((r: any) => `Ticker: ${r.keyword} | First Mentioned: ${new Date(r.first_mentioned_at).toLocaleString('de-DE')} | Author: ${r.author} | Content: ${r.post_content}`);
+          return { content: [{ type: "text", text: `Hier sind die Daten:\n${results.join('\n\n')}` }] };
+        }
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+
 
   // Tool: Capture Thought
   server.registerTool(
