@@ -748,15 +748,65 @@ export function registerYouTubeTools(server: McpServer) {
 
           if (error) throw error;
 
-          // Trigger immediate sync in background
-          syncSingleChannel(resolved.handle, ytDiscoveryAbortController?.signal).catch((err: any) => {
-            console.error(`Immediate sync failed for ${resolved.handle}:`, err);
-          });
+          // Trigger immediate sync in background WITH task tracking + boss notification
+          const taskId = `yt_sync_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          try {
+            await supabase.from("agent_tasks").insert({
+              id: taskId,
+              agent_id: AGENT_ID,
+              task_type: "yt_channel_sync",
+              status: "running",
+              original_request: `YouTube-Channel ${resolved.handle} hinzufügen und synchronisieren`,
+              context: { channel: resolved.handle, title: resolved.title },
+            });
+          } catch (e) {
+            console.error("Failed to create YT sync task:", e);
+          }
+
+          (async () => {
+            try {
+              await syncSingleChannel(resolved.handle, ytDiscoveryAbortController?.signal);
+
+              // Count how many videos were synced
+              const { count } = await supabase
+                .from("yt_videos")
+                .select("*", { count: "exact", head: true })
+                .eq("channel", resolved.handle);
+
+              await supabase.from("agent_tasks").update({
+                status: "completed",
+                result: { channel: resolved.handle, title: resolved.title, video_count: count || 0 },
+                completed_at: new Date().toISOString(),
+              }).eq("id", taskId);
+
+              // Notify boss
+              await fetch("http://nexus-service:7734/api/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  from_agent: "system",
+                  to: AGENT_ID,
+                  text: `Der YouTube Initial-Sync für ${resolved.handle} (${resolved.title}) ist abgeschlossen. ${count || 0} Videos in der Datenbank. Analysiere die neuen Videos und berichte an 'boss'.`,
+                  msg_type: "chat",
+                  metadata: { task_id: taskId, task_type: "yt_channel_sync" },
+                }),
+              });
+            } catch (err: any) {
+              console.error(`YT sync task failed for ${resolved.handle}:`, err);
+              try {
+                await supabase.from("agent_tasks").update({
+                  status: "failed",
+                  result: { error: err.message },
+                  completed_at: new Date().toISOString(),
+                }).eq("id", taskId);
+              } catch (e) { /* ignore */ }
+            }
+          })();
 
           return {
             content: [{
               type: "text",
-              text: `YouTube-Channel ${resolved.handle} (${resolved.title}) wurde erfolgreich zur Datenbank hinzugefügt und der Initial-Sync wurde im Hintergrund gestartet.`,
+              text: `YouTube-Channel ${resolved.handle} (${resolved.title}) wurde erfolgreich zur Datenbank hinzugefügt und der Initial-Sync wurde im Hintergrund gestartet. Du wirst benachrichtigt, sobald der Sync abgeschlossen ist.`,
             }],
           };
         } else if (action === "REMOVE") {

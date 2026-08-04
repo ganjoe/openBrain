@@ -1,0 +1,64 @@
+# core/web-scraper/sources.yaml
+# Vorkonfigurierte Quellen für den CCO-Agenten.
+# Der Benutzer kann hier eigene Quellen ergänzen.
+
+headlines:
+  - name: "Reuters Markets"
+    url: "https://www.reuters.com/markets/"
+    selector: "a[data-testid='Heading'] span"
+    description: "Reuters Markt-Headlines"
+
+  - name: "Bloomberg Markets"
+    url: "https://www.bloomberg.com/markets"
+    selector: "article h3, [data-component='headline'] a"
+    description: "Bloomberg Markt-Headlines"
+
+  - name: "CNBC Markets"
+    url: "https://www.cnbc.com/world-markets/"
+    selector: "a.Card-title"
+    description: "CNBC World Markets Headlines"
+
+  - name: "Financial Times Markets"
+    url: "https://www.ft.com/markets"
+    selector: ".o-teaser__heading a"
+    description: "Financial Times Markets Headlines"
+
+  - name: "MarketWatch"
+    url: "https://www.marketwatch.com/"
+    selector: "h3.article__headline a"
+    description: "MarketWatch Top Stories"
+
+  - name: "Seeking Alpha"
+    url: "https://seekingalpha.com/market-news"
+    selector: "a[data-test-id='post-list-item-title']"
+    description: "Seeking Alpha Market News"
+
+metrics:
+  yahoo_finance:
+    url_template: "https://finance.yahoo.com/quote/{ticker}/"
+    selectors:
+      market_cap: "fin-streamer[data-field='marketCap']"
+      pe_ratio: "fin-streamer[data-field='trailingPE']"
+      eps: "fin-streamer[data-field='epsTrailingTwelveMonths']"
+      dividend_yield: "fin-streamer[data-field='dividendYield']"
+      beta: "fin-streamer[data-field='beta']"
+      price: "fin-streamer[data-field='regularMarketPrice']"
+      change: "fin-streamer[data-field='regularMarketChange']"
+      change_percent: "fin-streamer[data-field='regularMarketChangePercent']"
+      volume: "fin-streamer[data-field='regularMarketVolume']"
+      avg_volume: "fin-streamer[data-field='averageDailyVolume3Month']"
+      fifty_two_week_high: "fin-streamer[data-field='fiftyTwoWeekHigh']"
+      fifty_two_week_low: "fin-streamer[data-field='fiftyTwoWeekLow']"
+
+  marketwatch:
+    url_template: "https://www.marketwatch.com/investing/stock/{ticker}"
+    selectors:
+      price: ".intraday__price .value"
+      change: ".intraday__change .change--point--q .value"
+      change_percent: ".intraday__change .change--percent--q .value"
+
+investor_relations:
+  sec_edgar:
+    name: "SEC EDGAR (US-Filings)"
+    search_url: "https://efts.sec.gov/LATEST/search-index?q={company}&dateRange=custom&startdt={start_date}&enddt={end_date}&forms=10-K,10-Q,8-K"
+    filing_url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=10-K&dateb=&owner=include&count=5"

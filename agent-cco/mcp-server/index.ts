@@ -6,6 +6,7 @@ import { registerOpenBrainTools } from "./tools/openbrain.ts";
 import { registerXTools } from "./tools/x.ts";
 import { registerNexusTools } from "./tools/nexus.ts";
 import { registerYouTubeTools } from "./tools/youtube.ts";
+import { registerWebTools } from "./tools/web.ts";
 
 // --- MCP Server Setup ---
 const server = new McpServer({
@@ -18,6 +19,7 @@ registerOpenBrainTools(server);
 registerXTools(server);
 registerNexusTools(server);
 registerYouTubeTools(server);
+registerWebTools(server);
 
 // --- Hono App ---
 const app = new Hono();

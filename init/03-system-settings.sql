@@ -33,6 +33,11 @@ INSERT INTO system_settings (key, value)
 VALUES ('ollama_config', '{"mode": "cpu"}'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
+-- Vision Model Config (for LM Studio OCR)
+INSERT INTO system_settings (key, value)
+VALUES ('vision_model_config', '{"model": ""}'::jsonb)
+ON CONFLICT (key) DO NOTHING;
+
 -- Grants
 GRANT ALL ON TABLE public.system_settings TO anon;
 GRANT ALL ON TABLE public.system_settings TO service_role;

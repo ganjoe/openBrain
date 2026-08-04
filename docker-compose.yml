@@ -345,6 +345,8 @@ services:
         condition: service_healthy
       gateway:
         condition: service_started
+      web-scraper:
+        condition: service_started
     volumes:
       - ./agent-cco/metadata-prompt.txt:/app/metadata-prompt.txt:ro
       - ./agent-cco/yt-segmentation-prompt.txt:/app/yt-segmentation-prompt.txt:ro
@@ -365,6 +367,8 @@ services:
       GLOBAL_BRAIN_ACCESS: "false"
       X_BEARER_TOKEN: ${X_BEARER_TOKEN}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      WEB_SCRAPER_URL: http://web-scraper:8797
+      POSTGREST_URL: http://postgrest:3000
     ports:
       - "8788:8788"
     extra_hosts:
@@ -387,6 +391,22 @@ services:
       - "8796:8796"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # --- Web Scraper Service (Playwright headless browser) ---
+  web-scraper:
+    build:
+      context: ./core/web-scraper
+      dockerfile: Dockerfile
+    container_name: openbrain-web-scraper
+    restart: unless-stopped
+    volumes:
+      - openbrain_reports:/data/reports
+      - ./core/web-scraper/sources.yaml:/app/sources.yaml:ro
+    environment:
+      PORT: "8797"
+      REPORTS_DIR: /data/reports
+    ports:
+      - "8797:8797"
 
   # --- CCO Bot: Chief Communication Officer ---
   agent-cco-bot:
@@ -653,3 +673,4 @@ volumes:
   openbrain_ollama:
   openbrain_mqtt:
   yt-media:
+  openbrain_reports:

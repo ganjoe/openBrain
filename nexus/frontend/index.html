@@ -75,6 +75,17 @@
           <!-- Populated dynamically via JS -->
           <p class="hint">Prüfe Status…</p>
         </div>
+
+        <!-- Vision Model Selector (inside LM Studio panel) -->
+        <div class="panel-content" id="vision-model-section" style="border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span style="font-size: 13px; color: var(--text);">👁️ Vision Model (OCR)</span>
+          </div>
+          <select id="vision-model-select" style="width: 100%; font-size: 12px; padding: 4px 6px; background: var(--card-bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px;">
+            <option value="">(kein Vision-Modell)</option>
+          </select>
+          <p class="hint" style="font-size: 10px; margin-top: 4px;">Für Web-OCR (web_ocr_extract Tool)</p>
+        </div>
       </details>
 
       <!-- Ollama Section -->

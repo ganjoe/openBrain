@@ -222,6 +222,42 @@ async def update_provider(req: ProviderUpdateRequest):
     return {"status": "updated", "config": current_config}
 
 
+# ── Vision Model Settings ──────────────────────────────────────
+
+class VisionModelUpdateRequest(BaseModel):
+    model: str
+
+@router.get("/api/settings/vision_model")
+async def get_vision_model():
+    """Fetch the current vision model config from the DB."""
+    rows = await _db_get("system_settings", {"key": "eq.vision_model_config"})
+    if rows:
+        return rows[0].get("value", {"model": ""})
+    return {"model": ""}
+
+@router.post("/api/settings/vision_model")
+async def update_vision_model(req: VisionModelUpdateRequest):
+    """Update the selected vision model for OCR tasks."""
+    new_value = {"model": req.model}
+    
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        r = await client.patch(
+            f"{GATEWAY_URL}/rest/v1/system_settings?key=eq.vision_model_config",
+            headers={**DB_HEADERS, "Content-Type": "application/json"},
+            json={"value": new_value}
+        )
+        if r.status_code not in (200, 204):
+            # Try POST if row doesn't exist yet
+            r2 = await client.post(
+                f"{GATEWAY_URL}/rest/v1/system_settings",
+                headers={**DB_HEADERS, "Content-Type": "application/json"},
+                json={"key": "vision_model_config", "value": new_value}
+            )
+            if r2.status_code not in (200, 201, 204):
+                raise HTTPException(status_code=502, detail=f"DB error: {r2.text}")
+                
+    return {"status": "updated", "model": req.model}
+
 class ContextLimitRequest(BaseModel):
     enabled: bool
     limit: int

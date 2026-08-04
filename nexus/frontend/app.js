@@ -17,6 +17,7 @@ const state = {
   messages:      [],          // all buffered messages (capped at 500)
   lastSeenUnix:  parseInt(localStorage.getItem("nexus_last_seen") || String(Math.floor(Date.now() / 1000))),
   providerConfig: {},         // per-agent LLM provider mapping
+  visionModel: "",            // selected LM Studio vision model for OCR
 };
 
 // ── DOM refs ──────────────────────────────────────────────────
@@ -427,6 +428,55 @@ function renderLMStudioStatus(data) {
   } else {
     if ($lmLoadBtn) $lmLoadBtn.style.display = "none";
   }
+
+  // Update vision model dropdown with loaded models
+  updateVisionModelDropdown(data.loaded_models || []);
+}
+
+
+// ── Vision Model Logic ────────────────────────────────────────
+const $visionSelect = document.getElementById("vision-model-select");
+
+async function loadVisionModelConfig() {
+  try {
+    const r = await fetch(`${API}/api/settings/vision_model`);
+    const data = await r.json();
+    state.visionModel = data.model || "";
+  } catch (e) {
+    console.error("Failed to load vision model config:", e);
+  }
+}
+
+function updateVisionModelDropdown(loadedModels) {
+  if (!$visionSelect) return;
+
+  const currentValue = state.visionModel || $visionSelect.value;
+  $visionSelect.innerHTML = '<option value="">(kein Vision-Modell)</option>';
+
+  loadedModels.forEach(modelId => {
+    const opt = document.createElement("option");
+    opt.value = modelId;
+    opt.textContent = modelId.replace('lmstudio-community/', '');
+    if (modelId === currentValue) opt.selected = true;
+    $visionSelect.appendChild(opt);
+  });
+}
+
+if ($visionSelect) {
+  $visionSelect.addEventListener("change", async (e) => {
+    const model = e.target.value;
+    state.visionModel = model;
+    try {
+      await fetch(`${API}/api/settings/vision_model`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model }),
+      });
+      console.log(`Vision model updated to: ${model || "(none)"}`);
+    } catch (err) {
+      console.error("Failed to update vision model:", err);
+    }
+  });
 }
 
 
@@ -700,6 +750,7 @@ if ($ollamaToggle) {
   try {
     await loadContextConfig();
     await loadProviderConfig();
+    await loadVisionModelConfig();
     await loadAgents();
     await loadHistory();
   } catch (e) {

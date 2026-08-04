@@ -747,18 +747,63 @@ export function registerXTools(server: McpServer) {
                return { content: [{ type: "text", text: "Es wurden keine aktiven Influencer in der Datenbank gefunden." }] };
             }
             
-            // Start sequential background sync
+            // Start sequential background sync WITH batch task tracking
+            const batchTaskId = `sync_batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            try {
+              await supabase.from("agent_tasks").insert({
+                id: batchTaskId,
+                agent_id: AGENT_ID,
+                task_type: "x_batch_sync",
+                status: "running",
+                original_request: `Massen-Sync für ${influencers.length} Influencer`,
+                context: { count: influencers.length, limit: limit || null },
+              });
+            } catch (e) {
+              console.error("Failed to create batch sync task:", e);
+            }
+
             (async () => {
+               let syncedCount = 0;
+               let failedCount = 0;
                for (const inf of influencers) {
                   const cleanName = `@${inf.username}`;
                   if (activeSyncControllers.has(cleanName)) continue;
                   const controller = new AbortController();
                   activeSyncControllers.set(cleanName, controller);
-                  await runBackgroundSync(cleanName, inf.username, limit, start_time, controller.signal);
+                  try {
+                    await runBackgroundSync(cleanName, inf.username, limit, start_time, controller.signal);
+                    syncedCount++;
+                  } catch (err: any) {
+                    failedCount++;
+                    console.error(`Batch sync failed for ${cleanName}:`, err.message);
+                  }
+               }
+
+               // Update batch task and notify boss
+               try {
+                 await supabase.from("agent_tasks").update({
+                   status: "completed",
+                   result: { synced: syncedCount, failed: failedCount, total: influencers.length },
+                   completed_at: new Date().toISOString(),
+                 }).eq("id", batchTaskId);
+
+                 await fetch("http://nexus-service:7734/api/send", {
+                   method: "POST",
+                   headers: { "Content-Type": "application/json" },
+                   body: JSON.stringify({
+                     from_agent: "system",
+                     to: AGENT_ID,
+                     text: `Massen-Sync für ${influencers.length} Influencer abgeschlossen. ${syncedCount} erfolgreich, ${failedCount} fehlgeschlagen. Berichte das Ergebnis an 'boss'.`,
+                     msg_type: "chat",
+                     metadata: { task_id: batchTaskId, task_type: "x_batch_sync" },
+                   }),
+                 });
+               } catch (e) {
+                 console.error("Failed to update batch task:", e);
                }
             })();
             
-            return { content: [{ type: "text", text: `Massen-Sync für ${influencers.length} Influencer gestartet. Dies geschieht nacheinander im Hintergrund.` }] };
+            return { content: [{ type: "text", text: `Massen-Sync für ${influencers.length} Influencer gestartet. Dies geschieht nacheinander im Hintergrund. Du wirst benachrichtigt, sobald alle Syncs abgeschlossen sind.` }] };
           }
 
           const { primaryUsername, allHandles } = await resolveAuthorHandles(effectiveUsername);
@@ -1086,19 +1131,35 @@ export function registerXTools(server: McpServer) {
             });
             if (error) throw error;
 
-            // Auto-trigger initial sync (fire-and-forget, default 200 posts)
+            // Auto-trigger initial sync WITH task tracking + boss notification
             const initialSyncLimit = 200;
             const autoCleanName = `@${cleanName}`;
             if (X_BEARER_TOKEN && !X_BEARER_TOKEN.includes("YOUR_X_BEARER_TOKEN")) {
               if (!activeSyncControllers.has(autoCleanName)) {
                 const controller = new AbortController();
                 activeSyncControllers.set(autoCleanName, controller);
+
+                // Create persistent task for tracking
+                const taskId = `sync_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                try {
+                  await supabase.from("agent_tasks").insert({
+                    id: taskId,
+                    agent_id: AGENT_ID,
+                    task_type: "x_sync",
+                    status: "running",
+                    original_request: `Initial-Sync für @${cleanName} (${initialSyncLimit} Posts)`,
+                    context: { author: autoCleanName, limit: initialSyncLimit, requested_by: "boss" },
+                  });
+                } catch (e) {
+                  console.error("Failed to create initial sync task:", e);
+                }
+
                 console.log(`[X Sync] Auto-starting initial sync for ${autoCleanName} (limit: ${initialSyncLimit})...`);
-                runBackgroundSync(autoCleanName, cleanName, initialSyncLimit, undefined, controller.signal);
+                runBackgroundSync(autoCleanName, cleanName, initialSyncLimit, undefined, controller.signal, taskId, AGENT_ID);
               }
             }
 
-            return { content: [{ type: "text", text: `Influencer @${cleanName} (${screenName}) wurde erfolgreich hinzugefügt. Initial-Sync für die letzten ${initialSyncLimit} Posts wurde automatisch gestartet.` }] };
+            return { content: [{ type: "text", text: `Influencer @${cleanName} (${screenName}) wurde erfolgreich hinzugefügt. Initial-Sync für die letzten ${initialSyncLimit} Posts wurde automatisch gestartet. Du wirst benachrichtigt, sobald der Sync abgeschlossen ist.` }] };
         } else if (action === "REMOVE") {
             if (!username) throw new Error("username is required for REMOVE");
             const cleanName = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
