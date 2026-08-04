@@ -251,6 +251,8 @@ services:
     build:
       context: ./agent-ea/bot
       dockerfile: Dockerfile
+      additional_contexts:
+        runtime: ./core/agent-runtime
     container_name: openbrain-ea-bot
     restart: unless-stopped
     depends_on:
@@ -310,6 +312,8 @@ services:
     build:
       context: ./agent-srm/bot
       dockerfile: Dockerfile
+      additional_contexts:
+        runtime: ./core/agent-runtime
     container_name: openbrain-srm-bot
     restart: unless-stopped
     depends_on:
@@ -389,6 +393,8 @@ services:
     build:
       context: ./agent-cco/bot
       dockerfile: Dockerfile
+      additional_contexts:
+        runtime: ./core/agent-runtime
     container_name: openbrain-cco-bot
     restart: unless-stopped
     depends_on:
@@ -444,6 +450,8 @@ services:
     build:
       context: ./agent-pta/bot
       dockerfile: Dockerfile
+      additional_contexts:
+        runtime: ./core/agent-runtime
     container_name: openbrain-pta-bot
     restart: unless-stopped
     depends_on:
@@ -511,6 +519,8 @@ services:
     build:
       context: ./agent-pca/bot
       dockerfile: Dockerfile
+      additional_contexts:
+        runtime: ./core/agent-runtime
     container_name: openbrain-pca-bot
     restart: unless-stopped
     depends_on:
@@ -619,6 +629,8 @@ services:
     build:
       context: ./agent-cda/bot
       dockerfile: Dockerfile
+      additional_contexts:
+        runtime: ./core/agent-runtime
     container_name: openbrain-cda-bot
     restart: unless-stopped
     depends_on:

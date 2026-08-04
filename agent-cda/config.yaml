@@ -10,6 +10,9 @@ mqtt:
   broker_url: "mqtt://nexus-broker:1883"
   lwt_topic: "agents/status"
   lwt_payload: '{"agent":"cda","status":"offline","unix":0}'
+  extra_subscriptions:
+    - topic: "agents/stock-data/events"
+      handler: "telemetry_forward"
 
 mcp:
   local_servers:

@@ -19,3 +19,6 @@ mcp:
       label: "openbrain-srm-memory"
     - url: "http://mcp-drawio:8796"
       label: "drawio-diagrams"
+
+runtime:
+  max_tool_iterations: 6

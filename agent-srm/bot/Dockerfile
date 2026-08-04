@@ -2,14 +2,19 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
+# Install runtime dependencies first (cached layer)
+COPY --from=runtime package.json runtime/package.json
+COPY --from=runtime tsconfig.json runtime/tsconfig.json
+RUN cd runtime && npm install
 
-# Install dependencies
+# Copy runtime source files
+COPY --from=runtime *.ts runtime/
+
+# Copy bot-specific files (bootstrapper + local package.json + tsconfig)
+COPY package.json tsconfig.json ./
 RUN npm install
 
-# Copy source code and config
-COPY . .
+COPY index.ts ./
 
-# Run the bot
+# Run the bot via ts-node (defined in package.json scripts.start)
 CMD ["npm", "start"]

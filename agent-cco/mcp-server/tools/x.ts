@@ -91,11 +91,11 @@ async function getXUserId(username: string): Promise<{id: string, name: string}>
   return { id: userId, name: screenName };
 }
 
-export async function runBackgroundSync(cleanName: string, username: string, limit?: number, start_time?: string, signal?: AbortSignal) {
+export async function runBackgroundSync(cleanName: string, username: string, limit?: number, start_time?: string, signal?: AbortSignal, taskId?: string, taskAgentId?: string) {
   console.log(`[X Sync] Background job started for ${cleanName}`);
   // Generate a unique session id for this sync run so the CCO can analyze
   // exactly the posts saved in this run, not whatever the DB happens to contain.
-  const sessionId = `sync_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const sessionId = taskId || `sync_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const savedPostIds: string[] = [];
   try {
     await sendTelemetry(`[System] Hintergrund-Sync für ${cleanName} startet...`);
@@ -317,27 +317,34 @@ export async function runBackgroundSync(cleanName: string, username: string, lim
     // Trigger embedding processing for the newly discovered posts
     processXPendingPosts();
     
-    // Trigger CCO to generate the promised summary using the exact post IDs from this sync session.
-    if (savedPostIds.length > 0) {
+    // Update task in DB and notify the owning agent (generic — works for any agent, any task type)
+    if (taskId && taskAgentId) {
+      try {
+        await supabase.from("agent_tasks")
+          .update({
+            status: "completed",
+            result: { new_posts: totalSaved, author: cleanName, session_id: sessionId },
+            completed_at: new Date().toISOString()
+          })
+          .eq("id", taskId);
+      } catch (e) {
+        console.error("Failed to update task status:", e);
+      }
+
       try {
         await fetch("http://nexus-service:7734/api/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             from_agent: "system",
-            to: "cco",
-            text: `Der Hintergrund-Sync für ${cleanName} ist abgeschlossen. Analysiere ausschließlich die Posts dieser Sync-Session und schreibe die Zusammenfassung an 'boss'.`,
+            to: taskAgentId,
+            text: `Hintergrund-Sync für ${cleanName} abgeschlossen: ${totalSaved} neue Posts.`,
             msg_type: "chat",
-            metadata: {
-              sync_session_id: sessionId,
-              sync_author: cleanName,
-              sync_post_ids: Array.from(new Set(savedPostIds)),
-              sync_post_count: savedPostIds.length
-            }
+            metadata: { task_id: taskId, task_type: "x_sync" }
           }),
         });
       } catch (e) {
-        console.error("Failed to trigger CCO summary:", e);
+        console.error("Failed to notify agent:", e);
       }
     }
   } catch (err: any) {
@@ -722,9 +729,10 @@ export function registerXTools(server: McpServer) {
         limit: z.number().optional().describe("Max tweets to fetch (for START)"),
         start_time: z.string().optional().describe("ISO 8601 date string for historical backfill (for START)"),
         hours_back: z.number().optional().default(24).describe("Hours of sync history to show (for STATUS, default: 24)"),
+        task_context: z.string().optional().describe("Original user request text for async task continuation (e.g. 'Schreibe einen Bericht über die Handelstaktik')"),
       },
     },
-    async ({ action, username, limit, start_time, hours_back }: any) => {
+    async ({ action, username, limit, start_time, hours_back, task_context }: any) => {
       try {
         if (action === "START") {
           if (!X_BEARER_TOKEN || X_BEARER_TOKEN.includes("YOUR_X_BEARER_TOKEN")) {
@@ -812,8 +820,25 @@ export function registerXTools(server: McpServer) {
           const controller = new AbortController();
           activeSyncControllers.set(cleanName, controller);
 
+          // Create a persistent task in DB so the agent can resume after sync
+          const taskId = `sync_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          if (task_context) {
+            try {
+              await supabase.from("agent_tasks").insert({
+                id: taskId,
+                agent_id: AGENT_ID,
+                task_type: "x_sync",
+                status: "running",
+                original_request: task_context,
+                context: { author: cleanName, limit: limit || null, requested_by: "boss" }
+              });
+            } catch (e) {
+              console.error("Failed to create task:", e);
+            }
+          }
+
           console.log(`[X Sync] Starting background sync for ${cleanName}...`);
-          runBackgroundSync(cleanName, targetUsername, limit, start_time, controller.signal);
+          runBackgroundSync(cleanName, targetUsername, limit, start_time, controller.signal, task_context ? taskId : undefined, task_context ? AGENT_ID : undefined);
 
           return { content: [{ type: "text", text: `Hintergrund-Sync für ${cleanName} erfolgreich gestartet. Ich informiere dich via Chat über den Fortschritt.` }] };
 

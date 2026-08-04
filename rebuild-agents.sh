@@ -1,6 +1,10 @@
 #!/bin/bash
 cd /home/daniel/openBrain
 
+echo "📦 Installing shared agent runtime dependencies..."
+cd /home/daniel/openBrain/core/agent-runtime && npm install
+cd /home/daniel/openBrain
+
 echo "🛠️  Rebuilding all custom services in parallel..."
 docker compose build \
   ollama \
@@ -41,4 +45,8 @@ docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-init
 echo "🗃️  Applying YouTube Sync Logs Schema..."
 docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/21-yt-sync-logs.sql
 
+echo "🗃️  Applying Agent Tasks Schema..."
+docker exec openbrain-db psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/22-agent-tasks.sql
+
 echo "✅ All agents and services successfully rebuilt and refreshed!"
+

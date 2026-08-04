@@ -11,5 +11,5 @@
     "forceConsistentCasingInFileNames": true,
     "outDir": "./dist"
   },
-  "include": ["index.ts"]
+  "include": ["index.ts", "runtime/**/*.ts"]
 }
