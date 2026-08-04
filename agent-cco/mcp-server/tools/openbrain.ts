@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { supabase, getEmbedding, extractMetadata, AGENT_ID, GLOBAL_BRAIN_ACCESS, sendTelemetry } from "./shared.ts";
+import { supabase, getEmbedding, extractMetadata, AGENT_ID, GLOBAL_BRAIN_ACCESS, sendTelemetry, resolveAuthorHandles } from "./shared.ts";
 
 async function dumpToChat(title: string, data: any[]) {
   if (!data || data.length === 0) {
@@ -200,10 +200,15 @@ export function registerOpenBrainTools(server: McpServer) {
 
         // Filter by authors if specified
         if (authors && authors.length > 0) {
-          const normalizedAuthors = authors.map((a: string) => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`);
+          const expandedHandles = new Set<string>();
+          for (const author of authors) {
+            const { allHandles } = await resolveAuthorHandles(author);
+            allHandles.forEach(h => expandedHandles.add(h.toLowerCase()));
+          }
           data = data.filter((t: any) => {
             const postAuthor = (t.metadata?.author || "").toLowerCase();
-            return normalizedAuthors.some((a: string) => postAuthor === a || postAuthor === a.replace("@", ""));
+            const cleanPostAuthor = postAuthor.startsWith("@") ? postAuthor : `@${postAuthor}`;
+            return expandedHandles.has(postAuthor) || expandedHandles.has(cleanPostAuthor);
           });
         }
 
@@ -238,7 +243,15 @@ export function registerOpenBrainTools(server: McpServer) {
     },
     async ({ keywords, authors, start_date, limit, dump_to_chat }: any) => {
       try {
-        const targetAuthors = authors && authors.length > 0 ? authors.map((a: string) => a.toLowerCase().startsWith("@") ? a.toLowerCase() : `@${a.toLowerCase()}`) : null;
+        let targetAuthors: string[] | null = null;
+        if (authors && authors.length > 0) {
+          const expandedSet = new Set<string>();
+          for (const a of authors) {
+            const { allHandles } = await resolveAuthorHandles(a);
+            allHandles.forEach(h => expandedSet.add(h.toLowerCase()));
+          }
+          targetAuthors = Array.from(expandedSet);
+        }
         const targetKeywords = keywords && keywords.length > 0 ? keywords : null;
         
         const { data, error } = await supabase.rpc("get_first_mentions_v2", { 
@@ -252,18 +265,12 @@ export function registerOpenBrainTools(server: McpServer) {
         
         const title = targetKeywords ? `Erste Erwähnungen für: ${targetKeywords.join(', ')}` : (targetAuthors ? `Zuletzt entdeckte Ticker von ${targetAuthors.join(', ')}` : "Zuletzt entdeckte (neue) Ticker");
         
-        if (dump_to_chat) {
-          let dumpText = `**${title}**\n\n`;
-          data.forEach((r: any) => {
-            const dateStr = r.first_mentioned_at ? new Date(r.first_mentioned_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
-            dumpText += `### Ticker/Keyword: ${r.keyword}\n📅 ${dateStr} | 👤 ${r.author} | 🔗 ID: ${r.post_id}\n📝 "${r.post_content}"\n\n---\n\n`;
-          });
-          await sendTelemetry(dumpText);
-          return { content: [{ type: "text", text: `Success. ${data.length} records have been published directly to the chat via telemetry. Do not summarize them. Just output [STOP].` }] };
-        } else {
-          const results = data.map((r: any) => `Ticker: ${r.keyword} | First Mentioned: ${new Date(r.first_mentioned_at).toLocaleString('de-DE')} | Author: ${r.author} | Content: ${r.post_content}`);
-          return { content: [{ type: "text", text: `Hier sind die Daten:\n${results.join('\n\n')}` }] };
-        }
+        const formattedResults = data.map((r: any) => {
+          const dateStr = r.first_mentioned_at ? new Date(r.first_mentioned_at).toLocaleString('de-DE') : 'Unbekanntes Datum';
+          return `* **Ticker:** ${r.keyword}\n  📅 **Erstmals erwähnt:** ${dateStr}\n  👤 **Influencer:** ${r.author}\n  📝 **Post:** "${r.post_content}"`;
+        }).join("\n\n");
+
+        return { content: [{ type: "text", text: `### ${title}\n\n${formattedResults}` }] };
       } catch (err: any) {
         return { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
       }

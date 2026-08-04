@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { supabase, getEmbeddingsBatch, extractMetadata, sendTelemetry, X_BEARER_TOKEN, AGENT_ID } from "./shared.ts";
+import { supabase, getEmbeddingsBatch, extractMetadata, sendTelemetry, X_BEARER_TOKEN, AGENT_ID, resolveAuthorHandles } from "./shared.ts";
 
 export const activeSyncControllers = new Map<string, AbortController>();
 
@@ -14,13 +14,40 @@ async function syncLog(actionType: string, username: string | null, message: str
   }
 }
 
+// --- Ticker Validator ---
+export function isValidTicker(ticker: string): boolean {
+  if (!ticker) return false;
+  const t = ticker.trim().toUpperCase().replace(/^[$#]/, "");
+  if (!t) return false;
+
+  // Reject pure numbers, decimals, or common prices/years
+  if (/^\d+(\.\d+)?$/.test(t)) {
+    // Reject 1-3 digit numbers (e.g. 50, 635, 120) and decimal numbers (e.g. 2.24, 49.17)
+    if (/^\d{1,3}$/.test(t) || t.includes(".")) return false;
+    // Reject obvious years (e.g. 2024, 2025, 2026, 2027)
+    if (t === "2024" || t === "2025" || t === "2026" || t === "2027") return false;
+  }
+
+  // Reject monetary amounts & multipliers (e.g. "1K", "15K", "100K", "400M", "2B", "9.8B", "1T")
+  if (/^\d+(\.\d+)?[KkMmBbTt]$/.test(t)) return false;
+
+  // Reject percentage or multiplier formats (e.g. "50%", "5X")
+  if (/^\d+[%xX]$/.test(t)) return false;
+
+  // Must contain letters OR be a valid 4-6 digit numeric exchange code (e.g. Japanese TSE 4-digit code)
+  const isAlphaSymbol = /^[A-Z0-9.\-\s]+$/.test(t) && /[A-Z]/.test(t);
+  const isExchangeNumericCode = /^\d{4,6}(\.[A-Z]+)?$/.test(t);
+
+  return isAlphaSymbol || isExchangeNumericCode;
+}
+
 // --- First Mention Helper ---
 export async function updateFirstMentions(author: string, tickers: string[], publishedAt: string, postId: string) {
   if (!tickers || tickers.length === 0 || !publishedAt || !postId) return;
   const cleanAuthor = author.toLowerCase().startsWith("@") ? author.toLowerCase() : `@${author.toLowerCase()}`;
   for (const ticker of tickers) {
-    const cleanTicker = ticker.toUpperCase().replace(/^[$#]/, "");
-    if (!cleanTicker) continue;
+    const cleanTicker = ticker.toUpperCase().replace(/^[$#]/, "").trim();
+    if (!cleanTicker || !isValidTicker(cleanTicker)) continue;
     try {
       await supabase.from("x_first_mentions").upsert({
         ticker: cleanTicker,
@@ -726,11 +753,12 @@ export function registerXTools(server: McpServer) {
             return { content: [{ type: "text", text: `Massen-Sync für ${influencers.length} Influencer gestartet. Dies geschieht nacheinander im Hintergrund.` }] };
           }
 
-          let cleanName = (effectiveUsername.startsWith("@") ? effectiveUsername : `@${effectiveUsername}`).toLowerCase();
-          let targetUsername = effectiveUsername.startsWith("@") ? effectiveUsername.substring(1).toLowerCase() : effectiveUsername.toLowerCase();
+          const { primaryUsername, allHandles } = await resolveAuthorHandles(effectiveUsername);
+          let targetUsername = primaryUsername;
+          let cleanName = `@${targetUsername}`;
 
-          // If not explicitly @ handle, try fuzzy search
-          if (!effectiveUsername.startsWith("@")) {
+          // If resolution did not change handle and name didn't start with @, try fuzzy search
+          if (!effectiveUsername.startsWith("@") && targetUsername === effectiveUsername.toLowerCase()) {
              const queryEmbedding = (await getEmbeddingsBatch([effectiveUsername]))[0];
              const { data: searchResults, error: searchError } = await supabase.rpc("search_influencers", {
                query_embedding: queryEmbedding,
@@ -758,7 +786,7 @@ export function registerXTools(server: McpServer) {
             .select("id")
             .eq("agent_id", AGENT_ID)
             .eq("artifact_type", "x_post")
-            .contains("metadata", { author: cleanName })
+            .in("metadata->>author", allHandles)
             .limit(1);
 
           if (latestError) {
@@ -939,8 +967,8 @@ export function registerXTools(server: McpServer) {
             .limit(limit || 10);
 
           if (username) {
-            const cleanAuthor = username.startsWith("@") ? username.toLowerCase() : `@${username.toLowerCase()}`;
-            query = query.contains("metadata", { author: cleanAuthor });
+            const { allHandles } = await resolveAuthorHandles(username);
+            query = query.in("metadata->>author", allHandles);
           }
 
           if (days_back) {

@@ -171,3 +171,48 @@ export async function extractMetadata(text: string, sendTelemetryMessage: boolea
   
   return { ...parsed, _metrics: metricsStr };
 }
+
+// --- Author Resolution Helper ---
+export async function resolveAuthorHandles(authorInput: string): Promise<{ primaryUsername: string, allHandles: string[] }> {
+  const clean = authorInput.replace(/^@/, "").trim().toLowerCase();
+  if (!clean) return { primaryUsername: "", allHandles: [] };
+
+  const handles = new Set<string>();
+  handles.add(`@${clean}`);
+  handles.add(clean);
+
+  let primaryUsername = clean;
+
+  try {
+    const { data: matchedUsers } = await supabase
+      .from("x_users")
+      .select("username, screen_name, is_active")
+      .or(`username.ilike.${clean},screen_name.ilike.${clean}`);
+
+    if (matchedUsers && matchedUsers.length > 0) {
+      const activeMatch = matchedUsers.find((u: any) => u.is_active) || matchedUsers[0];
+      if (activeMatch?.username) {
+        primaryUsername = activeMatch.username.toLowerCase();
+      }
+
+      for (const u of matchedUsers) {
+        if (u.username) {
+          handles.add(`@${u.username.toLowerCase()}`);
+          handles.add(u.username.toLowerCase());
+        }
+        if (u.screen_name) {
+          handles.add(`@${u.screen_name.toLowerCase()}`);
+          handles.add(u.screen_name.toLowerCase());
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[Author Resolution] Failed to query x_users:", e);
+  }
+
+  return {
+    primaryUsername,
+    allHandles: Array.from(handles)
+  };
+}
+

@@ -36,6 +36,12 @@ first_mentions AS (
     e.published_at AS first_mentioned_at,
     e.post_id
   FROM expanded e
+  WHERE NOT (
+    e.ticker ~ '^[0-9]{1,3}$' 
+    OR e.ticker ~ '^[0-9]+(\.[0-9]+)?$' 
+    OR e.ticker ~ '^[0-9]+[KkMmBbTt]$' 
+    OR e.ticker IN ('2024','2025','2026','2027')
+  )
   ORDER BY e.ticker, e.author, e.published_at ASC
 )
 SELECT ticker, author, first_mentioned_at, post_id
@@ -73,9 +79,16 @@ BEGIN
   WHERE (p_keywords IS NULL OR array_length(p_keywords, 1) IS NULL OR UPPER(fm.ticker) = ANY(
     SELECT UPPER(regexp_replace(k, '^[$#]', '')) FROM unnest(p_keywords) k
   ))
-    AND (p_authors IS NULL OR array_length(p_authors, 1) IS NULL OR LOWER(fm.author) = ANY(
-      SELECT LOWER(CASE WHEN a LIKE '@%' THEN a ELSE '@' || a END) FROM unnest(p_authors) a
-    ))
+    AND (p_authors IS NULL OR array_length(p_authors, 1) IS NULL 
+      OR LOWER(fm.author) = ANY(
+        SELECT LOWER(CASE WHEN a LIKE '@%' THEN a ELSE '@' || a END) FROM unnest(p_authors) a
+      )
+      OR EXISTS (
+        SELECT 1 FROM x_users u 
+        WHERE LOWER(u.screen_name) = ANY(SELECT LOWER(regexp_replace(a, '^[@]', '')) FROM unnest(p_authors) a)
+          AND (LOWER(fm.author) = LOWER('@' || u.username) OR LOWER(fm.author) = LOWER(u.username))
+      )
+    )
     AND (p_start_date IS NULL OR fm.first_mentioned_at >= p_start_date)
   ORDER BY fm.first_mentioned_at DESC
   LIMIT p_limit;

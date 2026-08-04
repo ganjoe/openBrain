@@ -50,11 +50,15 @@ export function registerPcaTools(server: McpServer) {
     "manage_watchlist",
     {
       title: "Manage Watchlist",
-      description: "List, load, add to, or remove from watchlists.",
+      description: "List, load, add to, remove from, create, delete, clear, or rename watchlists.",
       inputSchema: {
-        action: z.enum(["LIST", "LOAD", "ADD", "REMOVE", "CLUSTER"]).describe("The action to perform"),
+        action: z.enum(["LIST", "LOAD", "ADD", "REMOVE", "CLUSTER", "DELETE", "CLEAR", "CREATE", "RENAME"]).describe("The action to perform"),
         list_name: z.string().optional().describe("Watchlist name"),
+        list_names: z.array(z.string()).optional().describe("Array of watchlist names (for bulk DELETE)"),
+        pattern: z.string().optional().describe("Wildcard/LIKE pattern to match watchlist names (e.g. 'cluster_*', 'Photonics_*')"),
+        new_list_name: z.string().optional().describe("New name for watchlist (for RENAME)"),
         ticker: z.string().optional().describe("Ticker symbol (for ADD, REMOVE)"),
+        tickers: z.array(z.string()).optional().describe("Array of tickers (for CREATE or bulk ADD)"),
         position: z.number().optional().describe("Position in list (for ADD)"),
         layout_name: z.string().optional().describe("Layout to update (for LOAD)"),
         source_watchlist: z.string().optional().describe("Source watchlist for CLUSTER (default: all tickers)"),
@@ -62,14 +66,14 @@ export function registerPcaTools(server: McpServer) {
         num_clusters: z.number().optional().describe("Number of cluster groups (default: 10)"),
       },
     },
-    async ({ action, list_name, ticker, position, layout_name, source_watchlist, lookback_days, num_clusters }: any) => {
+    async ({ action, list_name, list_names, pattern, new_list_name, ticker, tickers, position, layout_name, source_watchlist, lookback_days, num_clusters }: any) => {
         try {
             if (action === "LIST") {
                 if (list_name) {
                   const { data, error } = await supabase.from("pca_watchlists").select("ticker, position").eq("list_name", list_name).order("position");
                   if (error) throw error;
-                  const tickers = data.map((r: any) => r.ticker).join(", ");
-                  return { content: [{ type: "text", text: `Watchlist '${list_name}': ${tickers}` }] };
+                  const resultTickers = data.map((r: any) => r.ticker).join(", ");
+                  return { content: [{ type: "text", text: `Watchlist '${list_name}': ${resultTickers}` }] };
                 } else {
                   const { data, error } = await supabase.from("pca_watchlists").select("list_name").order("list_name");
                   if (error) throw error;
@@ -81,15 +85,67 @@ export function registerPcaTools(server: McpServer) {
                 const result = await pcaCommand("load_watchlist", { list_name, layout_name: layout_name ?? "desktop" });
                 return { content: [{ type: "text", text: `Watchlist '${list_name}' loaded and persisted in layout. ${result}` }] };
             } else if (action === "ADD") {
-                if (!list_name || !ticker) throw new Error("list_name and ticker required for ADD");
-                const { error } = await supabase.from("pca_watchlists").insert({ list_name, ticker: ticker.toUpperCase(), position: position ?? 999 });
-                if (error) throw error;
-                return { content: [{ type: "text", text: `${ticker.toUpperCase()} added to '${list_name}'.` }] };
+                if (!list_name) throw new Error("list_name required for ADD");
+                if (tickers && tickers.length > 0) {
+                  const rows = tickers.map((t: string, idx: number) => ({
+                    list_name,
+                    ticker: t.toUpperCase(),
+                    position: (position ?? 0) + idx
+                  }));
+                  const { error } = await supabase.from("pca_watchlists").upsert(rows, { onConflict: "list_name,ticker" });
+                  if (error) throw error;
+                  return { content: [{ type: "text", text: `${tickers.length} tickers added to '${list_name}'.` }] };
+                } else if (ticker) {
+                  const { error } = await supabase.from("pca_watchlists").insert({ list_name, ticker: ticker.toUpperCase(), position: position ?? 999 });
+                  if (error) throw error;
+                  return { content: [{ type: "text", text: `${ticker.toUpperCase()} added to '${list_name}'.` }] };
+                }
+                throw new Error("ticker or tickers array required for ADD");
             } else if (action === "REMOVE") {
                 if (!list_name || !ticker) throw new Error("list_name and ticker required for REMOVE");
                 const { error } = await supabase.from("pca_watchlists").delete().eq("list_name", list_name).eq("ticker", ticker.toUpperCase());
                 if (error) throw error;
                 return { content: [{ type: "text", text: `${ticker.toUpperCase()} removed from '${list_name}'.` }] };
+            } else if (action === "DELETE") {
+                if (list_names && list_names.length > 0) {
+                  const { error } = await supabase.from("pca_watchlists").delete().in("list_name", list_names);
+                  if (error) throw error;
+                  return { content: [{ type: "text", text: `Watchlists [${list_names.join(", ")}] deleted successfully.` }] };
+                } else if (pattern) {
+                  const sqlPattern = pattern.replace(/\*/g, "%");
+                  const { error } = await supabase.from("pca_watchlists").delete().ilike("list_name", sqlPattern);
+                  if (error) throw error;
+                  return { content: [{ type: "text", text: `Watchlists matching pattern '${pattern}' deleted successfully.` }] };
+                } else if (list_name) {
+                  const { error } = await supabase.from("pca_watchlists").delete().eq("list_name", list_name);
+                  if (error) throw error;
+                  return { content: [{ type: "text", text: `Watchlist '${list_name}' deleted successfully.` }] };
+                }
+                throw new Error("list_name, list_names, or pattern required for DELETE");
+            } else if (action === "CLEAR") {
+                if (!list_name) throw new Error("list_name required for CLEAR");
+                const { error } = await supabase.from("pca_watchlists").delete().eq("list_name", list_name);
+                if (error) throw error;
+                return { content: [{ type: "text", text: `Watchlist '${list_name}' cleared.` }] };
+            } else if (action === "CREATE") {
+                if (!list_name) throw new Error("list_name required for CREATE");
+                if (tickers && tickers.length > 0) {
+                  const rows = tickers.map((t: string, idx: number) => ({
+                    list_name,
+                    ticker: t.toUpperCase(),
+                    position: idx
+                  }));
+                  const { error } = await supabase.from("pca_watchlists").upsert(rows, { onConflict: "list_name,ticker" });
+                  if (error) throw error;
+                  return { content: [{ type: "text", text: `Watchlist '${list_name}' created with ${tickers.length} tickers.` }] };
+                } else {
+                  return { content: [{ type: "text", text: `Watchlist '${list_name}' created (empty).` }] };
+                }
+            } else if (action === "RENAME") {
+                if (!list_name || !new_list_name) throw new Error("list_name and new_list_name required for RENAME");
+                const { error } = await supabase.from("pca_watchlists").update({ list_name: new_list_name }).eq("list_name", list_name);
+                if (error) throw error;
+                return { content: [{ type: "text", text: `Watchlist '${list_name}' renamed to '${new_list_name}'.` }] };
             } else if (action === "CLUSTER") {
                 const FEATURES_URL = "http://features-service:8003/features/cluster";
                 const body: any = {};

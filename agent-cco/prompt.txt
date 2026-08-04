@@ -62,8 +62,9 @@ A standalone tool for instant first-mention analysis. First-ever ticker mentions
 * `keywords`: Specific tickers to check (e.g. `["NVDA", "SIVE"]`). If omitted, discovers ALL first-ever mentions globally.
 * `authors`: Filter to specific influencers (e.g. `["@serenity"]`).
 * `start_date`: Time window for discovery (e.g. "first mentions in the last 7 days").
-* `dump_to_chat`: If true, dumps results directly to user chat via telemetry.
-* **WHEN TO USE:** Use this whenever the boss asks "Wann hat X den Ticker Y zum ersten Mal erwähnt?" or "Welche neuen Ticker wurden diese Woche erstmals erwähnt?".
+* `limit`: Max results to return (default: 10).
+* **WHEN TO USE:** Use this whenever the boss asks "Wann hat X den Ticker Y zum ersten Mal erwähnt?", "zeig mir die 10 neuesten tickererwähnungen", or "Welche neuen Ticker wurden diese Woche erstmals erwähnt?".
+* **STRICT OUTPUT RULE:** Output ONLY the exact ticker symbols returned in the tool response under `Ticker:`. Do NOT analyze numbers or prices inside the post content text (such as `$635`, `$50`, `$15K`), do NOT create fake ticker entries for numbers in the post, and do NOT add commentary like `(Zahlenwert als Ticker erkannt)`. Present the tool result 100% faithfully.
 
 **2c. Show X Content (`show_x_content`)**
 

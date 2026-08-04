@@ -34,7 +34,7 @@ BEGIN
 END;
 $$;
 
--- Exact Keyword Search (JSONB Native)
+-- Exact Keyword Search (JSONB Native + Author Aliases)
 CREATE OR REPLACE FUNCTION exact_search_workspace(
   p_exact_keyword text DEFAULT NULL,
   match_count int DEFAULT 200,
@@ -65,6 +65,13 @@ BEGIN
       OR t.metadata->'keywords' @> to_jsonb(p_exact_keyword)
       OR t.metadata->'topics' @> to_jsonb(p_exact_keyword)
       OR UPPER(t.metadata->>'author') = UPPER(p_exact_keyword)
+      OR UPPER(t.metadata->>'author') = UPPER('@' || regexp_replace(p_exact_keyword, '^[@]', ''))
+      OR EXISTS (
+        SELECT 1 FROM x_users u 
+        WHERE (LOWER(u.username) = LOWER(regexp_replace(p_exact_keyword, '^[@]', ''))
+               OR LOWER(u.screen_name) = LOWER(regexp_replace(p_exact_keyword, '^[@]', '')))
+          AND (UPPER(t.metadata->>'author') = UPPER('@' || u.username) OR UPPER(t.metadata->>'author') = UPPER(u.username))
+      )
       OR t.content ILIKE '%' || p_exact_keyword || '%'
     )
   ORDER BY t.created_at DESC

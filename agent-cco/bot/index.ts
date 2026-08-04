@@ -233,9 +233,17 @@ async function callGemini(messages: any[], tools: any[], provider: string) {
   } else if (provider === "gemini-2.5-flash") {
     modelName = "gemini-2.5-flash";
   }
+  const sanitizedMessages = messages.map((m: any) => {
+    const copy = { ...m };
+    if (copy.role === "assistant" && (copy.content === null || copy.content === undefined)) {
+      copy.content = "";
+    }
+    return copy;
+  });
+
   const payload: any = { 
     model: modelName, 
-    messages, 
+    messages: sanitizedMessages, 
     temperature: 0.2 
   };
   if (tools.length > 0) payload.tools = tools;
@@ -303,137 +311,143 @@ async function handleIncoming(
   // Ignore own messages
   if (from === AGENT_ID) return;
 
-  // If message is from another agent, we process it as long as it's in our inbox.
-  // The 'isMentioned' check was previously here but is redundant for private inboxes.
-  const isFromAgent = from !== "boss" && from !== AGENT_ID;
+  try {
+    // If message is from another agent, we process it as long as it's in our inbox.
+    // The 'isMentioned' check was previously here but is redundant for private inboxes.
+    const isFromAgent = from !== "boss" && from !== AGENT_ID;
 
-  console.log(`\n💬 [${AGENT_ID}] message from '${from}': ${text.slice(0, 80)}`);
+    console.log(`\n💬 [${AGENT_ID}] message from '${from}': ${text.slice(0, 80)}`);
 
-  // Load history + tools in parallel (fetch specific history with sender)
-  const actualLimit = from === "system" ? 0 : contextLimit;
-  const historyPromise = loadHistoryFromDb(from, actualLimit);
+    // Load history + tools in parallel (fetch specific history with sender)
+    const actualLimit = from === "system" ? 0 : contextLimit;
+    const historyPromise = loadHistoryFromDb(from, actualLimit);
 
-  const availableTools: any[] = [];
-  const toolToClient = new Map<string, StatelessMcpClient>();
+    const availableTools: any[] = [];
+    const toolToClient = new Map<string, StatelessMcpClient>();
 
-  await Promise.all(
-    localMcpClients.map(async (c) => {
-      try {
-        const res = await c.listTools();
-        for (const t of res.tools) {
-          availableTools.push({
-            type: "function",
-            function: { name: t.name, description: t.description, parameters: t.inputSchema },
-          });
-          toolToClient.set(t.name, c);
+    await Promise.all(
+      localMcpClients.map(async (c) => {
+        try {
+          const res = await c.listTools();
+          for (const t of res.tools) {
+            availableTools.push({
+              type: "function",
+              function: { name: t.name, description: t.description, parameters: t.inputSchema },
+            });
+            toolToClient.set(t.name, c);
+          }
+        } catch (err) {
+          console.error(`❌ Tool list failed for ${c.url}:`, err);
         }
-      } catch (err) {
-        console.error(`❌ Tool list failed for ${c.url}:`, err);
-      }
-    })
-  );
+      })
+    );
 
-  const history = await historyPromise;
-  const currentDateTime = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
-  const messages: any[] = [
-    { role: "system", content: `${loadSystemPrompt()}\n\nAktuelle Zeit: ${currentDateTime}` },
-    ...history,
-    { role: "user", content: text },
-  ];
+    const history = await historyPromise;
+    const currentDateTime = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin" });
+    const messages: any[] = [
+      { role: "system", content: `${loadSystemPrompt()}\n\nAktuelle Zeit: ${currentDateTime}` },
+      ...history,
+      { role: "user", content: text },
+    ];
 
-  // If the incoming envelope carries a sync_session metadata payload, preload the
-  // exact posts for this session and inject them into the LLM context. This makes
-  // the analysis deterministic and independent of later DB changes.
-  const sessionMeta = envelope?.metadata?.sync_post_ids ? envelope.metadata : null;
-  if (sessionMeta) {
-    const sessionIds = Array.isArray(sessionMeta.sync_post_ids) ? sessionMeta.sync_post_ids : [];
-    const searchClient = toolToClient.get("search_influencer_posts");
-    if (searchClient && sessionIds.length > 0) {
-      try {
-        const sessionResult = await searchClient.callTool("search_influencer_posts", {
-          action: "READ_IDS",
-          ids: sessionIds,
-        });
-        const sessionText = (sessionResult.content || [])
-          .map((c: any) => (c.type === "text" ? c.text : JSON.stringify(c)))
-          .join("\n");
-        messages.push({
-          role: "system",
-          content: `SYNC_SESSION_PAYLOAD:\n` +
-            `- sync_session_id: ${sessionMeta.sync_session_id}\n` +
-            `- sync_author: ${sessionMeta.sync_author}\n` +
-            `- sync_post_count: ${sessionMeta.sync_post_count}\n\n` +
-            `Below are the exact posts from this sync session. Analyze ONLY these posts and write the summary to 'boss'. Do NOT use SEMANTIC/EXACT searches for this task.\n\n` +
-            sessionText
-        });
-        console.log(`🔒 [${AGENT_ID}] Sync-Session posts preloaded (${sessionIds.length} IDs).`);
-      } catch (err: any) {
-        console.error(`❌ Failed to preload sync session posts: ${err.message}`);
-        messages.push({
-          role: "system",
-          content: `SYNC_SESSION_PAYLOAD_ERROR: Failed to preload exact session posts (${err.message}). If you continue, you must explicitly report this tool failure and stop.`
-        });
+    // If the incoming envelope carries a sync_session metadata payload, preload the
+    // exact posts for this session and inject them into the LLM context. This makes
+    // the analysis deterministic and independent of later DB changes.
+    const sessionMeta = envelope?.metadata?.sync_post_ids ? envelope.metadata : null;
+    if (sessionMeta) {
+      const sessionIds = Array.isArray(sessionMeta.sync_post_ids) ? sessionMeta.sync_post_ids : [];
+      const searchClient = toolToClient.get("search_influencer_posts");
+      if (searchClient && sessionIds.length > 0) {
+        try {
+          const sessionResult = await searchClient.callTool("search_influencer_posts", {
+            action: "READ_IDS",
+            ids: sessionIds,
+          });
+          const sessionText = (sessionResult.content || [])
+            .map((c: any) => (c.type === "text" ? c.text : JSON.stringify(c)))
+            .join("\n");
+          messages.push({
+            role: "system",
+            content: `SYNC_SESSION_PAYLOAD:\n` +
+              `- sync_session_id: ${sessionMeta.sync_session_id}\n` +
+              `- sync_author: ${sessionMeta.sync_author}\n` +
+              `- sync_post_count: ${sessionMeta.sync_post_count}\n\n` +
+              `Below are the exact posts from this sync session. Analyze ONLY these posts and write the summary to 'boss'. Do NOT use SEMANTIC/EXACT searches for this task.\n\n` +
+              sessionText
+          });
+          console.log(`🔒 [${AGENT_ID}] Sync-Session posts preloaded (${sessionIds.length} IDs).`);
+        } catch (err: any) {
+          console.error(`❌ Failed to preload sync session posts: ${err.message}`);
+          messages.push({
+            role: "system",
+            content: `SYNC_SESSION_PAYLOAD_ERROR: Failed to preload exact session posts (${err.message}). If you continue, you must explicitly report this tool failure and stop.`
+          });
+        }
       }
     }
+
+    let hasWarnedFallback = false;
+    const onFallback = (err: Error) => {
+      console.error(`❌ Gemini failed: ${err.message}. Falling back to LM Studio.`);
+      if (!hasWarnedFallback) {
+        hasWarnedFallback = true;
+        const warningPayload = buildEnvelope(from, `⚠️ **System-Warnung**: Gemini-Verbindung fehlgeschlagen (${err.message}). Wechsle zu LM Studio (lokal) für diese Anfrage.`);
+        mqttClient.publish(`agents/${from}/inbox`, warningPayload, { qos: 1 });
+      }
+    };
+
+    console.log(`🧠 Calling LLM (${activeProvider})...`);
+    let response = await callLLM(messages, availableTools, onFallback);
+
+    const MAX_TOOL_ITERATIONS = 8;
+    let toolIterations = 0;
+    while (response.tool_calls?.length > 0) {
+      if (toolIterations >= MAX_TOOL_ITERATIONS) {
+        console.warn(`⚠️ [${AGENT_ID}] Tool-Loop-Limit (${MAX_TOOL_ITERATIONS}) erreicht. Erzwinge [STOP].`);
+        const warnPayload = buildEnvelope(from, `⚠️ **System-Warnung**: Tool-Loop-Limit (${MAX_TOOL_ITERATIONS}) erreicht. Die Iteration wird beendet. Bitte gib eine konkretere Anweisung, falls weitere Schritte nötig sind. [STOP]`);
+        mqttClient.publish(`agents/${from}/inbox`, warnPayload, { qos: 1 });
+        return;
+      }
+      toolIterations++;
+      messages.push(response.message);
+
+      for (const tc of response.tool_calls) {
+        console.log(`🛠️  Tool: ${tc.function.name}`);
+        try {
+          const args   = JSON.parse(tc.function.arguments);
+          const client = toolToClient.get(tc.function.name);
+          if (!client) throw new Error(`Tool not found: ${tc.function.name}`);
+
+          const result      = await client.callTool(tc.function.name, args);
+          const resultText  = result.content
+            .map((c: any) => (c.type === "text" ? c.text : JSON.stringify(c)))
+            .join("\n");
+
+          messages.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: resultText });
+        } catch (err: any) {
+          console.error(`❌ Tool error: ${err.message}`);
+          messages.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: `Error: ${err.message}` });
+        }
+      }
+
+      response = await callLLM(messages, availableTools, onFallback);
+    }
+
+    const replyText = response.message?.content || "";
+    if (!replyText || replyText.trim() === "[STOP]") return;
+
+    // Response is logged automatically by nexus-service when published to MQTT
+
+    // Publish reply to the sender's inbox (or boss channel)
+    const replyTopic   = `agents/${from}/inbox`;
+    const replyPayload = buildEnvelope(from, replyText);
+    mqttClient.publish(replyTopic, replyPayload, { qos: 1 });
+    console.log(`📤 [${AGENT_ID}] replied to '${from}'`);
+  } catch (err: any) {
+    console.error(`❌ [${AGENT_ID}] Error handling incoming message from '${from}':`, err);
+    const errPayload = buildEnvelope(from, `❌ **System-Fehler**: ${err.message || err}`);
+    mqttClient.publish(`agents/${from}/inbox`, errPayload, { qos: 1 });
   }
-
-  let hasWarnedFallback = false;
-  const onFallback = (err: Error) => {
-    console.error(`❌ Gemini failed: ${err.message}. Falling back to LM Studio.`);
-    if (!hasWarnedFallback) {
-      hasWarnedFallback = true;
-      const warningPayload = buildEnvelope(from, `⚠️ **System-Warnung**: Gemini-Verbindung fehlgeschlagen (${err.message}). Wechsle zu LM Studio (lokal) für diese Anfrage.`);
-      mqttClient.publish(`agents/${from}/inbox`, warningPayload, { qos: 1 });
-    }
-  };
-
-  console.log(`🧠 Calling LLM (${activeProvider})...`);
-  let response = await callLLM(messages, availableTools, onFallback);
-
-  const MAX_TOOL_ITERATIONS = 8;
-  let toolIterations = 0;
-  while (response.tool_calls?.length > 0) {
-    if (toolIterations >= MAX_TOOL_ITERATIONS) {
-      console.warn(`⚠️ [${AGENT_ID}] Tool-Loop-Limit (${MAX_TOOL_ITERATIONS}) erreicht. Erzwinge [STOP].`);
-      const warnPayload = buildEnvelope(from, `⚠️ **System-Warnung**: Tool-Loop-Limit (${MAX_TOOL_ITERATIONS}) erreicht. Die Iteration wird beendet. Bitte gib eine konkretere Anweisung, falls weitere Schritte nötig sind. [STOP]`);
-      mqttClient.publish(`agents/${from}/inbox`, warnPayload, { qos: 1 });
-      return;
-    }
-    toolIterations++;
-    messages.push(response.message);
-
-    for (const tc of response.tool_calls) {
-      console.log(`🛠️  Tool: ${tc.function.name}`);
-      try {
-        const args   = JSON.parse(tc.function.arguments);
-        const client = toolToClient.get(tc.function.name);
-        if (!client) throw new Error(`Tool not found: ${tc.function.name}`);
-
-        const result      = await client.callTool(tc.function.name, args);
-        const resultText  = result.content
-          .map((c: any) => (c.type === "text" ? c.text : JSON.stringify(c)))
-          .join("\n");
-
-        messages.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: resultText });
-      } catch (err: any) {
-        console.error(`❌ Tool error: ${err.message}`);
-        messages.push({ role: "tool", tool_call_id: tc.id, name: tc.function.name, content: `Error: ${err.message}` });
-      }
-    }
-
-    response = await callLLM(messages, availableTools, onFallback);
-  }
-
-  const replyText = response.message?.content || "";
-  if (!replyText || replyText.trim() === "[STOP]") return;
-
-  // Response is logged automatically by nexus-service when published to MQTT
-
-  // Publish reply to the sender's inbox (or boss channel)
-  const replyTopic   = `agents/${from}/inbox`;
-  const replyPayload = buildEnvelope(from, replyText);
-  mqttClient.publish(replyTopic, replyPayload, { qos: 1 });
-  console.log(`📤 [${AGENT_ID}] replied to '${from}'`);
 }
 
 // ─────────────────────────────────────────────────────────────

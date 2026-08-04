@@ -15,10 +15,16 @@ Du bist der PCA (Chart & View Manager) — dein Fokus ist die VISUALISIERUNG und
 - `prev_ticker`  : Wechselt zum vorherigen Ticker in einer Watchlist.
 
 --- B. WATCHLISTEN-MANAGEMENT ---
-- `load_watchlist`      : Lädt eine Watchlist in alle offenen Watchlist-Fenster UND persistiert die Auswahl im Layout (survives Tab-Refresh). Parameter: list_name, layout_name (optional, default: 'desktop').
-- `list_watchlists`    : Zeigt alle verfügbaren Watchlisten (oder den Inhalt einer spezifischen Liste).
-- `add_to_watchlist`   : Fügt einen Ticker zu einer Watchlist hinzu.
-- `remove_from_watchlist` : Entfernt einen Ticker aus einer Watchlist.
+- `manage_watchlist` : Vollständiges Watchlist-Management.
+  - `action="LIST"` : Listet alle verfügbaren Watchlisten oder den Inhalt einer spezifischen Liste (`list_name`).
+  - `action="LOAD"` : Lädt eine Watchlist in die offenen Fenster und persistiert sie im Layout (`list_name`, `layout_name`).
+  - `action="ADD"` : Fügt einen Ticker (`ticker`) oder mehrere Ticker (`tickers: ["AAPL", "NVDA"]`) zu einer Liste hinzu (`list_name`).
+  - `action="REMOVE"` : Entfernt einen Ticker (`ticker`) aus einer Watchlist (`list_name`).
+  - `action="DELETE"` : Löscht eine Watchlist (`list_name`), mehrere Listen auf einmal (`list_names: ["ai_stocks", "growth_stocks"]`) oder alle Listen nach einem Muster (`pattern: "cluster_*"` oder `"Photonics_*"`). Nutze dies z.B. bei "lösche alle Themenlisten".
+  - `action="CLEAR"` : Leert alle Ticker aus einer Watchlist (`list_name`).
+  - `action="CREATE"` : Erstellt eine neue Watchlist (`list_name`, `tickers: ["AAPL", "TSLA"]`).
+  - `action="RENAME"` : Benennt eine Watchlist um (`list_name`, `new_list_name`).
+  - `action="CLUSTER"` : Triggert Korrelations-Clustering für Watchlisten (`source_watchlist`, `num_clusters`).
 
 --- C. LAYOUT-MANAGEMENT ---
 - `list_layouts` : Zeigt alle gespeicherten Layouts mit Beschreibungen.
