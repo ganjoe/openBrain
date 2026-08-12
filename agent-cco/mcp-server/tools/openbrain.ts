@@ -177,13 +177,25 @@ export function registerOpenBrainTools(server: McpServer) {
         // If it's a longer phrase → semantic search
         const isLikelyExact = actual_query === "" || /^[A-Z0-9$.#]{1,10}$/i.test(actual_query) || actual_query.startsWith("@");
         
+        // Resolve author handles upfront if specified
+        let expandedAuthors: string[] | null = null;
+        const expandedHandlesSet = new Set<string>();
+        if (authors && authors.length > 0) {
+          for (const author of authors) {
+            const { allHandles } = await resolveAuthorHandles(author);
+            allHandles.forEach(h => expandedHandlesSet.add(h.toLowerCase()));
+          }
+          expandedAuthors = Array.from(expandedHandlesSet);
+        }
+
         let data: any[];
         
         if (isLikelyExact) {
           // Exact / keyword search
           const { data: exactData, error } = await supabase.rpc("exact_search_workspace", {
             p_exact_keyword: actual_query === "" ? null : actual_query,
-            match_count: limit, p_agent_id: p_agent_id, p_artifact_type: artifact_type || null, p_days_back: days_back || null
+            match_count: limit, p_agent_id: p_agent_id, p_artifact_type: artifact_type || null, p_days_back: days_back || null,
+            p_authors: expandedAuthors
           });
           if (error) throw error;
           data = exactData || [];
@@ -192,23 +204,19 @@ export function registerOpenBrainTools(server: McpServer) {
           const qEmb = await getEmbedding(actual_query);
           const { data: semData, error } = await supabase.rpc("semantic_search_workspace", {
             query_embedding: qEmb, match_threshold: threshold, match_count: limit,
-            p_agent_id: p_agent_id, p_artifact_type: artifact_type || null, p_days_back: days_back || null
+            p_agent_id: p_agent_id, p_artifact_type: artifact_type || null, p_days_back: days_back || null,
+            p_authors: expandedAuthors
           });
           if (error) throw error;
           data = semData || [];
         }
 
-        // Filter by authors if specified
-        if (authors && authors.length > 0) {
-          const expandedHandles = new Set<string>();
-          for (const author of authors) {
-            const { allHandles } = await resolveAuthorHandles(author);
-            allHandles.forEach(h => expandedHandles.add(h.toLowerCase()));
-          }
+        // Secondary JS safety filter by authors if specified
+        if (expandedAuthors && expandedAuthors.length > 0) {
           data = data.filter((t: any) => {
             const postAuthor = (t.metadata?.author || "").toLowerCase();
             const cleanPostAuthor = postAuthor.startsWith("@") ? postAuthor : `@${postAuthor}`;
-            return expandedHandles.has(postAuthor) || expandedHandles.has(cleanPostAuthor);
+            return expandedHandlesSet.has(postAuthor) || expandedHandlesSet.has(cleanPostAuthor);
           });
         }
 

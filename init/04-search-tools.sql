@@ -1,5 +1,9 @@
 SET search_path = public, extensions;
 
+-- Drop old overloads to prevent ambiguity
+DROP FUNCTION IF EXISTS semantic_search_workspace(vector, float, int, text, text, int);
+DROP FUNCTION IF EXISTS exact_search_workspace(text, int, text, text, int);
+
 -- Pure Semantic Search (No Text Fallback)
 CREATE OR REPLACE FUNCTION semantic_search_workspace(
   query_embedding vector(4096),
@@ -7,7 +11,8 @@ CREATE OR REPLACE FUNCTION semantic_search_workspace(
   match_count int DEFAULT 200,
   p_agent_id text DEFAULT NULL,
   p_artifact_type text DEFAULT NULL,
-  p_days_back int DEFAULT NULL
+  p_days_back int DEFAULT NULL,
+  p_authors text[] DEFAULT NULL
 )
 RETURNS TABLE (
   id uuid,
@@ -28,6 +33,7 @@ BEGIN
   WHERE (p_agent_id IS NULL OR t.agent_id = p_agent_id)
     AND (p_artifact_type IS NULL OR t.artifact_type = p_artifact_type)
     AND (p_days_back IS NULL OR t.created_at >= NOW() - (p_days_back || ' days')::interval)
+    AND (p_authors IS NULL OR array_length(p_authors, 1) IS NULL OR LOWER(t.metadata->>'author') = ANY(p_authors) OR LOWER(regexp_replace(t.metadata->>'author', '^[@]', '')) = ANY(p_authors))
     AND (1 - (t.embedding <=> query_embedding) > match_threshold)
   ORDER BY similarity DESC NULLS LAST, t.created_at DESC
   LIMIT match_count;
@@ -40,7 +46,8 @@ CREATE OR REPLACE FUNCTION exact_search_workspace(
   match_count int DEFAULT 200,
   p_agent_id text DEFAULT NULL,
   p_artifact_type text DEFAULT NULL,
-  p_days_back int DEFAULT NULL
+  p_days_back int DEFAULT NULL,
+  p_authors text[] DEFAULT NULL
 )
 RETURNS TABLE (
   id uuid,
@@ -58,6 +65,7 @@ BEGIN
   WHERE (p_agent_id IS NULL OR t.agent_id = p_agent_id)
     AND (p_artifact_type IS NULL OR t.artifact_type = p_artifact_type)
     AND (p_days_back IS NULL OR t.created_at >= NOW() - (p_days_back || ' days')::interval)
+    AND (p_authors IS NULL OR array_length(p_authors, 1) IS NULL OR LOWER(t.metadata->>'author') = ANY(p_authors) OR LOWER(regexp_replace(t.metadata->>'author', '^[@]', '')) = ANY(p_authors))
     AND (
       p_exact_keyword IS NULL 
       OR p_exact_keyword = '' 
@@ -79,10 +87,10 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION semantic_search_workspace(vector, float, int, text, text, int) TO anon;
-GRANT EXECUTE ON FUNCTION exact_search_workspace(text, int, text, text, int) TO anon;
-GRANT EXECUTE ON FUNCTION semantic_search_workspace(vector, float, int, text, text, int) TO service_role;
-GRANT EXECUTE ON FUNCTION exact_search_workspace(text, int, text, text, int) TO service_role;
+GRANT EXECUTE ON FUNCTION semantic_search_workspace(vector, float, int, text, text, int, text[]) TO anon;
+GRANT EXECUTE ON FUNCTION exact_search_workspace(text, int, text, text, int, text[]) TO anon;
+GRANT EXECUTE ON FUNCTION semantic_search_workspace(vector, float, int, text, text, int, text[]) TO service_role;
+GRANT EXECUTE ON FUNCTION exact_search_workspace(text, int, text, text, int, text[]) TO service_role;
 
 -- Consolidated First Mentions & Discovery
 CREATE OR REPLACE FUNCTION discover_first_mentions(

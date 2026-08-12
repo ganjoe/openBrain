@@ -187,7 +187,7 @@ export async function resolveAuthorHandles(authorInput: string): Promise<{ prima
     const { data: matchedUsers } = await supabase
       .from("x_users")
       .select("username, screen_name, is_active")
-      .or(`username.ilike.${clean},screen_name.ilike.${clean}`);
+      .or(`username.ilike.%${clean}%,screen_name.ilike.%${clean}%`);
 
     if (matchedUsers && matchedUsers.length > 0) {
       const activeMatch = matchedUsers.find((u: any) => u.is_active) || matchedUsers[0];

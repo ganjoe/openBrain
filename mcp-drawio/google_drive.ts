@@ -1,29 +1,56 @@
 import { google } from "googleapis";
 
-const CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID") || "";
-const CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET") || "";
-const REFRESH_TOKEN = Deno.env.get("GOOGLE_REFRESH_TOKEN") || "";
+function getCredentials() {
+  let clientId = "";
+  let clientSecret = "";
+  let refreshToken = "";
+  let accessToken = "";
+
+  try {
+    const envText = Deno.readTextFileSync("/home/daniel/openBrain/.env");
+    for (const line of envText.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("GOOGLE_CLIENT_ID=")) clientId = trimmed.slice("GOOGLE_CLIENT_ID=".length).trim();
+      if (trimmed.startsWith("GOOGLE_CLIENT_SECRET=")) clientSecret = trimmed.slice("GOOGLE_CLIENT_SECRET=".length).trim();
+      if (trimmed.startsWith("GOOGLE_REFRESH_TOKEN=")) refreshToken = trimmed.slice("GOOGLE_REFRESH_TOKEN=".length).trim();
+      if (trimmed.startsWith("GOOGLE_ACCESS_TOKEN=")) accessToken = trimmed.slice("GOOGLE_ACCESS_TOKEN=".length).trim();
+    }
+  } catch (_) {
+    // ignore if file read fails
+  }
+
+  if (!clientId) clientId = Deno.env.get("GOOGLE_CLIENT_ID") || "";
+  if (!clientSecret) clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET") || "";
+  if (!refreshToken) refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN") || "";
+  if (!accessToken) accessToken = Deno.env.get("GOOGLE_ACCESS_TOKEN") || "";
+
+  return { clientId, clientSecret, refreshToken, accessToken };
+}
 
 export function hasGoogleCredentials(): boolean {
-  return Boolean(CLIENT_ID && CLIENT_SECRET && REFRESH_TOKEN);
+  const { clientId, clientSecret, refreshToken, accessToken } = getCredentials();
+  return Boolean(accessToken || (clientId && clientSecret && refreshToken));
 }
 
 export function getOAuth2Client() {
-  if (!hasGoogleCredentials()) {
+  const { clientId, clientSecret, refreshToken, accessToken } = getCredentials();
+  if (!accessToken && (!clientId || !clientSecret || !refreshToken)) {
     throw new Error(
-      "Google OAuth Credentials missing. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN in .env"
+      "Google OAuth Credentials missing. Please set GOOGLE_ACCESS_TOKEN or GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN in .env"
     );
   }
 
   const oauth2Client = new google.auth.OAuth2(
-    CLIENT_ID,
-    CLIENT_SECRET,
+    clientId || undefined,
+    clientSecret || undefined,
     "https://developers.google.com/oauthplayground"
   );
 
-  oauth2Client.setCredentials({
-    refresh_token: REFRESH_TOKEN,
-  });
+  const creds: Record<string, string> = {};
+  if (accessToken) creds.access_token = accessToken;
+  if (refreshToken) creds.refresh_token = refreshToken;
+
+  oauth2Client.setCredentials(creds);
 
   return oauth2Client;
 }
