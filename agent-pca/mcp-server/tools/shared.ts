@@ -11,8 +11,8 @@ export const PCA_SERVICE_URL         = Deno.env.get("PCA_SERVICE_URL") || "http:
 
 // Optional — for shared Open Brain access
 export const GEMINI_API_KEY          = Deno.env.get("GEMINI_API_KEY");
-export const OLLAMA_URL              = Deno.env.get("OLLAMA_URL") || "http://ollama:11434";
-export const OLLAMA_EMBED_MODEL      = Deno.env.get("OLLAMA_EMBED_MODEL") || "qwen3-embedding:8b";
+export const SWITCHYARD_URL          = Deno.env.get("SWITCHYARD_URL") || Deno.env.get("OLLAMA_URL") || "http://switchyard:4000/v1";
+export const EMBED_MODEL             = Deno.env.get("EMBED_MODEL") || Deno.env.get("OLLAMA_EMBED_MODEL") || "embeddings";
 export const LM_STUDIO_URL           = Deno.env.get("LM_STUDIO_URL") || "http://host.docker.internal:1234";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);

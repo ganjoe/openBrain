@@ -9,9 +9,9 @@ export const AGENT_ID = Deno.env.get("AGENT_ID") || "unknown";
 export const GLOBAL_BRAIN_ACCESS = Deno.env.get("GLOBAL_BRAIN_ACCESS") === "true";
 export const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
-// Local services
-export const OLLAMA_URL = Deno.env.get("OLLAMA_URL") || "http://ollama:11434";
-export const OLLAMA_EMBED_MODEL = Deno.env.get("OLLAMA_EMBED_MODEL") || "qwen3-embedding:8b";
+// Local services / LLM Gateway Router
+export const SWITCHYARD_URL = Deno.env.get("SWITCHYARD_URL") || "http://switchyard:4000/v1";
+export const EMBED_MODEL = Deno.env.get("EMBED_MODEL") || "embeddings";
 export const LM_STUDIO_URL = Deno.env.get("LM_STUDIO_URL") || "http://host.docker.internal:1234";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -29,18 +29,25 @@ export async function sendTelemetry(text: string) {
   }
 }
 
-// --- Embedding via Ollama ---
+// --- Embedding via Switchyard ---
 export async function getEmbedding(text: string): Promise<number[]> {
   const start = Date.now();
-  const r = await fetch(`${OLLAMA_URL}/v1/embeddings`, {
+  const baseUrl = SWITCHYARD_URL.endsWith("/v1") ? SWITCHYARD_URL : `${SWITCHYARD_URL}/v1`;
+  const r = await fetch(`${baseUrl}/embeddings`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, input: text }),
+    headers: { 
+      "Content-Type": "application/json",
+      "Authorization": "Bearer switchyard"
+    },
+    body: JSON.stringify({ model: EMBED_MODEL, input: text }),
   });
-  if (!r.ok) throw new Error(`Ollama embeddings failed: ${r.status}`);
+  if (!r.ok) {
+    const errText = await r.text();
+    throw new Error(`Embeddings failed (${baseUrl}/embeddings, status ${r.status}): ${errText}`);
+  }
   const d = await r.json();
   const duration = (Date.now() - start) / 1000;
-  await sendTelemetry(`[Ollama] Model: ${OLLAMA_EMBED_MODEL} | Zeit: ${duration.toFixed(2)}s | Aktion: Embedding`);
+  await sendTelemetry(`[Switchyard] Route: ${EMBED_MODEL} | Zeit: ${duration.toFixed(2)}s | Aktion: Embedding`);
   return d.data[0].embedding;
 }
 
@@ -57,9 +64,9 @@ export async function getActiveProvider(): Promise<string> {
       return data.value[AGENT_ID];
     }
   } catch (e) {
-    console.warn("[Provider] Failed to fetch config, defaulting to local.");
+    console.warn("[Provider] Failed to fetch config, defaulting to auto.");
   }
-  return "local";
+  return "auto";
 }
 
 // --- Active Trading Mode helper ---
@@ -116,30 +123,50 @@ export async function extractMetadata(text: string): Promise<Record<string, unkn
         model: internalModel,
         messages: [{ role: "system", content: systemPrompt }, { role: "user", content: text }],
         temperature: 0.1
-      }),
+      })
     });
-    if (!res.ok) throw new Error(`Gemini failed: ${res.status} - ${await res.text()}`);
+    if (!res.ok) throw new Error(`Gemini failed: ${res.status}`);
     d = await res.json();
     modelName = internalModel;
   } else {
-    const res = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+    // Route through Switchyard (auto / local / fast / reasoning)
+    const baseUrl = SWITCHYARD_URL.endsWith("/v1") ? SWITCHYARD_URL : `${SWITCHYARD_URL}/v1`;
+    const targetRoute = provider || "auto";
+    const res = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": "Bearer switchyard"
+      },
       body: JSON.stringify({
-        model: "local-model",
+        model: targetRoute,
         messages: [{ role: "system", content: systemPrompt }, { role: "user", content: text }],
       }),
     });
-    if (!res.ok) return { topics: ["uncategorized"], type: "observation" };
-    d = await res.json();
-    modelName = d.model || "local-model";
+    if (!res.ok) {
+      const fbRes = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "local-model",
+          messages: [{ role: "system", content: systemPrompt }, { role: "user", content: text }],
+        }),
+      });
+      if (!fbRes.ok) return { topics: ["uncategorized"], type: "observation" };
+      d = await fbRes.json();
+      modelName = d.model || "local-model";
+    } else {
+      d = await res.json();
+      modelName = d.model || targetRoute;
+    }
   }
   
   const duration = (Date.now() - start) / 1000;
   const tokens = d.usage?.completion_tokens || 0;
   const ts = duration > 0 ? (tokens / duration).toFixed(1) : "0.0";
   
-  await sendTelemetry(`[${provider === 'gemini' ? 'Gemini' : 'LM Studio'}] Model: ${modelName} | Zeit: ${duration.toFixed(2)}s | Speed: ${ts} t/s | Tokens: ${tokens}`);
+  const metricsStr = `[${provider.startsWith('gemini') ? 'Gemini' : 'Switchyard'}] Model: ${modelName} | Zeit: ${duration.toFixed(2)}s | Speed: ${ts} t/s | Tokens: ${tokens}`;
+  await sendTelemetry(metricsStr);
 
   try {
     const content = d.choices[0].message.content;

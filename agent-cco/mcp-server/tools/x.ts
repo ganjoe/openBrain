@@ -4,6 +4,54 @@ import { supabase, getEmbeddingsBatch, extractMetadata, sendTelemetry, X_BEARER_
 
 export const activeSyncControllers = new Map<string, AbortController>();
 
+// --- Global X API Rate Limiter ---
+const X_MIN_REQUEST_DELAY_MS = parseInt(Deno.env.get("X_MIN_REQUEST_DELAY_MS") || "2500");
+let lastXApiFetchTime = 0;
+const xRateLimitStats = {
+  requestsInWindow: 0,
+  windowStart: Date.now(),
+  remaining: -1,      // from x-rate-limit-remaining header (-1 = unknown)
+  resetEpoch: 0,      // from x-rate-limit-reset header
+  totalRequests: 0,
+  totalNewPosts: 0,
+};
+
+async function throttledXFetch(url: string, init?: RequestInit): Promise<Response> {
+  // Enforce minimum delay between X API requests
+  const now = Date.now();
+  const elapsed = now - lastXApiFetchTime;
+  if (elapsed < X_MIN_REQUEST_DELAY_MS) {
+    await new Promise(r => setTimeout(r, X_MIN_REQUEST_DELAY_MS - elapsed));
+  }
+
+  // Pre-check: if we know remaining is very low, sleep until reset
+  if (xRateLimitStats.remaining >= 0 && xRateLimitStats.remaining <= 2 && xRateLimitStats.resetEpoch > 0) {
+    const sleepMs = Math.max(1000, (xRateLimitStats.resetEpoch * 1000) - Date.now() + 1000);
+    console.log(`[X Rate Limiter] Proaktive Pause: remaining=${xRateLimitStats.remaining}, warte ${Math.round(sleepMs/1000)}s bis Reset...`);
+    await new Promise(r => setTimeout(r, sleepMs));
+  }
+
+  lastXApiFetchTime = Date.now();
+  xRateLimitStats.totalRequests++;
+  xRateLimitStats.requestsInWindow++;
+
+  // Reset window counter every 15 minutes
+  if (Date.now() - xRateLimitStats.windowStart > 15 * 60 * 1000) {
+    xRateLimitStats.requestsInWindow = 0;
+    xRateLimitStats.windowStart = Date.now();
+  }
+
+  const res = await fetch(url, init);
+
+  // Read rate limit headers from response
+  const remainingHeader = res.headers.get("x-rate-limit-remaining");
+  const resetHeader = res.headers.get("x-rate-limit-reset");
+  if (remainingHeader !== null) xRateLimitStats.remaining = Number(remainingHeader);
+  if (resetHeader !== null) xRateLimitStats.resetEpoch = Number(resetHeader);
+
+  return res;
+}
+
 // --- Sync Log Helper ---
 async function syncLog(actionType: string, username: string | null, message: string) {
   console.log(`[X Sync Log] [${actionType}] ${username || 'system'}: ${message}`);
@@ -91,7 +139,7 @@ async function getXUserId(username: string): Promise<{id: string, name: string}>
   return { id: userId, name: screenName };
 }
 
-export async function runBackgroundSync(cleanName: string, username: string, limit?: number, start_time?: string, signal?: AbortSignal, taskId?: string, taskAgentId?: string) {
+export async function runBackgroundSync(cleanName: string, username: string, limit?: number, start_time?: string, signal?: AbortSignal, taskId?: string, taskAgentId?: string, onlyForward?: boolean) {
   console.log(`[X Sync] Background job started for ${cleanName}`);
   // Generate a unique session id for this sync run so the CCO can analyze
   // exactly the posts saved in this run, not whatever the DB happens to contain.
@@ -180,7 +228,7 @@ export async function runBackgroundSync(cleanName: string, username: string, lim
         if (nextToken) url += `&pagination_token=${nextToken}`;
 
         await sendTelemetry(`[X API] Request: ${url.replace(X_BEARER_TOKEN || "", "***")}`);
-        const res = await fetch(url, { headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` } });
+        const res = await throttledXFetch(url, { headers: { "Authorization": `Bearer ${X_BEARER_TOKEN}` }, signal });
         
         if (!res.ok) {
            if (res.status === 429) {
@@ -286,33 +334,42 @@ export async function runBackgroundSync(cleanName: string, username: string, lim
 
     // --- Phase 1: Forward Sync ---
     if (sinceId) {
-      await sendTelemetry(`[System] Phase 1 startet: Vorwärts-Sync ab ${sinceId}...`);
+      if (!onlyForward) await sendTelemetry(`[System] Phase 1 startet: Vorwärts-Sync ab ${sinceId}...`);
       await syncTweets({ sinceId });
+    } else if (onlyForward) {
+      // Bootstrap: no since_id yet, fetch newest 20 posts to establish baseline ID
+      await sendTelemetry(`[System] Bootstrap für ${cleanName}: Lade die neuesten 20 Posts zum Etablieren der Basis-ID...`);
+      await syncTweets({ targetLimit: 20 });
     }
 
-    // --- Phase 2: Backward Sync ---
-    const isTimeWindow = !!start_time;
-    const currentDbCount = dbCount + totalSaved;
+    // --- Phase 2: Backward Sync (SKIP in onlyForward / auto-loop mode) ---
+    if (!onlyForward) {
+      const isTimeWindow = !!start_time;
+      const currentDbCount = dbCount + totalSaved;
 
-    if (isTimeWindow) {
-      // Determine if we need to backfill the bottom
-      const needBackfill = !oldestDateStr || new Date(start_time) < new Date(oldestDateStr);
-      if (needBackfill) {
-        await sendTelemetry(`[System] Phase 2 startet: Rückwärts-Sync von ${untilId || "now"} bis ${start_time}...`);
-        await syncTweets({ untilId, startTime: start_time });
-      }
-    } else {
-      // Limit backfill (if explicit limit set, or if fresh import)
-      const needLimitBackfill = hasExplicitLimit || !sinceId;
-      if (needLimitBackfill && currentDbCount < targetLimit) {
-        const remainingLimit = targetLimit - currentDbCount;
-        await sendTelemetry(`[System] Phase 2 startet: Rückwärts-Sync von ${untilId || "now"} für weitere ${remainingLimit} Posts...`);
-        await syncTweets({ untilId, targetLimit: remainingLimit });
+      if (isTimeWindow) {
+        // Determine if we need to backfill the bottom
+        const needBackfill = !oldestDateStr || new Date(start_time) < new Date(oldestDateStr);
+        if (needBackfill) {
+          await sendTelemetry(`[System] Phase 2 startet: Rückwärts-Sync von ${untilId || "now"} bis ${start_time}...`);
+          await syncTweets({ untilId, startTime: start_time });
+        }
+      } else {
+        // Limit backfill (if explicit limit set, or if fresh import)
+        const needLimitBackfill = hasExplicitLimit || !sinceId;
+        if (needLimitBackfill && currentDbCount < targetLimit) {
+          const remainingLimit = targetLimit - currentDbCount;
+          await sendTelemetry(`[System] Phase 2 startet: Rückwärts-Sync von ${untilId || "now"} für weitere ${remainingLimit} Posts...`);
+          await syncTweets({ untilId, targetLimit: remainingLimit });
+        }
       }
     }
 
-    await syncLog("discovery", username, `Sync abgeschlossen: ${totalSaved} Posts gespeichert (status: pending).`);
-    await sendTelemetry(`[System] Sync ${cleanName} abgeschlossen: ${totalSaved} neu/aktualisiert gespeichert (Embeddings werden asynchron generiert).`);
+    xRateLimitStats.totalNewPosts += totalSaved;
+    if (!onlyForward || totalSaved > 0) {
+      await syncLog("discovery", username, `Sync abgeschlossen: ${totalSaved} Posts gespeichert (status: pending).`);
+      await sendTelemetry(`[System] Sync ${cleanName} abgeschlossen: ${totalSaved} neu/aktualisiert gespeichert (Embeddings werden asynchron generiert).`);
+    }
 
     // Trigger embedding processing for the newly discovered posts
     processXPendingPosts();
@@ -555,8 +612,9 @@ export async function runLlmCategorizationLoop() {
   llmCategorizationStats.isRunning = false;
 }
 
-// --- Periodic 60-Minute X Discovery & Processing Loops ---
+// --- Periodic High-Frequency Delta-Sync Discovery Loop ---
 let xDiscoveryAbortController: AbortController | null = null;
+const X_DISCOVERY_INTERVAL_SEC = parseInt(Deno.env.get("X_DISCOVERY_INTERVAL_SEC") || "30");
 const xDiscoveryStats = {
   isRunning: false,
   startTime: 0,
@@ -567,9 +625,9 @@ const xDiscoveryStats = {
 export async function runXDiscoveryLoop() {
   xDiscoveryStats.isRunning = true;
   xDiscoveryStats.startTime = Date.now();
-  await syncLog("started", null, "Periodischer X-Discovery-Loop gestartet (Interval: 60 Sekunden)");
+  await syncLog("started", null, `Periodischer Delta-Sync-Loop gestartet (Intervall: ${X_DISCOVERY_INTERVAL_SEC}s, Min-Delay: ${X_MIN_REQUEST_DELAY_MS}ms)`);
 
-  const intervalMs = parseInt(Deno.env.get("X_DISCOVERY_INTERVAL_MS") || "60000"); // Default: 60 seconds (1 min)
+  const intervalMs = X_DISCOVERY_INTERVAL_SEC * 1000;
 
   while (xDiscoveryAbortController && !xDiscoveryAbortController.signal.aborted) {
     try {
@@ -581,8 +639,9 @@ export async function runXDiscoveryLoop() {
         .select("username")
         .eq("is_active", true);
 
+      let cycleTotalNewPosts = 0;
+
       if (influencers && influencers.length > 0) {
-        await syncLog("info", null, `Starte Discovery-Zyklus #${xDiscoveryStats.cycleCount} für ${influencers.length} aktive Influencer...`);
         for (const inf of influencers) {
           if (!xDiscoveryAbortController || xDiscoveryAbortController.signal.aborted) break;
           const cleanName = `@${inf.username}`;
@@ -591,7 +650,8 @@ export async function runXDiscoveryLoop() {
           const controller = new AbortController();
           activeSyncControllers.set(cleanName, controller);
           try {
-            await runBackgroundSync(cleanName, inf.username, 100, undefined, controller.signal);
+            // Delta-Sync only: onlyForward=true skips Phase 2 backfill
+            await runBackgroundSync(cleanName, inf.username, undefined, undefined, controller.signal, undefined, undefined, true);
           } catch (e: any) {
             console.error(`[X Loop Error] Failed for ${cleanName}:`, e.message);
           }
@@ -601,21 +661,22 @@ export async function runXDiscoveryLoop() {
       // Process any pending embeddings after discovery
       await processXPendingPosts();
 
-      // Sleep until next 60-minute cycle
+      // Sleep until next cycle (interruptible in 5s chunks)
       let waited = 0;
       while (waited < intervalMs && xDiscoveryAbortController && !xDiscoveryAbortController.signal.aborted) {
-        await new Promise(r => setTimeout(r, 10000));
-        waited += 10000;
+        const chunk = Math.min(5000, intervalMs - waited);
+        await new Promise(r => setTimeout(r, chunk));
+        waited += chunk;
       }
     } catch (err: any) {
       if (err.name === 'AbortError') break;
       await syncLog("error", null, `Discovery Loop Fehler: ${err.message}`);
-      await new Promise(r => setTimeout(r, 60000));
+      await new Promise(r => setTimeout(r, 30000));
     }
   }
 
   xDiscoveryStats.isRunning = false;
-  await syncLog("stopped", null, "Periodischer X-Discovery-Loop gestoppt");
+  await syncLog("stopped", null, "Periodischer Delta-Sync-Loop gestoppt");
 }
 
 export async function runXProcessingLoop() {
@@ -637,9 +698,10 @@ export async function runXProcessingLoop() {
 }
 
 export function registerXTools(server: McpServer) {
-  // Auto-start periodic 60-minute loops on boot
+  // Auto-start periodic delta-sync loops on boot
   if (!xDiscoveryStats.isRunning) {
     xDiscoveryAbortController = new AbortController();
+    console.log(`[X Sync] Delta-Sync-Loop startet (Intervall: ${X_DISCOVERY_INTERVAL_SEC}s, Min-Delay: ${X_MIN_REQUEST_DELAY_MS}ms)`);
     runXDiscoveryLoop().catch(console.error);
     runXProcessingLoop().catch(console.error);
     runLlmCategorizationLoop().catch(console.error);
@@ -909,12 +971,27 @@ export function registerXTools(server: McpServer) {
       } else if (action === "STATUS") {
           let statusText = `=== X Sync Status ===\n\n`;
 
-          // 1. Periodic 60-Sekunden Discovery Loop Status
-          const loopState = xDiscoveryStats.isRunning ? "LÄUFT 🟢 (alle 60 Sek)" : "GESTOPPT 🔴";
+          // 1. Periodic Delta-Sync Discovery Loop Status
+          const loopState = xDiscoveryStats.isRunning ? `LÄUFT 🟢 (alle ${X_DISCOVERY_INTERVAL_SEC}s)` : "GESTOPPT 🔴";
           const lastRunStr = xDiscoveryStats.lastRunTime ? new Date(xDiscoveryStats.lastRunTime).toLocaleTimeString('de-DE') : "Noch nie";
-          statusText += `🔄 Periodic 60-Sek Sync Loop: ${loopState}\n`;
+          statusText += `🔄 Delta-Sync Loop: ${loopState}\n`;
           statusText += `  Abgeschlossene Zyklen: ${xDiscoveryStats.cycleCount}\n`;
-          statusText += `  Letzter Zyklus-Start: ${lastRunStr}\n\n`;
+          statusText += `  Letzter Zyklus-Start: ${lastRunStr}\n`;
+          statusText += `  Min-Delay zwischen Requests: ${X_MIN_REQUEST_DELAY_MS}ms\n\n`;
+
+          // 1b. X API Rate Limiter Stats
+          statusText += `📡 X API Rate Limiter:\n`;
+          statusText += `  Requests seit Start: ${xRateLimitStats.totalRequests}\n`;
+          statusText += `  Neue Posts seit Start: ${xRateLimitStats.totalNewPosts}\n`;
+          statusText += `  Requests im aktuellen 15-Min-Fenster: ${xRateLimitStats.requestsInWindow} / 450\n`;
+          if (xRateLimitStats.remaining >= 0) {
+            statusText += `  X-Header remaining: ${xRateLimitStats.remaining}\n`;
+            if (xRateLimitStats.resetEpoch > 0) {
+              const resetIn = Math.max(0, Math.round((xRateLimitStats.resetEpoch * 1000 - Date.now()) / 1000));
+              statusText += `  X-Header reset in: ${resetIn}s\n`;
+            }
+          }
+          statusText += `\n`;
 
           // 2. Active user syncs
           const runningSyncs = Array.from(activeSyncControllers.keys());

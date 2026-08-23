@@ -223,20 +223,19 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
       gateway:
         condition: service_started
     volumes:
       - ./agent-ea/metadata-prompt.txt:/app/metadata-prompt.txt:ro
       - ./agent-ea/mcp-server/stdio.ts:/app/stdio.ts:ro
+      - ./agent-ea/mcp-server/tools:/app/tools:ro
     environment:
       SUPABASE_URL: http://gateway:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
-      OLLAMA_URL: http://ollama:11434
-      OLLAMA_EMBED_MODEL: qwen3-embedding:8b
+      SWITCHYARD_URL: http://host.docker.internal:4000/v1
+      EMBED_MODEL: embeddings
       LM_STUDIO_URL: http://host.docker.internal:1234
       PORT: "8787"
       AGENT_ID: "ea"
@@ -280,8 +279,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
       gateway:
         condition: service_started
     volumes:
@@ -295,8 +292,8 @@ services:
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
-      OLLAMA_URL: http://ollama:11434
-      OLLAMA_EMBED_MODEL: qwen3-embedding:8b
+      SWITCHYARD_URL: http://host.docker.internal:4000/v1
+      EMBED_MODEL: embeddings
       LM_STUDIO_URL: http://host.docker.internal:1234
       PORT: "8793"
       AGENT_ID: "srm"
@@ -341,8 +338,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
       gateway:
         condition: service_started
       web-scraper:
@@ -354,13 +349,14 @@ services:
       - ./agent-cco/yt-segmentation-prompt-de.txt:/app/yt-segmentation-prompt-de.txt:ro
       - ./agent-cco/cookies.txt:/app/cookies.txt
       - ./agent-cco/mcp-server/stdio.ts:/app/stdio.ts:ro
+      - ./agent-cco/mcp-server/tools:/app/tools:ro
       - yt-media:/data/yt
     environment:
       SUPABASE_URL: http://gateway:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
-      OLLAMA_URL: http://ollama:11434
-      OLLAMA_EMBED_MODEL: qwen3-embedding:8b
+      SWITCHYARD_URL: http://host.docker.internal:4000/v1
+      EMBED_MODEL: embeddings
       LM_STUDIO_URL: http://host.docker.internal:1234
       PORT: "8788"
       AGENT_ID: "cco"
@@ -369,6 +365,8 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       WEB_SCRAPER_URL: http://web-scraper:8797
       POSTGREST_URL: http://postgrest:3000
+      X_DISCOVERY_INTERVAL_SEC: "30"
+      X_MIN_REQUEST_DELAY_MS: "2500"
     ports:
       - "8788:8788"
     extra_hosts:
@@ -442,19 +440,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
       gateway:
         condition: service_started
     volumes:
       - ./agent-pta/metadata-prompt.txt:/app/metadata-prompt.txt:ro
       - ./agent-pta/mcp-server/stdio.ts:/app/stdio.ts:ro
+      - ./agent-pta/mcp-server/tools:/app/tools:ro
     environment:
       SUPABASE_URL: http://gateway:80
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
-      OLLAMA_URL: http://ollama:11434
-      OLLAMA_EMBED_MODEL: qwen3-embedding:8b
+      SWITCHYARD_URL: http://host.docker.internal:4000/v1
+      EMBED_MODEL: embeddings
       LM_STUDIO_URL: http://host.docker.internal:1234
       PORT: "8789"
       AGENT_ID: "pta"
