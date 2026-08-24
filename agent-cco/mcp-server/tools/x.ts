@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { supabase, getEmbeddingsBatch, extractMetadata, sendTelemetry, X_BEARER_TOKEN, AGENT_ID, resolveAuthorHandles } from "./shared.ts";
+import { supabase, getEmbeddingsBatch, extractMetadata, sendTelemetry, X_BEARER_TOKEN, AGENT_ID, resolveAuthorHandles, getXOAuthTokens, getValidXUserAccessToken } from "./shared.ts";
 
 export const activeSyncControllers = new Map<string, AbortController>();
 
@@ -1236,7 +1236,19 @@ export function registerXTools(server: McpServer) {
               }
             }
 
-            return { content: [{ type: "text", text: `Influencer @${cleanName} (${screenName}) wurde erfolgreich hinzugefügt. Initial-Sync für die letzten ${initialSyncLimit} Posts wurde automatisch gestartet. Du wirst benachrichtigt, sobald der Sync abgeschlossen ist.` }] };
+            // Auto-trigger network sync (following-list → x_follows) in the background
+            (async () => {
+              try {
+                const { access_token } = await getValidXUserAccessToken();
+                console.log(`[Network Sync] Auto-starting for new influencer @${cleanName}...`);
+                const result = await syncNetworkForUser(cleanName, userId, access_token);
+                console.log(`[Network Sync] @${cleanName}: ${result.fetched} followings → ${result.upserted} gespeichert.`);
+              } catch (e: any) {
+                console.error(`[Network Sync] Auto-sync for @${cleanName} failed:`, e.message);
+              }
+            })();
+
+            return { content: [{ type: "text", text: `Influencer @${cleanName} (${screenName}) wurde erfolgreich hinzugefügt. Initial-Sync für die letzten ${initialSyncLimit} Posts wurde automatisch gestartet. Netzwerk-Sync (Following-Liste) läuft ebenfalls im Hintergrund. Du wirst benachrichtigt, sobald der Post-Sync abgeschlossen ist.` }] };
         } else if (action === "REMOVE") {
             if (!username) throw new Error("username is required for REMOVE");
             const cleanName = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
@@ -1247,6 +1259,608 @@ export function registerXTools(server: McpServer) {
         throw new Error("Invalid action");
       } catch (err: any) {
         return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // Tool: Manage X OAuth 2.0 Auth (Status & Login Link)
+  server.registerTool(
+    "manage_x_auth",
+    {
+      title: "Manage X OAuth 2.0 Auth",
+      description: "Check status of X (Twitter) OAuth 2.0 User Context authorization (for bookmarks and following) or get the login authorization URL.",
+      inputSchema: {
+        action: z.enum(["STATUS", "GET_LOGIN_URL"]).describe("STATUS = check if authorized; GET_LOGIN_URL = get browser login link"),
+      },
+    },
+    async ({ action }: any) => {
+      try {
+        const tokens = await getXOAuthTokens();
+        const isConnected = !!(tokens && tokens.access_token);
+
+        if (action === "GET_LOGIN_URL") {
+          return {
+            content: [{
+              type: "text",
+              text: `🔗 Öffne diesen Link im Browser, um deinen X-Account mit OpenBrain zu verbinden:\n\nhttp://127.0.0.1:8788/auth/x/login\n\n(Nach Klick auf 'Authorize' ist OpenBrain dauerhaft mit deinen Lesezeichen & Following-Listen verbunden).`
+            }]
+          };
+        }
+
+        if (action === "STATUS") {
+          if (!isConnected || !tokens) {
+            return {
+              content: [{
+                type: "text",
+                text: `🔴 X OAuth 2.0 ist noch NICHT autorisiert.\n\nÖffne folgenden Link im Browser für die 1-Klick-Autorisierung:\n👉 http://127.0.0.1:8788/auth/x/login`
+              }]
+            };
+          }
+
+          const expiresInMinutes = Math.round((tokens.expires_at - Date.now()) / 60000);
+          const expiryText = expiresInMinutes > 0 ? `in ${expiresInMinutes} Minuten (Auto-Refresh aktiv)` : "Abgelaufen (wird beim nächsten Request automatisch erneuert)";
+
+          return {
+            content: [{
+              type: "text",
+              text: `🟢 X OAuth 2.0 ist erfolgreich VERBUNDEN!\n\n` +
+                `👤 Verknüpfter Account: @${tokens.username || 'Unbekannt'} (${tokens.name || 'N/A'})\n` +
+                `🆔 User ID: ${tokens.user_id || 'N/A'}\n` +
+                `🔑 Scopes: ${tokens.scope || 'Standard'}\n` +
+                `⏳ Token-Gültigkeit: ${expiryText}\n` +
+                `🔄 Auto-Refresh: Aktiv (offline.access)`
+            }]
+          };
+        }
+
+        throw new Error("Invalid action");
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // Tool: Sync X Bookmarks (Lesezeichen)
+  server.registerTool(
+    "sync_x_bookmarks",
+    {
+      title: "Sync X Bookmarks",
+      description: "Fetch and save bookmarked posts from your personal X (Twitter) account into OpenBrain.",
+      inputSchema: {
+        limit: z.number().optional().default(50).describe("Max bookmarks to fetch (default: 50, max: 100 per page)"),
+      },
+    },
+    async ({ limit }: any) => {
+      try {
+        const { access_token, user_id } = await getValidXUserAccessToken();
+        if (!user_id) throw new Error("Keine User ID gefunden. Bitte neu autorisieren: http://127.0.0.1:8788/auth/x/login");
+
+        const fetchLimit = Math.min(Math.max(1, limit || 50), 100);
+        const url = `https://api.twitter.com/2/users/${user_id}/bookmarks?max_results=${fetchLimit}&tweet.fields=created_at,entities,author_id&expansions=author_id&user.fields=username,name`;
+
+        const res = await throttledXFetch(url, {
+          headers: { "Authorization": `Bearer ${access_token}` }
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`X API Bookmarks fetch failed (${res.status}): ${errText}`);
+        }
+
+        const data = await res.json();
+        if (!data.data || data.data.length === 0) {
+          return { content: [{ type: "text", text: "Keine Lesezeichen in deinem X-Account gefunden." }] };
+        }
+
+        // Map authors from expansions
+        const authorMap = new Map<string, string>();
+        if (data.includes?.users) {
+          for (const u of data.includes.users) {
+            authorMap.set(u.id, u.username);
+          }
+        }
+
+        const batchToInsert: any[] = [];
+        for (const tweet of data.data) {
+          const rawAuthor = authorMap.get(tweet.author_id) || "unknown";
+          const cleanAuthor = `@${rawAuthor.toLowerCase()}`;
+          const content = tweet.text;
+          const rawCashtags = (tweet.entities?.cashtags || []).map((c: any) => c.tag.toUpperCase());
+          
+          const customTickers: string[] = [];
+          const dollarMatches = content.match(/\$[A-Za-z0-9.]{1,10}\b/g);
+          if (dollarMatches) {
+            dollarMatches.forEach((m: string) => customTickers.push(m.substring(1).toUpperCase()));
+          }
+          const tickers = Array.from(new Set([...rawCashtags, ...customTickers]));
+
+          batchToInsert.push({
+            agent_id: AGENT_ID,
+            artifact_type: "x_bookmark",
+            content: content,
+            metadata: {
+              author: cleanAuthor,
+              external_id: tweet.id,
+              published_at: tweet.created_at,
+              tickers: tickers,
+              source: "x_bookmark"
+            },
+            status: "pending",
+          });
+        }
+
+        const { error: upsertError } = await supabase
+          .from("agent_workspace")
+          .upsert(batchToInsert, { onConflict: "x_external_id" });
+
+        if (upsertError) {
+          throw new Error(`DB Speicherfehler: ${upsertError.message}`);
+        }
+
+        // Trigger embedding processing
+        processXPendingPosts().catch(console.error);
+
+        return {
+          content: [{
+            type: "text",
+            text: `✅ ${batchToInsert.length} Lesezeichen erfolgreich aus deinem X-Account abgerufen und gespeichert! (Embeddings werden im Hintergrund generiert).`
+          }]
+        };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler beim Bookmark-Sync: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // Tool: Sync X Following Influencers
+  server.registerTool(
+    "sync_x_following",
+    {
+      title: "Sync X Following Influencers",
+      description: "Fetch the list of accounts you follow on X (Twitter) and optionally import them into the influencer directory.",
+      inputSchema: {
+        action: z.enum(["LIST", "IMPORT"]).default("LIST").describe("LIST = show accounts you follow; IMPORT = add all followed accounts to x_users for monitoring"),
+        limit: z.number().optional().default(100).describe("Max accounts to fetch (default: 100, max: 1000)"),
+      },
+    },
+    async ({ action, limit }: any) => {
+      try {
+        const { access_token, user_id } = await getValidXUserAccessToken();
+        if (!user_id) throw new Error("Keine User ID gefunden. Bitte neu autorisieren: http://127.0.0.1:8788/auth/x/login");
+
+        const fetchLimit = Math.min(Math.max(1, limit || 100), 1000);
+        const url = `https://api.twitter.com/2/users/${user_id}/following?max_results=${fetchLimit}&user.fields=description,public_metrics,verified`;
+
+        const res = await throttledXFetch(url, {
+          headers: { "Authorization": `Bearer ${access_token}` }
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`X API Following fetch failed (${res.status}): ${errText}`);
+        }
+
+        const data = await res.json();
+        if (!data.data || data.data.length === 0) {
+          return { content: [{ type: "text", text: "Dein X-Account folgt aktuell keinen Profilen oder die Liste ist leer." }] };
+        }
+
+        const followedUsers = data.data;
+
+        if (action === "LIST") {
+          const formatted = followedUsers.map((u: any, i: number) => {
+            const verified = u.verified ? " [Verifiziert]" : "";
+            const desc = u.description ? ` - ${u.description.substring(0, 80)}...` : "";
+            return `${i + 1}. @${u.username} (${u.name})${verified}${desc}`;
+          }).join("\n");
+
+          return {
+            content: [{
+              type: "text",
+              text: `📋 Gefolgte X-Accounts (${followedUsers.length} gefunden):\n\n${formatted}\n\n💡 Tipp: Verwende action="IMPORT", um diese Accounts automatisch in deine überwachte Influencer-Liste aufzunehmen.`
+            }]
+          };
+        }
+
+        if (action === "IMPORT") {
+          let importedCount = 0;
+          for (const u of followedUsers) {
+            const cleanName = u.username.toLowerCase();
+            const embedText = `username: ${cleanName} screen_name: ${u.name} notes: ${u.description || ''}`;
+            const embedding = (await getEmbeddingsBatch([embedText]))[0];
+
+            await supabase.from("x_users").upsert({
+              username: cleanName,
+              x_id: u.id,
+              screen_name: u.name,
+              notes: u.description || null,
+              embedding: embedding,
+              is_active: true
+            }, { onConflict: "username" });
+
+            importedCount++;
+          }
+
+          return {
+            content: [{
+              type: "text",
+              text: `✅ ${importedCount} Influencer aus deinen X-Followings erfolgreich in die Überwachungsliste (x_users) importiert!`
+            }]
+          };
+        }
+
+        throw new Error("Invalid action");
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler beim Following-Sync: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // --- Helper: Fetch and store following-list for a single influencer ---
+  async function syncNetworkForUser(sourceUsername: string, sourceXId: string, accessToken: string): Promise<{ fetched: number; upserted: number }> {
+    let allFollowings: any[] = [];
+    let paginationToken: string | undefined = undefined;
+
+    // Paginate through all followings (max 1000 per page)
+    do {
+      let url = `https://api.twitter.com/2/users/${sourceXId}/following?max_results=1000&user.fields=public_metrics,description,verified`;
+      if (paginationToken) url += `&pagination_token=${paginationToken}`;
+
+      const res = await throttledXFetch(url, {
+        headers: { "Authorization": `Bearer ${accessToken}` }
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`X API following fetch failed for @${sourceUsername} (${res.status}): ${errText}`);
+      }
+
+      const data = await res.json();
+      if (data.data && data.data.length > 0) {
+        allFollowings = allFollowings.concat(data.data);
+      }
+
+      paginationToken = data.meta?.next_token;
+      if (paginationToken) {
+        console.log(`[Network Sync] @${sourceUsername}: ${allFollowings.length} followings fetched, next page...`);
+      }
+    } while (paginationToken);
+
+    console.log(`[Network Sync] @${sourceUsername}: Total ${allFollowings.length} followings fetched. Upserting...`);
+
+    // Batch upsert into x_follows (chunks of 50 to avoid huge payloads)
+    let upserted = 0;
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < allFollowings.length; i += BATCH_SIZE) {
+      const batch = allFollowings.slice(i, i + BATCH_SIZE).map((u: any) => ({
+        source_username: sourceUsername,
+        target_x_id: u.id,
+        target_username: u.username?.toLowerCase() || "",
+        target_name: u.name || null,
+        target_bio: u.description ? u.description.substring(0, 500) : null,
+        target_followers: u.public_metrics?.followers_count ?? null,
+        target_following: u.public_metrics?.following_count ?? null,
+        target_tweets: u.public_metrics?.tweet_count ?? null,
+        target_verified: u.verified || false,
+        synced_at: new Date().toISOString(),
+      }));
+
+      const { error } = await supabase.from("x_follows").upsert(batch, { onConflict: "source_username,target_x_id" });
+      if (error) {
+        console.error(`[Network Sync] Upsert error for @${sourceUsername} batch ${i}:`, error.message);
+      } else {
+        upserted += batch.length;
+      }
+    }
+
+    return { fetched: allFollowings.length, upserted };
+  }
+
+  // Tool: Sync Influencer Network (Following-Listen → x_follows Graph)
+  server.registerTool(
+    "sync_influencer_network",
+    {
+      title: "Sync Influencer Network",
+      description: "Fetch the following-lists of monitored influencers and store them in the network graph (x_follows table). Use this to build a who-follows-whom network for cluster detection and influencer discovery.",
+      inputSchema: {
+        username: z.string().default("all").describe("'all' = sync network for ALL active influencers, or a single username (e.g. 'stockbee' or '@saxena_puru')"),
+      },
+    },
+    async ({ username }: any) => {
+      try {
+        const { access_token } = await getValidXUserAccessToken();
+
+        // Determine which influencers to process
+        let influencers: { username: string; x_id: string }[] = [];
+
+        if (!username || username === "all") {
+          const { data, error } = await supabase
+            .from("x_users")
+            .select("username, x_id")
+            .eq("is_active", true)
+            .order("username");
+          if (error) throw error;
+          if (!data || data.length === 0) throw new Error("Keine aktiven Influencer in der Datenbank.");
+          influencers = data;
+        } else {
+          const cleanName = username.startsWith("@") ? username.substring(1).toLowerCase() : username.toLowerCase();
+          const { data, error } = await supabase
+            .from("x_users")
+            .select("username, x_id")
+            .eq("username", cleanName)
+            .single();
+          if (error || !data) throw new Error(`Influencer @${cleanName} nicht in der Datenbank gefunden. Zuerst mit manage_influencers(action="ADD") hinzufügen.`);
+          influencers = [data];
+        }
+
+        const results: string[] = [];
+        let totalFollowings = 0;
+        let totalUpserted = 0;
+
+        for (const inf of influencers) {
+          try {
+            console.log(`[Network Sync] Starting for @${inf.username} (x_id: ${inf.x_id})...`);
+            const { fetched, upserted } = await syncNetworkForUser(inf.username, inf.x_id, access_token);
+            totalFollowings += fetched;
+            totalUpserted += upserted;
+            results.push(`✅ @${inf.username}: ${fetched} Followings geladen, ${upserted} gespeichert`);
+          } catch (err: any) {
+            results.push(`❌ @${inf.username}: ${err.message}`);
+            console.error(`[Network Sync] Error for @${inf.username}:`, err.message);
+          }
+        }
+
+        const summary = [
+          `🕸️ Influencer-Netzwerk Sync abgeschlossen`,
+          ``,
+          `📊 Gesamt: ${influencers.length} Influencer verarbeitet, ${totalFollowings} Followings abgerufen, ${totalUpserted} Kanten gespeichert`,
+          ``,
+          ...results,
+          ``,
+          `💡 Netzwerk-Analyse: Frage mich z.B. "Welche Accounts werden von den meisten unserer Influencer gefolgt?"`,
+        ].join("\n");
+
+        return { content: [{ type: "text", text: summary }] };
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler beim Netzwerk-Sync: ${err.message}` }], isError: true };
+      }
+    }
+  );
+
+  // Tool: Analyze Influencer Network (pure local DB, zero API cost)
+  server.registerTool(
+    "analyze_influencer_network",
+    {
+      title: "Analyze Influencer Network",
+      description: "Analyze the who-follows-whom network from the x_follows graph table. Pure database query — no API calls, no cost.",
+      inputSchema: {
+        mode: z.enum(["ALPHA_RANKING", "CONNECTIONS", "SUGGESTIONS"]).describe(
+          "ALPHA_RANKING = rank external accounts by how many of our influencers follow them; " +
+          "CONNECTIONS = show which of our monitored influencers follow each other; " +
+          "SUGGESTIONS = find high-alpha accounts we are NOT yet monitoring"
+        ),
+        min_followers: z.number().optional().describe("Minimum follower count filter for ALPHA_RANKING / SUGGESTIONS (default: 0)"),
+        limit: z.number().optional().default(30).describe("Max results to return (default: 30)"),
+      },
+    },
+    async ({ mode, min_followers, limit }: any) => {
+      try {
+        const resultLimit = Math.min(Math.max(1, limit || 30), 200);
+        const minFollowers = min_followers || 0;
+
+        if (mode === "ALPHA_RANKING") {
+          // Which external accounts are followed by the most of our influencers?
+          const { data: allEdges, error: edgeErr } = await supabase
+            .from("x_follows")
+            .select("source_username, target_username, target_name, target_followers, target_verified");
+
+          if (edgeErr) throw edgeErr;
+          if (!allEdges || allEdges.length === 0) {
+            return { content: [{ type: "text", text: "❌ Keine Netzwerk-Daten vorhanden. Zuerst `sync_influencer_network` ausführen." }] };
+          }
+
+          // Aggregate: group by target, count distinct sources
+          const targetMap = new Map<string, {
+            name: string; followers: number; verified: boolean; sources: Set<string>;
+          }>();
+
+          for (const edge of allEdges) {
+            const key = edge.target_username;
+            if (!targetMap.has(key)) {
+              targetMap.set(key, {
+                name: edge.target_name || "",
+                followers: edge.target_followers || 0,
+                verified: edge.target_verified || false,
+                sources: new Set(),
+              });
+            }
+            targetMap.get(key)!.sources.add(edge.source_username);
+          }
+
+          // Sort by followed_by count DESC, then followers DESC
+          const ranked = Array.from(targetMap.entries())
+            .map(([username, info]) => ({
+              username,
+              name: info.name,
+              followers: info.followers,
+              verified: info.verified,
+              followed_by_count: info.sources.size,
+              followed_by: Array.from(info.sources),
+            }))
+            .filter(r => r.followed_by_count >= 2 && r.followers >= minFollowers)
+            .sort((a, b) => b.followed_by_count - a.followed_by_count || b.followers - a.followers)
+            .slice(0, resultLimit);
+
+          if (ranked.length === 0) {
+            return { content: [{ type: "text", text: "Keine Accounts gefunden, die von mindestens 2 Influencern gefolgt werden." }] };
+          }
+
+          // Get list of our monitored influencers for marking
+          const { data: monitored } = await supabase.from("x_users").select("username").eq("is_active", true);
+          const monitoredSet = new Set((monitored || []).map((u: any) => u.username));
+
+          const formatted = ranked.map((r, i) => {
+            const v = r.verified ? " ✓" : "";
+            const isMonitored = monitoredSet.has(r.username) ? " [ÜBERWACHT]" : "";
+            const followersStr = r.followers >= 1000000
+              ? `${(r.followers / 1000000).toFixed(1)}M`
+              : r.followers >= 1000
+              ? `${(r.followers / 1000).toFixed(1)}K`
+              : `${r.followers}`;
+            return `${i + 1}. @${r.username} (${r.name})${v}${isMonitored}\n   Follower: ${followersStr} | Gefolgt von ${r.followed_by_count} Influencern: ${r.followed_by.map(s => `@${s}`).join(", ")}`;
+          }).join("\n\n");
+
+          const totalEdges = allEdges.length;
+          const totalSources = new Set(allEdges.map((e: any) => e.source_username)).size;
+
+          return {
+            content: [{
+              type: "text",
+              text: `🏆 Alpha Ranking — Accounts mit höchstem Respekt im Netzwerk\n\n📊 Netzwerk: ${totalSources} Influencer, ${totalEdges} Kanten gesamt\n\n${formatted}`
+            }]
+          };
+        }
+
+        if (mode === "CONNECTIONS") {
+          // Which of our monitored influencers follow each other?
+          const { data: monitored } = await supabase.from("x_users").select("username").eq("is_active", true);
+          if (!monitored || monitored.length === 0) throw new Error("Keine aktiven Influencer.");
+          const monitoredSet = new Set(monitored.map((u: any) => u.username));
+          const monitoredList = monitored.map((u: any) => u.username);
+
+          // Fetch all edges where source is one of our influencers
+          const { data: edges, error: edgeErr } = await supabase
+            .from("x_follows")
+            .select("source_username, target_username")
+            .in("source_username", monitoredList);
+
+          if (edgeErr) throw edgeErr;
+
+          // Filter to only edges where target is also one of our influencers
+          const internalEdges = (edges || []).filter((e: any) => monitoredSet.has(e.target_username));
+
+          if (internalEdges.length === 0) {
+            return { content: [{ type: "text", text: "Keine internen Verbindungen gefunden. Zuerst `sync_influencer_network` ausführen." }] };
+          }
+
+          // Build adjacency: who follows whom
+          const followsMap = new Map<string, string[]>();
+          const followedByMap = new Map<string, string[]>();
+
+          for (const edge of internalEdges) {
+            if (!followsMap.has(edge.source_username)) followsMap.set(edge.source_username, []);
+            followsMap.get(edge.source_username)!.push(edge.target_username);
+
+            if (!followedByMap.has(edge.target_username)) followedByMap.set(edge.target_username, []);
+            followedByMap.get(edge.target_username)!.push(edge.source_username);
+          }
+
+          // Detect mutual follows
+          const mutuals: string[] = [];
+          const seen = new Set<string>();
+          for (const [source, targets] of followsMap) {
+            for (const target of targets) {
+              const pair = [source, target].sort().join("↔");
+              if (!seen.has(pair) && followsMap.get(target)?.includes(source)) {
+                seen.add(pair);
+                mutuals.push(`🤝 @${source} ↔ @${target} (gegenseitig)`);
+              }
+            }
+          }
+
+          // Most followed internally
+          const internalRanking = Array.from(followedByMap.entries())
+            .map(([username, followers]) => ({ username, count: followers.length, followers }))
+            .sort((a, b) => b.count - a.count);
+
+          const formatted = [
+            `🔗 Interne Verbindungen im Netzwerk (${monitoredList.length} Influencer)`,
+            ``,
+            `📊 ${internalEdges.length} interne Kanten gefunden`,
+            ``,
+            `--- Gegenseitige Follows ---`,
+            mutuals.length > 0 ? mutuals.join("\n") : "(keine gegenseitigen Follows gefunden)",
+            ``,
+            `--- Intern am meisten gefolgt ---`,
+            ...internalRanking.map((r, i) => `${i + 1}. @${r.username}: gefolgt von ${r.count} Influencern (${r.followers.map(f => `@${f}`).join(", ")})`),
+          ].join("\n");
+
+          return { content: [{ type: "text", text: formatted }] };
+        }
+
+        if (mode === "SUGGESTIONS") {
+          // Find high-alpha accounts NOT yet in x_users
+          const { data: monitored } = await supabase.from("x_users").select("username").eq("is_active", true);
+          const monitoredSet = new Set((monitored || []).map((u: any) => u.username));
+
+          const { data: allEdges, error: edgeErr } = await supabase
+            .from("x_follows")
+            .select("source_username, target_username, target_name, target_followers, target_bio, target_verified");
+
+          if (edgeErr) throw edgeErr;
+          if (!allEdges || allEdges.length === 0) {
+            return { content: [{ type: "text", text: "❌ Keine Netzwerk-Daten vorhanden." }] };
+          }
+
+          const targetMap = new Map<string, {
+            name: string; followers: number; bio: string; verified: boolean; sources: Set<string>;
+          }>();
+
+          for (const edge of allEdges) {
+            const key = edge.target_username;
+            if (monitoredSet.has(key)) continue; // Skip already monitored
+            if (!targetMap.has(key)) {
+              targetMap.set(key, {
+                name: edge.target_name || "",
+                followers: edge.target_followers || 0,
+                bio: edge.target_bio || "",
+                verified: edge.target_verified || false,
+                sources: new Set(),
+              });
+            }
+            targetMap.get(key)!.sources.add(edge.source_username);
+          }
+
+          const suggestions = Array.from(targetMap.entries())
+            .map(([username, info]) => ({
+              username,
+              name: info.name,
+              followers: info.followers,
+              bio: info.bio,
+              verified: info.verified,
+              followed_by_count: info.sources.size,
+              followed_by: Array.from(info.sources),
+            }))
+            .filter(r => r.followed_by_count >= 2 && r.followers >= minFollowers)
+            .sort((a, b) => b.followed_by_count - a.followed_by_count || b.followers - a.followers)
+            .slice(0, resultLimit);
+
+          if (suggestions.length === 0) {
+            return { content: [{ type: "text", text: "Keine neuen Vorschläge gefunden. Alle hoch-verbundenen Accounts werden bereits überwacht." }] };
+          }
+
+          const formatted = suggestions.map((r, i) => {
+            const v = r.verified ? " ✓" : "";
+            const followersStr = r.followers >= 1000000
+              ? `${(r.followers / 1000000).toFixed(1)}M`
+              : r.followers >= 1000
+              ? `${(r.followers / 1000).toFixed(1)}K`
+              : `${r.followers}`;
+            const bioShort = r.bio ? ` — ${r.bio.substring(0, 100)}` : "";
+            return `${i + 1}. @${r.username} (${r.name})${v}\n   Follower: ${followersStr} | Gefolgt von ${r.followed_by_count} Influencern: ${r.followed_by.map(s => `@${s}`).join(", ")}${bioShort}`;
+          }).join("\n\n");
+
+          return {
+            content: [{
+              type: "text",
+              text: `💡 Influencer-Vorschläge — Accounts mit hohem Alpha-Score, die noch NICHT überwacht werden\n\n${formatted}\n\n🔧 Um einen Vorschlag zu überwachen: manage_influencers(action="ADD", username="@...")`
+            }]
+          };
+        }
+
+        throw new Error("Invalid mode");
+      } catch (err: any) {
+        return { content: [{ type: "text", text: `Fehler bei Netzwerk-Analyse: ${err.message}` }], isError: true };
       }
     }
   );

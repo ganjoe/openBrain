@@ -349,6 +349,7 @@ services:
       - ./agent-cco/yt-segmentation-prompt-de.txt:/app/yt-segmentation-prompt-de.txt:ro
       - ./agent-cco/cookies.txt:/app/cookies.txt
       - ./agent-cco/mcp-server/stdio.ts:/app/stdio.ts:ro
+      - ./agent-cco/mcp-server/index.ts:/app/index.ts:ro
       - ./agent-cco/mcp-server/tools:/app/tools:ro
       - yt-media:/data/yt
     environment:
@@ -362,6 +363,8 @@ services:
       AGENT_ID: "cco"
       GLOBAL_BRAIN_ACCESS: "false"
       X_BEARER_TOKEN: ${X_BEARER_TOKEN}
+      X_CLIENT_ID: ${X_CLIENT_ID}
+      X_CLIENT_SECRET: ${X_CLIENT_SECRET}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       WEB_SCRAPER_URL: http://web-scraper:8797
       POSTGREST_URL: http://postgrest:3000

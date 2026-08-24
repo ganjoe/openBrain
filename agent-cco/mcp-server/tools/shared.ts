@@ -8,6 +8,8 @@ export const MCP_ACCESS_KEY = Deno.env.get("MCP_ACCESS_KEY")!;
 export const AGENT_ID = Deno.env.get("AGENT_ID") || "unknown";
 export const GLOBAL_BRAIN_ACCESS = Deno.env.get("GLOBAL_BRAIN_ACCESS") === "true";
 export const X_BEARER_TOKEN = Deno.env.get("X_BEARER_TOKEN");
+export const X_CLIENT_ID = Deno.env.get("X_CLIENT_ID");
+export const X_CLIENT_SECRET = Deno.env.get("X_CLIENT_SECRET");
 export const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
 // Local services / LLM Gateway Router
@@ -16,6 +18,125 @@ export const EMBED_MODEL = Deno.env.get("EMBED_MODEL") || "embeddings";
 export const LM_STUDIO_URL = Deno.env.get("LM_STUDIO_URL") || "http://host.docker.internal:1234";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// --- X OAuth 2.0 PKCE Helpers & Token Manager ---
+function base64UrlEncode(bytes: Uint8Array): string {
+  let str = "";
+  for (let i = 0; i < bytes.length; i++) {
+    str += String.fromCharCode(bytes[i]);
+  }
+  return btoa(str)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+export function generateCodeVerifier(): string {
+  const array = new Uint8Array(64);
+  crypto.getRandomValues(array);
+  return base64UrlEncode(array);
+}
+
+export async function generateCodeChallenge(verifier: string): Promise<string> {
+  const data = new TextEncoder().encode(verifier);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return base64UrlEncode(new Uint8Array(digest));
+}
+
+export interface XOAuthTokens {
+  access_token: string;
+  refresh_token: string;
+  expires_at: number; // epoch ms
+  user_id?: string;
+  username?: string;
+  name?: string;
+  scope?: string;
+}
+
+export async function getXOAuthTokens(): Promise<XOAuthTokens | null> {
+  try {
+    const { data } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "x_oauth_tokens")
+      .single();
+    if (data?.value && data.value.access_token) {
+      return data.value as XOAuthTokens;
+    }
+  } catch (e) {
+    console.error("[OAuth] Failed to load X OAuth tokens:", e);
+  }
+  return null;
+}
+
+export async function saveXOAuthTokens(tokens: XOAuthTokens): Promise<void> {
+  const { error } = await supabase.from("system_settings").upsert({
+    key: "x_oauth_tokens",
+    value: tokens,
+  }, { onConflict: "key" });
+  if (error) {
+    console.error("[OAuth] Failed to save X OAuth tokens:", error);
+    throw error;
+  }
+}
+
+export async function getValidXUserAccessToken(): Promise<{ access_token: string; user_id?: string; username?: string }> {
+  const tokens = await getXOAuthTokens();
+  if (!tokens || !tokens.access_token) {
+    throw new Error("X OAuth 2.0 ist noch nicht autorisiert. Bitte öffne http://127.0.0.1:8788/auth/x/login im Browser.");
+  }
+
+  // If token expires in less than 2 minutes, refresh it
+  if (Date.now() >= tokens.expires_at - 120000) {
+    if (!tokens.refresh_token) {
+      throw new Error("Kein Refresh-Token vorhanden. Bitte erneut unter http://127.0.0.1:8788/auth/x/login anmelden.");
+    }
+    if (!X_CLIENT_ID) {
+      throw new Error("X_CLIENT_ID ist nicht konfiguriert.");
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/x-www-form-urlencoded",
+    };
+    if (X_CLIENT_SECRET) {
+      headers["Authorization"] = `Basic ${btoa(`${X_CLIENT_ID}:${X_CLIENT_SECRET}`)}`;
+    }
+
+    const bodyParams = new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: tokens.refresh_token,
+      client_id: X_CLIENT_ID,
+    });
+
+    const res = await fetch("https://api.twitter.com/2/oauth2/token", {
+      method: "POST",
+      headers,
+      body: bodyParams.toString(),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("[OAuth] Refresh failed:", errText);
+      throw new Error(`X OAuth Token-Refresh fehlgeschlagen: ${errText}`);
+    }
+
+    const data = await res.json();
+    const updated: XOAuthTokens = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token || tokens.refresh_token,
+      expires_at: Date.now() + (data.expires_in * 1000),
+      user_id: tokens.user_id,
+      username: tokens.username,
+      name: tokens.name,
+      scope: data.scope || tokens.scope,
+    };
+    await saveXOAuthTokens(updated);
+    console.log("[OAuth] X Token erfolgreich erneuert.");
+    return { access_token: updated.access_token, user_id: updated.user_id, username: updated.username };
+  }
+
+  return { access_token: tokens.access_token, user_id: tokens.user_id, username: tokens.username };
+}
 
 // --- Telemetry Helper ---
 export async function sendTelemetry(text: string) {
