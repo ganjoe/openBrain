@@ -328,52 +328,52 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  # --- CCO MCP Server ---
-  mcp-cco:
-    build:
-      context: ./agent-cco/mcp-server
-      dockerfile: Dockerfile
-    container_name: openbrain-mcp-cco
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-      gateway:
-        condition: service_started
-      web-scraper:
-        condition: service_started
-    volumes:
-      - ./agent-cco/metadata-prompt.txt:/app/metadata-prompt.txt:ro
-      - ./agent-cco/yt-segmentation-prompt.txt:/app/yt-segmentation-prompt.txt:ro
-      - ./agent-cco/yt-segmentation-prompt-en.txt:/app/yt-segmentation-prompt-en.txt:ro
-      - ./agent-cco/yt-segmentation-prompt-de.txt:/app/yt-segmentation-prompt-de.txt:ro
-      - ./agent-cco/cookies.txt:/app/cookies.txt
-      - ./agent-cco/mcp-server/stdio.ts:/app/stdio.ts:ro
-      - ./agent-cco/mcp-server/index.ts:/app/index.ts:ro
-      - ./agent-cco/mcp-server/tools:/app/tools:ro
-      - yt-media:/data/yt
-    environment:
-      SUPABASE_URL: http://gateway:80
-      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
-      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
-      SWITCHYARD_URL: http://host.docker.internal:4000/v1
-      EMBED_MODEL: embeddings
-      LM_STUDIO_URL: http://host.docker.internal:1234
-      PORT: "8788"
-      AGENT_ID: "cco"
-      GLOBAL_BRAIN_ACCESS: "false"
-      X_BEARER_TOKEN: ${X_BEARER_TOKEN}
-      X_CLIENT_ID: ${X_CLIENT_ID}
-      X_CLIENT_SECRET: ${X_CLIENT_SECRET}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      WEB_SCRAPER_URL: http://web-scraper:8797
-      POSTGREST_URL: http://postgrest:3000
-      X_DISCOVERY_INTERVAL_SEC: "30"
-      X_MIN_REQUEST_DELAY_MS: "2500"
-    ports:
-      - "8788:8788"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+  # --- CCO MCP Server (Migrated to QJM Stack - commented out in OpenBrain) ---
+  # mcp-cco:
+  #   build:
+  #     context: ./agent-cco/mcp-server
+  #     dockerfile: Dockerfile
+  #   container_name: openbrain-mcp-cco
+  #   restart: unless-stopped
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #     gateway:
+  #       condition: service_started
+  #     web-scraper:
+  #       condition: service_started
+  #   volumes:
+  #     - ./agent-cco/metadata-prompt.txt:/app/metadata-prompt.txt:ro
+  #     - ./agent-cco/yt-segmentation-prompt.txt:/app/yt-segmentation-prompt.txt:ro
+  #     - ./agent-cco/yt-segmentation-prompt-en.txt:/app/yt-segmentation-prompt-en.txt:ro
+  #     - ./agent-cco/yt-segmentation-prompt-de.txt:/app/yt-segmentation-prompt-de.txt:ro
+  #     - ./agent-cco/cookies.txt:/app/cookies.txt
+  #     - ./agent-cco/mcp-server/stdio.ts:/app/stdio.ts:ro
+  #     - ./agent-cco/mcp-server/index.ts:/app/index.ts:ro
+  #     - ./agent-cco/mcp-server/tools:/app/tools:ro
+  #     - yt-media:/data/yt
+  #   environment:
+  #     SUPABASE_URL: http://gateway:80
+  #     SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+  #     MCP_ACCESS_KEY: ${MCP_ACCESS_KEY}
+  #     SWITCHYARD_URL: http://host.docker.internal:4000/v1
+  #     EMBED_MODEL: embeddings
+  #     LM_STUDIO_URL: http://host.docker.internal:1234
+  #     PORT: "8788"
+  #     AGENT_ID: "cco"
+  #     GLOBAL_BRAIN_ACCESS: "false"
+  #     X_BEARER_TOKEN: ${X_BEARER_TOKEN}
+  #     X_CLIENT_ID: ${X_CLIENT_ID}
+  #     X_CLIENT_SECRET: ${X_CLIENT_SECRET}
+  #     GEMINI_API_KEY: ${GEMINI_API_KEY}
+  #     WEB_SCRAPER_URL: http://web-scraper:8797
+  #     POSTGREST_URL: http://postgrest:3000
+  #     X_DISCOVERY_INTERVAL_SEC: "30"
+  #     X_MIN_REQUEST_DELAY_MS: "2500"
+  #   ports:
+  #     - "8788:8788"
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
 
   # --- draw.io MCP Server ---
   mcp-drawio:
@@ -420,7 +420,6 @@ services:
     restart: unless-stopped
     depends_on:
       - nexus-broker
-      - mcp-cco
     volumes:
       - ./agent-cco/prompt.txt:/app/prompt.txt:ro
       - ./agent-cco/config.yaml:/app/config.yaml:ro
