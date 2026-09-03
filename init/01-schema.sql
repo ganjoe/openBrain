@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS open_brain (
   embedding    vector(4096),
   content_hash TEXT,
   created_at   TIMESTAMPTZ DEFAULT now(),
-  updated_at   TIMESTAMPTZ DEFAULT now()
+  updated_at   TIMESTAMPTZ DEFAULT now(),
+  deleted_at   TIMESTAMPTZ DEFAULT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_open_brain_agent ON open_brain (agent_id);
@@ -127,6 +128,7 @@ BEGIN
     t.created_at
   FROM open_brain t
   WHERE (p_agent_id IS NULL OR t.agent_id = p_agent_id)
+    AND t.deleted_at IS NULL
     AND (
       1 - (t.embedding <=> query_embedding) > match_threshold
       OR t.content ILIKE '%' || query_text || '%'

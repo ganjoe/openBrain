@@ -475,7 +475,6 @@ services:
     restart: unless-stopped
     depends_on:
       - nexus-broker
-      - mcp-pta
     volumes:
       - ./agent-pta/prompt.txt:/app/prompt.txt:ro
       - ./agent-pta/config.yaml:/app/config.yaml:ro

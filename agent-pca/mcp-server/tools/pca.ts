@@ -72,13 +72,21 @@ export function registerPcaTools(server: McpServer) {
                 if (list_name) {
                   const { data, error } = await supabase.from("pca_watchlists").select("ticker, position").eq("list_name", list_name).order("position");
                   if (error) throw error;
-                  const resultTickers = data.map((r: any) => r.ticker).join(", ");
-                  return { content: [{ type: "text", text: `Watchlist '${list_name}': ${resultTickers}` }] };
+                  const count = data?.length ?? 0;
+                  const resultTickers = (data ?? []).map((r: any) => r.ticker).join(", ");
+                  return { content: [{ type: "text", text: `Watchlist '${list_name}' (${count} Einträge): ${resultTickers || "leer"}` }] };
                 } else {
-                  const { data, error } = await supabase.from("pca_watchlists").select("list_name").order("list_name");
+                  const { data, error } = await supabase.from("pca_watchlists").select("list_name, ticker").order("list_name");
                   if (error) throw error;
-                  const names = [...new Set(data.map((r: any) => r.list_name))].join(", ");
-                  return { content: [{ type: "text", text: `Available watchlists: ${names}` }] };
+                  const counts: Record<string, number> = {};
+                  for (const r of data ?? []) {
+                    if (r.list_name) {
+                      counts[r.list_name] = (counts[r.list_name] || 0) + 1;
+                    }
+                  }
+                  const names = Object.keys(counts);
+                  const lines = names.map((name) => `• ${name} (${counts[name]} Einträge)`);
+                  return { content: [{ type: "text", text: `Available watchlists (${names.length}):\n${lines.join("\n") || "none"}` }] };
                 }
             } else if (action === "LOAD") {
                 if (!list_name) throw new Error("list_name required for LOAD");

@@ -537,10 +537,27 @@ def create_app() -> FastAPI:
                 content={"error": f"Scanner execution failed: {e}"}
             )
 
+    from scheduler import FeatureScheduler
+    scheduler = FeatureScheduler()
+
     @app.get("/status")
+    @app.get("/features/status")
     async def get_status() -> dict:
-        """Returns whether a feature calculation is currently running."""
-        return {"is_running": job_manager.is_running}
+        """Returns detailed live status and progress of feature calculation."""
+        status_data = job_manager.get_detailed_status()
+        status_data["schedule"] = scheduler.config
+        return status_data
+
+    @app.get("/features/schedule")
+    async def get_schedule() -> dict:
+        """Returns the current cyclical calculation schedule."""
+        return scheduler.config
+
+    @app.post("/features/schedule")
+    async def set_schedule(cfg: dict) -> dict:
+        """Updates and persists the cyclical calculation schedule in Supabase."""
+        scheduler.save_config_to_db(cfg)
+        return {"status": "ok", "schedule": scheduler.config}
 
     @app.get("/health")
     async def health_check() -> dict:
@@ -561,6 +578,10 @@ def main() -> None:
     logger.info("ℹ️  Config dir: %s", CONFIG_DIR)
     logger.info("ℹ️  Data dir:   %s", DATA_DIR)
     logger.info("ℹ️  API port:   %d", API_PORT)
+
+    from scheduler import FeatureScheduler
+    scheduler = FeatureScheduler()
+    scheduler.start(run_feature_pipeline)
 
     app = create_app()
 

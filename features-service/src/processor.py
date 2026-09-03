@@ -68,11 +68,25 @@ class FeatureProcessor:
                     pass
             return t, res
 
+        from job_manager import JobManager
+        jm = JobManager()
+        total_p0 = len(tickers)
+        p0_completed = 0
+        last_logged_p0_pct = 0
+
         # Fast parallel reading and raw calculation
         with ThreadPoolExecutor(max_workers=self.context.thread_count) as executor:
             futures = [executor.submit(_read_and_compute_raw, t) for t in tickers]
             for f in as_completed(futures):
                 t, res = f.result()
+                p0_completed += 1
+                jm.update_progress(completed=p0_completed, total=total_p0, current_ticker=t)
+                
+                pct = int((p0_completed / total_p0) * 100)
+                if pct - last_logged_p0_pct >= 10 or p0_completed == total_p0:
+                    logger.info(f"⚙️  Pass 0 Loading: {pct}% ({p0_completed}/{total_p0} tickers)")
+                    last_logged_p0_pct = pct
+
                 for tf, tuples in res.items():
                     for (col_name, series) in tuples:
                         if col_name not in ticker_series_by_tf[tf]:
@@ -80,6 +94,7 @@ class FeatureProcessor:
                         ticker_series_by_tf[tf][col_name][t] = series
                     
         # Now compute percentiles or aggregations globally
+        jm.set_stage("PASS_0_RANKING", total_tickers=total_p0)
         logger.info("⚙️  Pass 0: Ranking / Aggregating features globally...")
         result_dict = {tf: {} for tf in self.context.timeframes}
         
@@ -144,14 +159,20 @@ class FeatureProcessor:
             logger.info("⚡ Priority ticker %s moved to front of queue", priority)
         
         # --- PASS 0: PRE-COMPUTE CROSS SECTIONAL ---
+        from job_manager import JobManager
+        jm = JobManager()
+        jm.set_stage("PASS_0_PRECOMPUTE", total_tickers=len(tickers))
+        
         global_cs_data = self._precompute_cross_sectional(tickers)
         
         results = []
         total_tickers = len(tickers)
         completed = 0
+        failed_count = 0
         last_logged_pct = 0
         priority_notified = False
         
+        jm.set_stage("PASS_1_PROCESSING", total_tickers=total_tickers)
         logger.info(f"⚙️  Pass 1: Spawning {self.context.thread_count} worker processes for parallel calculation and I/O...")
         ctx = multiprocessing.get_context('spawn')
         with ProcessPoolExecutor(max_workers=self.context.thread_count, mp_context=ctx) as executor:
@@ -167,11 +188,17 @@ class FeatureProcessor:
                 try:
                     ticker_results = future.result()
                     results.extend(ticker_results)
+                    if any(not r.success for r in ticker_results):
+                        failed_count += 1
                 except Exception as exc:
+                    failed_count += 1
                     logger.error(f"Ticker {ticker} generated an exception: {exc}")
                     logger.error(traceback.format_exc())
                     results.append(TickerProcessResult(ticker, "all", False, 0, str(exc)))
                 
+                # Update live progress tracker
+                jm.update_progress(completed=completed, total=total_tickers, current_ticker=ticker, failed_count=failed_count)
+
                 # Notify via MQTT when priority ticker is done
                 if priority and ticker == priority and not priority_notified:
                     priority_notified = True
@@ -193,6 +220,13 @@ class FeatureProcessor:
         total_pts = sum(r.data_points for r in successful_results)
         num_features = len(self.context.features) if hasattr(self.context, 'features') and self.context.features else 0
         
+        jm.record_completion(
+            success_count=len(successful_results),
+            failed_count=len(failed_results),
+            data_points=total_pts,
+            duration_seconds=elapsed
+        )
+
         logger.info("═══════════════════════════════════════════════════════════════")
         logger.info(f"✨ Feature Calculation Summary:")
         logger.info(f"   • Tickers processed : {total_tickers}")
