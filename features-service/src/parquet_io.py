@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -14,14 +14,14 @@ class ParquetStorage:
     def __init__(self, base_data_dir: str):
         self.base_dir = Path(base_data_dir)
 
-    def load_ticker_data(self, ticker: str, timeframe: str) -> pd.DataFrame:
-        """Loads /data/parquet/<ticker>/<timeframe>.parquet"""
+    def load_ticker_data(self, ticker: str, timeframe: str, columns: Optional[List[str]] = None) -> pd.DataFrame:
+        """Loads /data/parquet/<ticker>/<timeframe>.parquet (optionally only specific columns)"""
         file_path = self.base_dir / ticker / f"{timeframe}.parquet"
         
         if not file_path.exists():
             raise FileNotFoundError(f"Source file not found: {file_path}")
             
-        table = pq.read_table(str(file_path))
+        table = pq.read_table(str(file_path), columns=columns)
         df = table.to_pandas()
         # Reset index to ensure timestamp is a column (not an index)
         # Rename 'index' or 'level_0' to 'timestamp' if present
@@ -58,5 +58,6 @@ class ParquetStorage:
         if not self.base_dir.exists():
             return []
         
-        # Subdirectories in base_dir are assumed to be tickers
-        return [d.name for d in self.base_dir.iterdir() if d.is_dir()]
+        # Subdirectories in base_dir are assumed to be tickers (exclude synthetic tickers starting with $)
+        return [d.name for d in self.base_dir.iterdir() if d.is_dir() and not d.name.startswith("$")]
+

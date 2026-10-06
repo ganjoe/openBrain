@@ -9,6 +9,16 @@ export const AGENT_ID                = Deno.env.get("AGENT_ID") || "pca";
 // PCA service base URL (FastAPI backend)
 export const PCA_SERVICE_URL         = Deno.env.get("PCA_SERVICE_URL") || "http://agent-pca-service:8791";
 
+// Stock Data Node URL
+export const STOCK_DATA_NODE_URL     = Deno.env.get("STOCK_DATA_NODE_URL") || "http://host.docker.internal:8002";
+
+// --- Logger Helper ---
+export const log = {
+  info: (msg: string) => console.log(`[INFO] ${new Date().toISOString()} ${msg}`),
+  warn: (msg: string) => console.warn(`[WARN] ${new Date().toISOString()} ${msg}`),
+  error: (msg: string) => console.error(`[ERROR] ${new Date().toISOString()} ${msg}`),
+};
+
 // Optional — for shared Open Brain access
 export const GEMINI_API_KEY          = Deno.env.get("GEMINI_API_KEY");
 export const SWITCHYARD_URL          = Deno.env.get("SWITCHYARD_URL") || Deno.env.get("OLLAMA_URL") || "http://switchyard:4000/v1";

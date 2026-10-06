@@ -23,6 +23,8 @@ class TechnicalCalculator:
                 df = self._calc_stoch(df, config)
             elif config.feature_type == FeatureType.IBD_RS:
                 df = self._calc_ibd_rs_raw(df, config)
+            elif config.feature_type == FeatureType.RS_ADR_NEUTRAL:
+                df = self._calc_rs_adr_neutral_raw(df, config)
             elif config.feature_type == FeatureType.DAILY_RANGE:
                 df = self._calc_daily_range(df, config)
             elif config.feature_type == FeatureType.DOLLAR_VOLUME:
@@ -46,16 +48,23 @@ class TechnicalCalculator:
         if window == 1:
             return df[column].reset_index(drop=True).bfill().fillna(0)
             
-        # F-PRC-100: Prepend duplicated first row to handle early data / IPO
-        first_row = df.iloc[[0]]
-        prepended = pd.concat([first_row] * (window - 1), ignore_index=True)
-        calc_df = pd.concat([prepended, df], ignore_index=True)
-        
+        # F-PRC-100: erste Zeile (window-1)x voranstellen, damit fruehe Bars
+        # denselben Wert bekommen. numpy-Padding statt pd.concat ueber window-1
+        # Ein-Zeilen-Frames (-2,8 ms/Ticker in Pass 1, bit-identisch verifiziert).
+        values = df[column].to_numpy(dtype="float64")
+        n_vals = len(values)
+        if n_vals == 0:
+            return pd.Series(dtype=float)
+        padded = np.empty(n_vals + window - 1, dtype="float64")
+        padded[: window - 1] = values[0]
+        padded[window - 1:] = values
+        calc_series = pd.Series(padded)
+
         if ma_type == FeatureType.EMA:
-            ma_series = calc_df[column].ewm(span=window, adjust=False).mean()
+            ma_series = calc_series.ewm(span=window, adjust=False).mean()
         else:
-            ma_series = calc_df[column].rolling(window=window).mean()
-            
+            ma_series = calc_series.rolling(window=window).mean()
+
         # Slice back to original size and bfill/fillna(0) for safety
         result = ma_series.iloc[window-1:].reset_index(drop=True)
         return result.bfill().fillna(0)
@@ -175,10 +184,91 @@ class TechnicalCalculator:
         weighted_sum = np.sum(np.where(valid, roc_arrays * weights, 0.0), axis=0)
         available_weights = np.sum(valid * weights, axis=0)
 
+        # Massnahme 1 (19.09.2026): kein Kurzhistorie-Inflator mehr.
+        # Fehlende ROC-Komponenten zaehlen als 0, der Nenner bleibt 5. Vorher wurde
+        # mit (5 / available_weights) hochskaliert: ein Neu-Listing mit nur der
+        # 3-Monats-ROC bekam Faktor 2,5 und damit +50 % in drei Monaten als raw=125
+        # gegen raw~27 eines etablierten Titels mit +50 % ueber zwoelf Monate.
+        # Wirkung: der <252-Bars-Anteil im oberen RS-Dezil faellt von 90 auf 39.
         with np.errstate(divide='ignore', invalid='ignore'):
-            raw_scores = np.where(available_weights > 0, weighted_sum * (full_weight_sum / available_weights), np.nan)
+            raw_scores = np.where(available_weights > 0, weighted_sum, np.nan)
+
+        # RS-Basis-Qualitaetsfilter (konfigurierbar): zu billige/illiquide Titel
+        # werden per NaN aus dem Cross-Sectional-Ranking ausgeschlossen (nicht 0).
+        close = df['close'].astype(float)
+        volume = df['volume'].astype(float)
+        basis_ok = np.ones(len(df), dtype=bool)
+
+        # Integritaets-Gate: Serien mit aktuellem Skalensprung (zwei Preisskalen,
+        # z. B. provider-seitig nicht adjustierter Reverse-Split) nicht ranken.
+        med21 = close.rolling(21, min_periods=5).median()
+        ratio = (close / med21).tail(252)
+        if bool(((ratio > 5.0) | (ratio < 0.2)).any()):
+            basis_ok[:] = False
+
+        min_price = float(config.additional_params.get("min_price") or 0.0)
+        min_dv50 = float(config.additional_params.get("min_dollar_volume_50") or 0.0)
+        if min_price > 0.0:
+            basis_ok &= (close.to_numpy(dtype=float) > min_price)
+        if min_dv50 > 0.0:
+            dv50 = (close * volume).rolling(50, min_periods=1).mean()
+            basis_ok &= (dv50.to_numpy(dtype=float) >= min_dv50)
+
+        raw_scores = np.where(basis_ok & ~np.isnan(raw_scores), raw_scores, np.nan)
 
         df[f"{config.feature_id}_raw"] = raw_scores
+        return df
+
+    def _adr_series(self, df: pd.DataFrame, config: FeatureConfig) -> pd.Series:
+        """ADR(20) = SMA(20) von daily_range, identisch zum Feature 'adr_20'."""
+        close = df["close"].astype(float)
+        safe = np.where(close.to_numpy(dtype=float) == 0.0, np.nan, close.to_numpy(dtype=float))
+        dr = (df["high"].to_numpy(dtype=float) - df["low"].to_numpy(dtype=float)) / safe * 100.0
+        dr = pd.Series(dr, index=df.index).fillna(0.0)
+        tmp = pd.DataFrame({"daily_range": dr})
+        window = int(config.additional_params.get("adr_window") or 20)
+        return self._get_ma_series(tmp, "daily_range", window, FeatureType.SMA)
+
+    def _calc_rs_adr_neutral_raw(self, df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
+        """ROH-Score fuer den ADR-neutralen RS: gewichtete ROC ueber konfigurierbare
+        Perioden (Default 20/40/80, Gewichte 1/1/1), mit denselben Basis-Gates wie
+        ibd_rs (Preis, 50d-Dollarvolumen, Integritaets-Gate)."""
+        n_rows = len(df)
+        if n_rows < 1:
+            df[config.feature_id + "_raw"] = np.nan
+            return df
+        periods = config.additional_params.get("periods") or [20, 40, 80]
+        weights = config.additional_params.get("weights") or [1] * len(periods)
+        periods = [int(p) for p in periods]
+        weights = [float(w) for w in weights]
+        close = df["close"]
+        raw_scores = np.zeros(n_rows, dtype="float64")
+        any_valid = np.zeros(n_rows, dtype=bool)
+        for p, w in zip(periods, weights):
+            roc = close.pct_change(periods=p) * 100
+            roc = roc.replace([np.inf, -np.inf], np.nan)
+            arr = roc.to_numpy(dtype=float)
+            ok = ~np.isnan(arr)
+            raw_scores = np.where(ok, raw_scores + arr * w, raw_scores)
+            any_valid = any_valid | ok
+        raw_scores = np.where(any_valid, raw_scores, np.nan)
+
+        close_f = close.astype(float)
+        volume = df["volume"].astype(float)
+        basis_ok = np.ones(n_rows, dtype=bool)
+        med21 = close_f.rolling(21, min_periods=5).median()
+        ratio = (close_f / med21).tail(252)
+        if bool(((ratio > 5.0) | (ratio < 0.2)).any()):
+            basis_ok[:] = False
+        min_price = float(config.additional_params.get("min_price") or 0.0)
+        min_dv50 = float(config.additional_params.get("min_dollar_volume_50") or 0.0)
+        if min_price > 0.0:
+            basis_ok &= (close_f.to_numpy(dtype=float) > min_price)
+        if min_dv50 > 0.0:
+            dv50 = (close_f * volume).rolling(50, min_periods=1).mean()
+            basis_ok &= (dv50.to_numpy(dtype=float) >= min_dv50)
+        raw_scores = np.where(basis_ok & ~np.isnan(raw_scores), raw_scores, np.nan)
+        df[config.feature_id + "_raw"] = raw_scores
         return df
 
     def _calc_breadth_minervini_raw(self, df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
@@ -217,6 +307,39 @@ class TechnicalCalculator:
         
         # 1 if all 7 conditions are met, otherwise 0
         df[f"{config.feature_id}_raw"] = (score == 7).astype(int)
+        return df
+
+    def _calc_breadth_sma_raw(self, df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
+        """Rohbeitrag zur Marktbreite: 1.0 = close ueber SMA(window), 0.0 = darunter, NaN = kein Urteil.
+
+        Die Aggregation (Anteil ueber der SMA je Handelstag) macht Pass 0.
+        Bewusst NICHT ueber _get_ma_series: der Helper stellt die erste Zeile
+        (window-1)x voran, damit fruehe Bars einen Wert bekommen. Fuer eine
+        Marktbreite wuerde das Titel ohne echte Historie mitzaehlen und die
+        fruehe Breite verfaelschen. Hier gilt: ohne volle SMA kein Urteil -
+        solche Titel bleiben aus Zaehler UND Nenner.
+        """
+        col = f"{config.feature_id}_raw"
+        window = int(config.additional_params.get("sma_window") or config.window or 40)
+        if "close" not in df.columns or window <= 1 or len(df) < window:
+            df[col] = np.nan
+            return df
+        close = pd.to_numeric(df["close"], errors="coerce").reset_index(drop=True)
+        # GENAU EINE Beobachtung je UTC-Handelstag, erst dann die SMA. Die
+        # Chartdaten tragen bei ~1.200 Tickern zwei Zeilen fuer denselben Tag
+        # (settled + Live-Bar); ohne Dedup wandert die Live-Zeile in die SMA und
+        # verschiebt die Breite systematisch.
+        day = pd.to_numeric(df["timestamp"], errors="coerce") // 86400 * 86400
+        daily = pd.DataFrame({"day": day, "close": close}).dropna(subset=["day"])
+        daily = daily.drop_duplicates(subset=["day"], keep="last")
+        s = daily.set_index("day")["close"]
+        ma = s.rolling(window=window).mean()
+        valid = s.notna() & ma.notna()
+        above = pd.Series(
+            np.where(valid.to_numpy(), (s > ma).astype(float).to_numpy(), np.nan),
+            index=s.index,
+        )
+        df[col] = day.map(above)
         return df
 
     def _calc_minervini_trend(self, df: pd.DataFrame, config: FeatureConfig) -> pd.DataFrame:
@@ -344,7 +467,9 @@ class TechnicalCalculator:
         if used_weight == 0:
             return 0.0, 0, n
 
-        normalized = weighted_sum * (FULL_WEIGHT_SUM / used_weight)
+        # Massnahme 1: gleiche Korrektur wie in _calc_ibd_rs_raw, damit Batch und
+        # On-the-fly-Endpunkt dasselbe Rating liefern (Nenner bleibt FULL_WEIGHT_SUM).
+        normalized = weighted_sum
         return round(normalized, 4), components_used, n
 
     def calculate_minervini_on_the_fly(self, df: pd.DataFrame, rs_rating: int | None = None) -> dict:

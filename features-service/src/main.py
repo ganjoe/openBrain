@@ -52,6 +52,24 @@ WATCHLISTS_DIR = str(BASE_DIR / "data" / "watchlists")
 API_PORT = int(os.environ.get("FEATURES_API_PORT", "8003"))
 
 
+def _passes_rs_basis_filter(df) -> bool:
+    """RS-Basis-Qualitaetsfilter: Preis > 0.5 UND 50-Tage-SMA(Dollar-Volumen) >= 100000."""
+    try:
+        if df is None or len(df) == 0 or "close" not in df or "volume" not in df:
+            return True
+        close = df["close"].astype(float)
+        med21 = close.rolling(21, min_periods=5).median()
+        ratio = (close / med21).tail(252)
+        if bool(((ratio > 5.0) | (ratio < 0.2)).any()):
+            return False
+        if float(close.iloc[-1]) <= 0.5:
+            return False
+        dv50 = float((close * df["volume"].astype(float)).tail(50).mean())
+        return dv50 >= 100000.0
+    except Exception:
+        return True
+
+
 def _load_settings() -> dict:
     """Load settings.json for processing_threads etc."""
     settings_path = Path(CONFIG_DIR) / "settings.json"
@@ -124,6 +142,15 @@ def run_feature_pipeline(log_queue: Optional[multiprocessing.Queue] = None, prio
     results = processor.process_all_tickers(tickers, priority=priority, log_queue=log_queue)
     success_count = sum(1 for r in results if r.success)
     logger.info("✅ Feature calculation finished: %d/%d successful", success_count, len(results))
+
+    # Calculate universe market breadth ($STATS.MARKET_BREADTH)
+    try:
+        from market_breadth import generate_market_breadth
+        logger.info("📊 Generating universe market breadth ($STATS.MARKET_BREADTH)...")
+        generate_market_breadth(ctx.data_dir)
+    except Exception as e:
+        logger.error("⚠️ Failed to generate market breadth: %s", e)
+
 
 
 # ─── FastAPI App ─────────────────────────────────────────────────
@@ -291,6 +318,9 @@ def create_app() -> FastAPI:
             try:
                 df_t = storage.load_ticker_data(t, req.chart_timeframe)
                 if len(df_t) >= 63:
+                    if not _passes_rs_basis_filter(df_t):
+                        skipped += 1
+                        continue
                     score, comp, _ = calculator.compute_normalized_roc(df_t["close"])
                     if comp > 0:
                         raw_scores[t] = score
@@ -302,7 +332,7 @@ def create_app() -> FastAPI:
                 skipped += 1
                 continue
 
-        if req.ticker not in raw_scores:
+        if req.ticker not in raw_scores and _passes_rs_basis_filter(df_ticker):
             score, comp, _ = calculator.compute_normalized_roc(df_ticker["close"])
             if comp > 0:
                 raw_scores[req.ticker] = score

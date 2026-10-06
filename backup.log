@@ -1,0 +1,257 @@
+[Fri Sep  4 03:00:01 CEST 2026] Starting backup process...
+[Fri Sep  4 03:03:07 CEST 2026] Copying to local storage: /storage/backups/supabase/supabase_daily_1.dump
+[Fri Sep  4 03:03:08 CEST 2026] Uploading supabase_daily_1.dump to Google Drive...
+File exists (ID: 1MfdoKBaNPxG1bux6X2Z6H95Xkok8PEsi). Overwriting...
+[Fri Sep  4 03:12:43 CEST 2026] Backup completed successfully.
+[Sat Sep  5 03:00:01 CEST 2026] Starting backup process...
+[Sat Sep  5 03:04:10 CEST 2026] Copying to local storage: /storage/backups/supabase/supabase_daily_2.dump
+[Sat Sep  5 03:04:10 CEST 2026] Uploading supabase_daily_2.dump to Google Drive...
+File does not exist. Creating new file...
+[Sat Sep  5 03:17:26 CEST 2026] Backup completed successfully.
+[Sun Sep  6 03:00:01 CEST 2026] Starting backup process...
+[Sun Sep  6 03:04:10 CEST 2026] Copying to local storage: /storage/backups/supabase/supabase_daily_0.dump
+[Sun Sep  6 03:04:10 CEST 2026] Uploading supabase_daily_0.dump to Google Drive...
+File does not exist. Creating new file...
+[Sun Sep  6 03:16:07 CEST 2026] Copying to local storage: /storage/backups/supabase/supabase_weekly.dump
+[Sun Sep  6 03:16:08 CEST 2026] Uploading supabase_weekly.dump to Google Drive...
+File does not exist. Creating new file...
+[Sun Sep  6 03:28:04 CEST 2026] Backup completed successfully.
+[Mon Sep  7 03:00:01 CEST 2026] Starting backup process...
+[Mon Sep  7 03:04:10 CEST 2026] Copying to local storage: /storage/backups/supabase/supabase_daily_1.dump
+[Mon Sep  7 03:04:11 CEST 2026] Uploading supabase_daily_1.dump to Google Drive...
+File exists (ID: 1MfdoKBaNPxG1bux6X2Z6H95Xkok8PEsi). Overwriting...
+[Mon Sep  7 03:16:09 CEST 2026] Backup completed successfully.
+[Tue Sep  8 03:00:01 CEST 2026] Starting backup process...
+[Tue Sep  8 03:04:10 CEST 2026] Copying to local storage: /storage/backups/supabase/supabase_daily_2.dump
+[Tue Sep  8 03:04:11 CEST 2026] Uploading supabase_daily_2.dump to Google Drive...
+File exists (ID: 1XrMT8XsbacHrx0KfWo44nc301pgkds61). Overwriting...
+[Tue Sep  8 03:16:10 CEST 2026] Backup completed successfully.
+[Wed Sep  9 03:00:01 CEST 2026] Starting backup process...
+[Wed Sep  9 03:04:35 CEST 2026] Copying to local storage: /storage/backups/supabase/supabase_daily_0.dump
+[Wed Sep  9 03:04:36 CEST 2026] Uploading supabase_daily_0.dump to Google Drive...
+File exists (ID: 1TVvTwUv9KeDCwGmJX-dzIj-MeUTmRzZ5). Overwriting...
+[Wed Sep  9 03:19:37 CEST 2026] Backup completed successfully.
+[Thu Sep 10 03:00:01 CEST 2026] Starting backup process...
+[Thu Sep 10 03:04:35 CEST 2026] Copying to local storage: /storage/backups/supabase/supabase_daily_1.dump
+[Thu Sep 10 03:04:35 CEST 2026] Uploading supabase_daily_1.dump to Google Drive...
+File exists (ID: 1MfdoKBaNPxG1bux6X2Z6H95Xkok8PEsi). Overwriting...
+[Thu Sep 10 03:17:45 CEST 2026] Backup completed successfully.
+[Fri Sep 11 03:00:01 CEST 2026] Starting backup process...
+Failed to get access token from Google.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Sat Sep 12 03:00:01 CEST 2026] Starting backup process...
+Failed to get access token from Google.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Sun Sep 13 03:00:01 CEST 2026] Starting backup process...
+Failed to get access token from Google.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Mon Sep 14 03:00:01 CEST 2026] Starting backup process...
+Failed to get access token from Google.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Tue Sep 15 03:00:01 CEST 2026] Starting backup process...
+Failed to get access token from Google.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Wed Sep 16 03:00:01 CEST 2026] Starting backup process...
+Failed to get access token from Google.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Thu Sep 17 03:00:01 CEST 2026] Starting backup process...
+Failed to get access token from Google.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Fri Sep 18 03:00:01 CEST 2026] Starting backup process...
+[Fri Sep 18 03:05:18 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_0.dump
+[Fri Sep 18 03:05:18 CEST 2026] Requesting Google access token...
+[WARN] Fri Sep 18 03:05:18 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Fri Sep 18 03:05:19 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Sat Sep 19 03:00:01 CEST 2026] Starting backup process...
+[Sat Sep 19 03:02:32 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_1.dump
+[Sat Sep 19 03:02:32 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_manual_2026-09-17-19-46-10.dump
+[Sat Sep 19 03:02:32 CEST 2026] Requesting Google access token...
+[WARN] Sat Sep 19 03:02:32 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Sat Sep 19 03:02:32 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Sun Sep 20 03:00:01 CEST 2026] Starting backup process...
+[Sun Sep 20 03:03:11 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_2.dump
+[Sun Sep 20 03:03:11 CEST 2026] Local backup written: /storage/backups/supabase/supabase_weekly.dump
+[Sun Sep 20 03:03:11 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_daily_0.dump
+[Sun Sep 20 03:03:11 CEST 2026] Requesting Google access token...
+[WARN] Sun Sep 20 03:03:11 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Sun Sep 20 03:03:11 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Mon Sep 21 03:00:01 CEST 2026] Starting backup process...
+[Mon Sep 21 03:03:57 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_0.dump
+[Mon Sep 21 03:03:57 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_daily_1.dump
+[Mon Sep 21 03:03:57 CEST 2026] Requesting Google access token...
+[WARN] Mon Sep 21 03:03:57 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Mon Sep 21 03:03:57 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Tue Sep 22 03:00:01 CEST 2026] Starting backup process...
+[Tue Sep 22 03:04:00 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_1.dump
+[Tue Sep 22 03:04:00 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_daily_2.dump
+[Tue Sep 22 03:04:00 CEST 2026] Requesting Google access token...
+[WARN] Tue Sep 22 03:04:01 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[Tue Sep 22 03:04:01 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Thu Sep 24 03:00:01 CEST 2026] Starting backup process...
+[Thu Sep 24 03:04:05 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_0.dump
+[Thu Sep 24 03:04:05 CEST 2026] Requesting Google access token...
+[WARN] Thu Sep 24 03:04:05 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Thu Sep 24 03:04:06 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Fri Sep 25 03:00:01 CEST 2026] Starting backup process...
+[Fri Sep 25 03:04:03 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_1.dump
+[Fri Sep 25 03:04:03 CEST 2026] Requesting Google access token...
+[WARN] Fri Sep 25 03:04:03 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Fri Sep 25 03:04:03 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Sat Sep 26 03:00:01 CEST 2026] Starting backup process...
+[Sat Sep 26 03:04:02 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_2.dump
+[Sat Sep 26 03:04:02 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_weekly.dump
+[Sat Sep 26 03:04:02 CEST 2026] Requesting Google access token...
+[WARN] Sat Sep 26 03:04:03 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Sat Sep 26 03:04:03 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Sun Sep 27 03:00:01 CEST 2026] Starting backup process...
+[Sun Sep 27 03:04:54 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_0.dump
+[Sun Sep 27 03:04:55 CEST 2026] Local backup written: /storage/backups/supabase/supabase_weekly.dump
+[Sun Sep 27 03:04:55 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_daily_1.dump
+[Sun Sep 27 03:04:55 CEST 2026] Requesting Google access token...
+[WARN] Sun Sep 27 03:04:55 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Sun Sep 27 03:04:55 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Mon Sep 28 03:00:01 CEST 2026] Starting backup process...
+[Mon Sep 28 03:04:55 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_1.dump
+[Mon Sep 28 03:04:55 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_daily_2.dump
+[Mon Sep 28 03:04:55 CEST 2026] Requesting Google access token...
+[WARN] Mon Sep 28 03:04:55 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Mon Sep 28 03:04:55 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Tue Sep 29 03:00:01 CEST 2026] Starting backup process...
+[Tue Sep 29 03:04:55 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_2.dump
+[Tue Sep 29 03:04:55 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_daily_0.dump
+[Tue Sep 29 03:04:55 CEST 2026] Requesting Google access token...
+[WARN] Tue Sep 29 03:04:55 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Tue Sep 29 03:04:56 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Wed Sep 30 03:00:01 CEST 2026] Starting backup process...
+[Wed Sep 30 03:04:56 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_0.dump
+[Wed Sep 30 03:04:56 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_weekly.dump
+[Wed Sep 30 03:04:56 CEST 2026] Requesting Google access token...
+[WARN] Wed Sep 30 03:04:56 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Wed Sep 30 03:04:56 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Thu Oct  1 03:00:01 CEST 2026] Starting backup process...
+[Thu Oct  1 03:04:57 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_1.dump
+[Thu Oct  1 03:04:57 CEST 2026] Requesting Google access token...
+[WARN] Thu Oct  1 03:04:57 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Thu Oct  1 03:04:57 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Fri Oct  2 03:00:01 CEST 2026] Starting backup process...
+[Fri Oct  2 03:05:21 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_2.dump
+[Fri Oct  2 03:05:21 CEST 2026] Requesting Google access token...
+[WARN] Fri Oct  2 03:05:21 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Fri Oct  2 03:05:21 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Sat Oct  3 03:00:02 CEST 2026] Starting backup process...
+[Sat Oct  3 03:05:01 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_0.dump
+[Sat Oct  3 03:05:01 CEST 2026] Requesting Google access token...
+[WARN] Sat Oct  3 03:05:01 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Sat Oct  3 03:05:01 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Sun Oct  4 03:00:01 CEST 2026] Starting backup process...
+[Sun Oct  4 03:04:58 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_1.dump
+[Sun Oct  4 03:04:59 CEST 2026] Local backup written: /storage/backups/supabase/supabase_weekly.dump
+[Sun Oct  4 03:04:59 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_daily_2.dump
+[Sun Oct  4 03:04:59 CEST 2026] Requesting Google access token...
+[WARN] Sun Oct  4 03:04:59 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Sun Oct  4 03:04:59 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Mon Oct  5 03:00:01 CEST 2026] Starting backup process...
+[Mon Oct  5 03:05:00 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_2.dump
+[Mon Oct  5 03:05:00 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_daily_0.dump
+[Mon Oct  5 03:05:00 CEST 2026] Requesting Google access token...
+[WARN] Mon Oct  5 03:05:00 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Mon Oct  5 03:05:00 CEST 2026] Backup completed (local=true, cloud=skipped).
+[Tue Oct  6 03:00:01 CEST 2026] Starting backup process...
+[Tue Oct  6 03:05:20 CEST 2026] Local backup written: /storage/backups/supabase/supabase_daily_0.dump
+[Tue Oct  6 03:05:20 CEST 2026] Pruning old local dump: /storage/backups/supabase/supabase_daily_1.dump
+[Tue Oct  6 03:05:20 CEST 2026] Requesting Google access token...
+[WARN] Tue Oct  6 03:05:20 CEST 2026 Could not obtain Google access token. Skipping cloud upload; local backup is intact.
+{
+  "error": "invalid_grant",
+  "error_description": "Bad Request"
+}
+[Tue Oct  6 03:05:20 CEST 2026] Backup completed (local=true, cloud=skipped).

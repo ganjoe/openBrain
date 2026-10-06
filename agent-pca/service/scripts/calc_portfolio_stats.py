@@ -1,6 +1,12 @@
 """
 calc_portfolio_stats.py
 -----------------------
+DEPRECATED (2026-10-05): ersetzt durch QJM services/pca-service/portfolio_stats.py.
+Der neue Producer ist portfolio-scoped (fest am IBKR-Live-Portfolio), event_time-basiert,
+schreibt zusaetzlich $STATS.INVESTED_VALUE und laeuft automatisiert (taeglich 23:00 +
+nach Trades). Dieses Skript ist portfolio-blind und wurde zuletzt 2026-06 manuell
+ausgefuehrt — nicht mehr verwenden.
+
 Berechnet täglich NAV, Asset Value, Cash Quote und PnL aus der Datenbank.
 Speichert die Ergebnisse als Parquet-Dateien für schnellen Zugriff im Chart.
 
